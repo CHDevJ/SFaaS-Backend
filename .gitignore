@@ -1,0 +1,44 @@
+# Java / Gradle / Maven
+*.class
+*.jar
+*.war
+build/
+target/
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Spring Boot
+application-local.yml
+application-local.properties
+application-secret.*
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+dist/
+
+# 로그 / 임시 파일
+*.log
+logs/
+tmp/
+
+# 환경 변수 / 비밀 정보
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db
