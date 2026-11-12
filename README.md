@@ -39,11 +39,11 @@
 ## 디렉터리 구조
 
 ```
-sfaas/
+SFAAS_Project/
 ├── backend/        Spring Boot 서버 (API, 인증, 데이터 처리)
 ├── frontend/       Web SCADA 관제 화면
 ├── db/             스키마 DDL, 샘플 데이터
-└── docs/           제안요청서, 설계 산출물
+└── docs/           설계 산출물
 ```
 
 ## 일정
@@ -51,12 +51,9 @@ sfaas/
 - 1단계: 2026년 5월 8일 ~ 5월 21일
 - 고도화: 2027년 상반기 예정
 
-## 개발 환경 준비
+## 시작하기
 
 ```bash
-# 백엔드 실행
-cd backend && ./gradlew bootRun
-
-# DB 스키마 생성
-mysql -u root -p < db/schema/01_init.sql
+git clone https://github.com/balkary/SFAAS_Project.git
+cd SFAAS_Project
 ```
