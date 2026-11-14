@@ -1,44 +1,67 @@
-# Java / Gradle / Maven
-*.class
-*.jar
-*.war
+HELP.md
+.gradle
 build/
 target/
-.gradle/
+*.class
+*.war
 !gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
 
-# Spring Boot
-application-local.yml
-application-local.properties
-application-secret.*
-
-# IDE
-.idea/
-*.iml
-*.ipr
-*.iws
-.vscode/
-.settings/
-.project
-.classpath
-
-# Node
-node_modules/
-npm-debug.log*
-yarn-error.log*
-dist/
-
-# 로그 / 임시 파일
-*.log
-logs/
-tmp/
-
-# 환경 변수 / 비밀 정보
+# Local environment
 .env
 .env.*
+!.env.example
+application-local.properties
+application-local.yml
+application-secret.*
+
+# Logs
+*.log
+logs/
+
+# Local secrets
+secrets/
+uploads/
 *.pem
 *.key
 
-# OS
+### Frontend artifacts when the repository is combined ###
+node_modules/
+dist/
+tmp/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### OS ###
 .DS_Store
 Thumbs.db
