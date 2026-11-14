@@ -1,0 +1,1665 @@
+openapi: 3.0.3
+info:
+  title: STF Save The Factory API
+  version: 1.0.0-draft
+  description: |
+    등속조인트 생산설비 통합관제 시스템 API 초안.
+    요구사항 정의서, 시스템 아키텍처, STF 화면 프로토타입과 사용자 확정사항을 반영했다.
+    LLM 연동은 보류사항이므로 실행 경로에 포함하지 않는다.
+servers:
+  - url: /api/v1
+    description: 사용자 REST API
+tags:
+  - name: Auth
+  - name: Overview
+  - name: Equipment
+  - name: Alarm
+  - name: Inventory
+  - name: Production
+  - name: Part
+  - name: Statistics
+  - name: SystemUser
+  - name: SystemMaster
+  - name: SystemSetting
+  - name: Kakao
+  - name: Audit
+  - name: Internal
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: 로그인
+      description: 최종 로그인 일시는 저장하지 않으며 Refresh Token을 발급하지 않는다.
+      security: []
+      x-roles: [ANONYMOUS]
+      x-requirement-ids: ["1.1", "1.2"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponseEnvelope'
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: 로그아웃
+      x-roles: &allRoles [SYSTEM_ADMIN, MAINTENANCE, LINE_MANAGER]
+      x-requirement-ids: ["1.3"]
+      responses:
+        '204': {description: 로그아웃 성공}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getMyProfile
+      summary: 내 정보 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["1.4"]
+      responses:
+        '200':
+          description: 내 정보. 최종 로그인 일시는 포함하지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserEnvelope'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/me/password:
+    put:
+      tags: [Auth]
+      operationId: changeMyPassword
+      summary: 내 비밀번호 변경
+      x-roles: *allRoles
+      x-requirement-ids: ["1.5"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PasswordChangeRequest'}
+      responses:
+        '204': {description: 변경 성공. 현재 토큰 폐기 후 재로그인 필요}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /communications:
+    get:
+      tags: [Equipment]
+      operationId: getCommunicationStatus
+      summary: 설비 통신 상태 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["2.2", "2.3", "2.4"]
+      parameters:
+        - {$ref: '#/components/parameters/LineId'}
+        - name: status
+          in: query
+          schema: {type: string, enum: [CONNECTED, DISCONNECTED]}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /overview:
+    get:
+      tags: [Overview]
+      operationId: getOverview
+      summary: 종합현황 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["3.1", "3.2", "7.1", "9.1", "10.1"]
+      responses:
+        '200':
+          description: 설비 상태 집계, 라인 현황, 발생 알람, 재고와 생산 요약
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OverviewEnvelope'}
+  /equipment-layout:
+    get:
+      tags: [Equipment]
+      operationId: getEquipmentLayout
+      summary: 공장·라인 설비 배치 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["7.1", "7.2"]
+      parameters:
+        - {$ref: '#/components/parameters/LineId'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+  /lines/{lineId}/equipment:
+    get:
+      tags: [Equipment]
+      operationId: getLineEquipment
+      summary: 라인별 설비 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["7.2"]
+      parameters:
+        - {$ref: '#/components/parameters/LineIdPath'}
+        - name: status
+          in: query
+          schema: {$ref: '#/components/schemas/EquipmentStatus'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /equipment/{equipmentId}:
+    get:
+      tags: [Equipment]
+      operationId: getEquipmentDetail
+      summary: 설비 상세 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["7.3", "7.4"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+      responses:
+        '200':
+          description: 설비 기본정보, 상태, 측정값, 통신, 미종료 알람
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EquipmentEnvelope'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /equipment/{equipmentId}/measurements:
+    get:
+      tags: [Equipment]
+      operationId: getEquipmentMeasurements
+      summary: 설비 측정 추세 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["8.1", "8.2", "8.3", "8.4", "8.5"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+        - name: dataItemIds
+          in: query
+          required: true
+          schema: {type: array, items: {type: string, format: uuid}}
+          style: form
+          explode: false
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - name: interval
+          in: query
+          schema: {type: string, enum: [RAW, MINUTE, HOUR], default: MINUTE}
+      responses:
+        '200':
+          description: 항목별 시계열, 최소·평균·최대, 임계값
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MeasurementSeriesEnvelope'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /alarms:
+    get:
+      tags: [Alarm]
+      operationId: getAlarms
+      summary: 알람 목록 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["4.1", "5.1", "6.1"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {$ref: '#/components/parameters/Sort'}
+        - {$ref: '#/components/parameters/LineId'}
+        - name: equipmentId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: grade
+          in: query
+          schema: {$ref: '#/components/schemas/AlarmGrade'}
+        - name: processStatus
+          in: query
+          schema: {$ref: '#/components/schemas/AlarmProcessStatus'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /alarms/{alarmId}:
+    get:
+      tags: [Alarm]
+      operationId: getAlarmDetail
+      summary: 알람 상세 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["6.1", "6.2"]
+      parameters:
+        - {$ref: '#/components/parameters/AlarmIdPath'}
+      responses:
+        '200':
+          description: 알람, 측정값, 처리단계, 조치이력, 효과확인
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AlarmEnvelope'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /alarms/{alarmId}/acknowledgement:
+    patch:
+      tags: [Alarm]
+      operationId: acknowledgeAlarm
+      summary: 알람 확인·담당자 지정
+      x-roles: *allRoles
+      x-requirement-ids: ["6.2", "6.3"]
+      parameters:
+        - {$ref: '#/components/parameters/AlarmIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigneeUserId]
+              properties:
+                assigneeUserId: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /alarms/{alarmId}/recommended-actions:
+    get:
+      tags: [Alarm]
+      operationId: getRecommendedActions
+      summary: 과거 유사 조치 조회
+      description: DB 기반 결과만 필수이며 LLM 요약은 보류한다.
+      x-roles: *allRoles
+      x-requirement-ids: ["6.4"]
+      parameters:
+        - {$ref: '#/components/parameters/AlarmIdPath'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /alarms/{alarmId}/actions:
+    post:
+      tags: [Alarm]
+      operationId: recordAlarmAction
+      summary: 알람 조치 기록
+      x-roles: *allRoles
+      x-requirement-ids: ["6.5", "6.6"]
+      parameters:
+        - {$ref: '#/components/parameters/AlarmIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AlarmActionRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /alarms/{alarmId}/false-positive:
+    post:
+      tags: [Alarm]
+      operationId: closeAlarmAsFalsePositive
+      summary: 오경보 처리
+      x-roles: *allRoles
+      x-requirement-ids: ["6.7"]
+      parameters:
+        - {$ref: '#/components/parameters/AlarmIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 1, maxLength: 1000}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /alarms/{alarmId}/effect:
+    get:
+      tags: [Alarm]
+      operationId: getAlarmEffect
+      summary: 조치 효과확인 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["6.8", "6.9", "6.10", "6.11"]
+      parameters:
+        - {$ref: '#/components/parameters/AlarmIdPath'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /alarm-histories:
+    get:
+      tags: [Alarm]
+      operationId: getAlarmHistories
+      summary: 알람 처리 이력 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["6.12", "12.1"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/LineId'}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /inventory:
+    get:
+      tags: [Inventory]
+      operationId: getInventoryStatus
+      summary: 라인별 재고·정지예측 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7"]
+      parameters:
+        - {$ref: '#/components/parameters/LineId'}
+      responses:
+        '200':
+          description: 재고, 생산·소비율, 남은시간, 정지·복구예상, 여유시간, 위험, 손실
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InventoryEnvelope'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /inventory/history:
+    get:
+      tags: [Inventory]
+      operationId: getInventoryHistory
+      summary: 재고 추이 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["9.8"]
+      parameters:
+        - name: lineIds
+          in: query
+          schema: {type: array, items: {type: string, format: uuid}}
+          style: form
+          explode: false
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /production/today:
+    get:
+      tags: [Production]
+      operationId: getTodayProduction
+      summary: 금일 생산현황 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["10.1"]
+      responses:
+        '200':
+          description: 완성품 수, 목표, 달성률, 계획대비, 라인별 수
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProductionEnvelope'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /production/hourly:
+    get:
+      tags: [Production]
+      operationId: getHourlyProduction
+      summary: 시간대별 생산현황 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["10.2"]
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: {type: string, format: date}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /equipment/{equipmentId}/parts:
+    get:
+      tags: [Part]
+      operationId: getEquipmentParts
+      summary: 설비 부품 교체현황 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["11.1", "11.2"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+        - name: groupBy
+          in: query
+          schema: {type: string, enum: [EQUIPMENT, PART], default: EQUIPMENT}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /equipment/{equipmentId}/parts/{partId}/replacements:
+    post:
+      tags: [Part]
+      operationId: createPartReplacement
+      summary: 부품 교체 등록
+      x-roles: *allRoles
+      x-requirement-ids: ["11.3"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+        - {$ref: '#/components/parameters/PartIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PartReplacementRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    get:
+      tags: [Part]
+      operationId: getPartReplacementHistory
+      summary: 부품 교체 이력 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["11.4"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+        - {$ref: '#/components/parameters/PartIdPath'}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+  /statistics/alarms:
+    get:
+      tags: [Statistics]
+      operationId: getAlarmStatistics
+      summary: 알람 대응 통계 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["12.2", "12.3", "12.4"]
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/LineId'}
+        - name: equipmentId
+          in: query
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /statistics/equipment:
+    get:
+      tags: [Statistics]
+      operationId: getEquipmentStatistics
+      summary: 설비 가동·고장 통계 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["12.5", "12.6", "12.7", "12.8"]
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/LineId'}
+        - name: sortBy
+          in: query
+          schema: {type: string, enum: [FAILURE_COUNT, DOWNTIME, MTTR, LOSS]}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /statistics/losses:
+    get:
+      tags: [Statistics]
+      operationId: getLossStatistics
+      summary: 생산손실 통계 조회
+      x-roles: *allRoles
+      x-requirement-ids: ["12.9"]
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /statistics/comparison:
+    get:
+      tags: [Statistics]
+      operationId: getStatisticsComparison
+      summary: 기간·동일공정 설비 비교
+      x-roles: *allRoles
+      x-requirement-ids: ["12.10"]
+      parameters:
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - name: processType
+          in: query
+          schema: {type: string}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /statistics/export:
+    get:
+      tags: [Statistics]
+      operationId: exportStatistics
+      summary: 통계 CSV 내보내기
+      x-roles: *allRoles
+      x-requirement-ids: ["12.11"]
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: {type: string, enum: [ALARM, FAILURE]}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - {$ref: '#/components/parameters/LineId'}
+      responses:
+        '200':
+          description: UTF-8 BOM CSV
+          content:
+            text/csv:
+              schema: {type: string, format: binary}
+        '413':
+          description: 내보내기 허용건수 초과
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+  /system/users:
+    get:
+      tags: [SystemUser]
+      operationId: getUsers
+      summary: 등록 사용자 목록 조회
+      x-roles: &adminOnly [SYSTEM_ADMIN]
+      x-requirement-ids: ["1.4", "14.3"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - name: name
+          in: query
+          schema: {type: string}
+        - name: role
+          in: query
+          schema: {$ref: '#/components/schemas/UserRole'}
+        - name: accountStatus
+          in: query
+          schema: {$ref: '#/components/schemas/AccountStatus'}
+      responses:
+        '200':
+          description: 사용자 목록. 최종 로그인 일시는 포함하지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PagedEnvelope'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [SystemUser]
+      operationId: createUser
+      summary: 사용자 등록
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.3"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UserCreateRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/users/{userId}:
+    get:
+      tags: [SystemUser]
+      operationId: getUser
+      summary: 사용자 상세 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.3"]
+      parameters:
+        - {$ref: '#/components/parameters/UserIdPath'}
+      responses:
+        '200':
+          description: 사용자 상세. 최종 로그인 일시는 포함하지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/UserEnvelope'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [SystemUser]
+      operationId: updateUser
+      summary: 사용자 기본정보 수정
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.3"]
+      parameters:
+        - {$ref: '#/components/parameters/UserIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UserUpdateRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /system/users/{userId}/role:
+    patch:
+      tags: [SystemUser]
+      operationId: changeUserRole
+      summary: 사용자 역할 변경
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.3"]
+      parameters:
+        - {$ref: '#/components/parameters/UserIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: {$ref: '#/components/schemas/UserRole'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/users/{userId}/status:
+    patch:
+      tags: [SystemUser]
+      operationId: changeUserStatus
+      summary: 사용자 사용상태 변경
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.3"]
+      parameters:
+        - {$ref: '#/components/parameters/UserIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountStatus]
+              properties:
+                accountStatus: {$ref: '#/components/schemas/AccountStatus'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/users/{userId}/password-reset:
+    post:
+      tags: [SystemUser]
+      operationId: resetUserPassword
+      summary: 사용자 임시 비밀번호 발급
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.3"]
+      parameters:
+        - {$ref: '#/components/parameters/UserIdPath'}
+      responses:
+        '200':
+          description: 1회 표시되는 임시 비밀번호
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SuccessEnvelope'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /system/equipment:
+    get:
+      tags: [SystemMaster]
+      operationId: getSystemEquipment
+      summary: 설비 기준정보 목록 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.1"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {$ref: '#/components/parameters/LineId'}
+        - name: includeInactive
+          in: query
+          schema: {type: boolean, default: false}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+    post:
+      tags: [SystemMaster]
+      operationId: createEquipment
+      summary: 설비 기준정보 등록
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.2"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EquipmentWriteRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/equipment/{equipmentId}:
+    patch:
+      tags: [SystemMaster]
+      operationId: updateEquipment
+      summary: 설비 기준정보 수정
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.2"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EquipmentWriteRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /system/equipment/{equipmentId}/activation:
+    patch:
+      tags: [SystemMaster]
+      operationId: changeEquipmentActivation
+      summary: 설비 감시 사용상태 변경
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.3"]
+      parameters:
+        - {$ref: '#/components/parameters/EquipmentIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/lines:
+    get:
+      tags: [SystemMaster]
+      operationId: getSystemLines
+      summary: 라인 기준정보 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.4"]
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+    post:
+      tags: [SystemMaster]
+      operationId: createLine
+      summary: 라인 등록
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.4"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LineWriteRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/lines/{lineId}:
+    patch:
+      tags: [SystemMaster]
+      operationId: updateLine
+      summary: 라인 수정
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.4"]
+      parameters:
+        - {$ref: '#/components/parameters/LineIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LineWriteRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/data-items:
+    get:
+      tags: [SystemMaster]
+      operationId: getDataItems
+      summary: 수집항목 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.5"]
+      parameters:
+        - name: equipmentId
+          in: query
+          schema: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+    post:
+      tags: [SystemMaster]
+      operationId: createDataItem
+      summary: 수집항목 등록
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.5"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DataItemWriteRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /system/data-items/{dataItemId}:
+    patch:
+      tags: [SystemMaster]
+      operationId: updateDataItem
+      summary: 수집항목 수정
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.5"]
+      parameters:
+        - {$ref: '#/components/parameters/DataItemIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DataItemWriteRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /system/thresholds/{thresholdId}:
+    get:
+      tags: [SystemMaster]
+      operationId: getThreshold
+      summary: 임계값 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.6"]
+      parameters:
+        - {$ref: '#/components/parameters/ThresholdIdPath'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+    put:
+      tags: [SystemMaster]
+      operationId: updateThreshold
+      summary: 임계값 저장
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.6"]
+      parameters:
+        - {$ref: '#/components/parameters/ThresholdIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ThresholdWriteRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /system/parts:
+    get:
+      tags: [SystemMaster]
+      operationId: getSystemParts
+      summary: 부품 기준정보 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.7"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+    post:
+      tags: [SystemMaster]
+      operationId: createPart
+      summary: 부품 기준정보 등록
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.7"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PartWriteRequest'}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /system/parts/{partId}:
+    patch:
+      tags: [SystemMaster]
+      operationId: updatePart
+      summary: 부품 기준정보 수정
+      x-roles: *adminOnly
+      x-requirement-ids: ["13.7"]
+      parameters:
+        - {$ref: '#/components/parameters/PartIdPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PartWriteRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /system/settings/judgement:
+    get:
+      tags: [SystemSetting]
+      operationId: getJudgementSettings
+      summary: 판정 설정 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.1"]
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+    put:
+      tags: [SystemSetting]
+      operationId: updateJudgementSettings
+      summary: 판정 설정 저장
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.1"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/JudgementSettings'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /system/settings/calculation:
+    get:
+      tags: [SystemSetting]
+      operationId: getCalculationSettings
+      summary: 생산·재고 계산 설정 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.2"]
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+    put:
+      tags: [SystemSetting]
+      operationId: updateCalculationSettings
+      summary: 생산·재고 계산 설정 저장
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.2"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CalculationSettings'}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /system/unassigned-lines:
+    get:
+      tags: [SystemSetting]
+      operationId: getUnassignedLines
+      summary: 담당자 미배정 라인 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.4"]
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+  /system/kakao/connections:
+    post:
+      tags: [Kakao]
+      operationId: connectKakao
+      summary: 사용자 카카오 연동
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.5"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, authorizationCode]
+              properties:
+                userId: {type: string, format: uuid}
+                authorizationCode: {type: string, minLength: 1}
+      responses:
+        '201': {$ref: '#/components/responses/Created'}
+        '502':
+          description: 카카오 인증 실패
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+  /system/kakao/connections/{userId}:
+    delete:
+      tags: [Kakao]
+      operationId: disconnectKakao
+      summary: 사용자 카카오 연동 해제
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.5"]
+      parameters:
+        - {$ref: '#/components/parameters/UserIdPath'}
+      responses:
+        '204': {description: 연동 해제 성공}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /system/kakao/test-messages:
+    post:
+      tags: [Kakao]
+      operationId: sendKakaoTestMessage
+      summary: 카카오 테스트 메시지 발송
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.6"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId: {type: string, format: uuid}
+      responses:
+        '200': {$ref: '#/components/responses/Success'}
+  /system/kakao/deliveries:
+    get:
+      tags: [Kakao]
+      operationId: getKakaoDeliveries
+      summary: 카카오 전송 이력 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["5.6", "5.7", "14.6"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - name: result
+          in: query
+          schema: {type: string, enum: [SUCCESS, FAILED]}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+  /system/change-histories:
+    get:
+      tags: [Audit]
+      operationId: getChangeHistories
+      summary: 시스템 변경이력 조회
+      x-roles: *adminOnly
+      x-requirement-ids: ["14.7"]
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {$ref: '#/components/parameters/From'}
+        - {$ref: '#/components/parameters/To'}
+        - name: itemType
+          in: query
+          schema: {type: string}
+      responses:
+        '200': {$ref: '#/components/responses/PagedSuccess'}
+  /measurements:
+    post:
+      tags: [Internal]
+      operationId: ingestMeasurement
+      summary: Node-RED 측정값 수집
+      security:
+        - internalToken: []
+      servers:
+        - url: /internal/v1
+      x-roles: [NODE_RED]
+      x-requirement-ids: ["2.1"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/MeasurementIngestionRequest'}
+      responses:
+        '202': {description: 수집 접수 또는 중복 멱등 처리}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /heartbeats:
+    post:
+      tags: [Internal]
+      operationId: ingestHeartbeat
+      summary: Node-RED 설비 heartbeat 수집
+      security:
+        - internalToken: []
+      servers:
+        - url: /internal/v1
+      x-roles: [NODE_RED]
+      x-requirement-ids: ["2.2"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/HeartbeatIngestionRequest'}
+      responses:
+        '202': {description: 수집 접수 또는 중복 멱등 처리}
+        '400': {$ref: '#/components/responses/ValidationError'}
+  /production-events:
+    post:
+      tags: [Internal]
+      operationId: ingestProductionEvent
+      summary: Node-RED 생산 이벤트 수집
+      security:
+        - internalToken: []
+      servers:
+        - url: /internal/v1
+      x-roles: [NODE_RED]
+      x-requirement-ids: ["6.8", "9.1", "10.1"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ProductionEventIngestionRequest'}
+      responses:
+        '202': {description: 수집 접수 또는 중복 멱등 처리}
+        '400': {$ref: '#/components/responses/ValidationError'}
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 30분 Access Token. Refresh Token과 브라우저 영속 저장을 사용하지 않는다.
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Node-RED 전용 내부 토큰. 운영 시 IP 제한 또는 mTLS 병행 권장.
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 0, default: 0}
+    Size:
+      name: size
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    Sort:
+      name: sort
+      in: query
+      description: "field,asc 또는 field,desc"
+      schema: {type: string}
+    From:
+      name: from
+      in: query
+      schema: {type: string, format: date-time}
+    To:
+      name: to
+      in: query
+      schema: {type: string, format: date-time}
+    LineId:
+      name: lineId
+      in: query
+      schema: {type: string, format: uuid}
+    LineIdPath:
+      name: lineId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    EquipmentIdPath:
+      name: equipmentId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    AlarmIdPath:
+      name: alarmId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    PartIdPath:
+      name: partId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    UserIdPath:
+      name: userId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    DataItemIdPath:
+      name: dataItemId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ThresholdIdPath:
+      name: thresholdId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  responses:
+    Success:
+      description: 성공
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SuccessEnvelope'}
+    Created:
+      description: 생성 성공
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/SuccessEnvelope'}
+    PagedSuccess:
+      description: 페이지 조회 성공
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/PagedEnvelope'}
+    ValidationError:
+      description: 요청값 검증 실패
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    Unauthorized:
+      description: 인증 필요 또는 토큰 만료
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    Forbidden:
+      description: 접근 권한 없음
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    NotFound:
+      description: 자원 없음
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    Conflict:
+      description: 자원 상태와 요청 작업 충돌
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+  schemas:
+    UserRole:
+      type: string
+      enum: [SYSTEM_ADMIN, MAINTENANCE, LINE_MANAGER]
+    AccountStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+    EquipmentStatus:
+      type: string
+      enum: [RUNNING, IDLE, WARNING, FAULT, OFFLINE]
+    AlarmGrade:
+      type: string
+      enum: [WARNING, CRITICAL]
+    AlarmValueStatus:
+      type: string
+      enum: [OUT_OF_RANGE, RECOVERED]
+    AlarmProcessStatus:
+      type: string
+      enum: [UNACKNOWLEDGED, ACKNOWLEDGED, ACTION_RECORDED, EFFECT_CHECKING, CLOSED]
+    EffectStatus:
+      type: string
+      enum: [WAITING, IN_PROGRESS, PASSED, FAILED]
+    ActivationStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE]
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [loginId, password]
+      properties:
+        loginId: {type: string, minLength: 4, maxLength: 50, example: admin01}
+        password: {type: string, format: password, minLength: 8, maxLength: 64}
+    LoginResponseEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: {type: boolean, example: true}
+        data:
+          type: object
+          required: [accessToken, tokenType, expiresInSeconds, user]
+          properties:
+            accessToken: {type: string}
+            tokenType: {type: string, example: Bearer}
+            expiresInSeconds: {type: integer, example: 1800}
+            user: {$ref: '#/components/schemas/User'}
+        timestamp: {type: string, format: date-time}
+    PasswordChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: {type: string, format: password}
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 64
+          description: 영문·숫자·특수문자를 각각 1개 이상 포함
+    User:
+      type: object
+      description: 최종 로그인 일시 필드는 의도적으로 존재하지 않는다.
+      required: [userId, loginId, name, role, accountStatus, createdAt, updatedAt]
+      properties:
+        userId: {type: string, format: uuid}
+        loginId: {type: string}
+        name: {type: string}
+        role: {$ref: '#/components/schemas/UserRole'}
+        accountStatus: {$ref: '#/components/schemas/AccountStatus'}
+        phoneNumber: {type: string, nullable: true}
+        email: {type: string, format: email, nullable: true}
+        kakaoConnected: {type: boolean, default: false}
+        assignedLineIds:
+          type: array
+          items: {type: string, format: uuid}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    UserEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: {type: boolean, example: true}
+        data: {$ref: '#/components/schemas/User'}
+        timestamp: {type: string, format: date-time}
+    UserCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [loginId, name, role, password]
+      properties:
+        loginId: {type: string, minLength: 4, maxLength: 50, pattern: '^[A-Za-z0-9._-]+$'}
+        name: {type: string, minLength: 1, maxLength: 50}
+        role: {$ref: '#/components/schemas/UserRole'}
+        password: {type: string, format: password, minLength: 8, maxLength: 64}
+        phoneNumber: {type: string, maxLength: 20}
+        email: {type: string, format: email}
+        assignedLineIds:
+          type: array
+          items: {type: string, format: uuid}
+    UserUpdateRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: {type: string, minLength: 1, maxLength: 50}
+        phoneNumber: {type: string, maxLength: 20, nullable: true}
+        email: {type: string, format: email, nullable: true}
+        assignedLineIds:
+          type: array
+          items: {type: string, format: uuid}
+    EquipmentSummary:
+      type: object
+      required: [equipmentId, equipmentCode, name, lineId, status, lastReceivedAt]
+      properties:
+        equipmentId: {type: string, format: uuid}
+        equipmentCode: {type: string}
+        name: {type: string}
+        lineId: {type: string, format: uuid}
+        processOrder: {type: integer}
+        status: {$ref: '#/components/schemas/EquipmentStatus'}
+        lastReceivedAt: {type: string, format: date-time, nullable: true}
+        openAlarmCount: {type: integer, minimum: 0}
+    OverviewEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: {type: boolean, example: true}
+        data:
+          type: object
+          properties:
+            statusCounts:
+              type: object
+              additionalProperties: {type: integer, minimum: 0}
+            equipment:
+              type: array
+              items: {$ref: '#/components/schemas/EquipmentSummary'}
+            openAlarms:
+              type: array
+              items: {$ref: '#/components/schemas/Alarm'}
+            inventory:
+              type: array
+              items: {$ref: '#/components/schemas/InventoryStatus'}
+            production: {$ref: '#/components/schemas/ProductionStatus'}
+        timestamp: {type: string, format: date-time}
+    EquipmentEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: {type: boolean}
+        data:
+          allOf:
+            - {$ref: '#/components/schemas/EquipmentSummary'}
+            - type: object
+              properties:
+                type: {type: string}
+                serialNumber: {type: string}
+                floor: {type: string}
+                communicationType: {type: string, enum: [MODBUS_TCP, OPC_UA, MQTT]}
+                measurements:
+                  type: array
+                  items: {$ref: '#/components/schemas/MeasurementPoint'}
+                openAlarms:
+                  type: array
+                  items: {$ref: '#/components/schemas/Alarm'}
+        timestamp: {type: string, format: date-time}
+    MeasurementPoint:
+      type: object
+      required: [dataItemId, value, unit, measuredAt]
+      properties:
+        dataItemId: {type: string, format: uuid}
+        dataItemName: {type: string}
+        value: {type: number, format: double}
+        unit: {type: string}
+        measuredAt: {type: string, format: date-time}
+    MeasurementSeriesEnvelope:
+      type: object
+      properties:
+        success: {type: boolean}
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              dataItemId: {type: string, format: uuid}
+              name: {type: string}
+              unit: {type: string}
+              warningThreshold: {type: number, nullable: true}
+              criticalThreshold: {type: number, nullable: true}
+              minimum: {type: number}
+              average: {type: number}
+              maximum: {type: number}
+              points:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    measuredAt: {type: string, format: date-time}
+                    value: {type: number}
+        timestamp: {type: string, format: date-time}
+    Alarm:
+      type: object
+      required: [alarmId, equipmentId, dataItemId, grade, valueStatus, processStatus, occurredAt]
+      properties:
+        alarmId: {type: string, format: uuid}
+        equipmentId: {type: string, format: uuid}
+        equipmentName: {type: string}
+        dataItemId: {type: string, format: uuid}
+        dataItemName: {type: string}
+        grade: {$ref: '#/components/schemas/AlarmGrade'}
+        valueStatus: {$ref: '#/components/schemas/AlarmValueStatus'}
+        processStatus: {$ref: '#/components/schemas/AlarmProcessStatus'}
+        measuredValue: {type: number}
+        thresholdValue: {type: number}
+        unit: {type: string}
+        occurredAt: {type: string, format: date-time}
+        acknowledgedAt: {type: string, format: date-time, nullable: true}
+        closedAt: {type: string, format: date-time, nullable: true}
+        assigneeUserId: {type: string, format: uuid, nullable: true}
+        version: {type: integer, format: int64}
+    AlarmEnvelope:
+      type: object
+      properties:
+        success: {type: boolean}
+        data: {$ref: '#/components/schemas/Alarm'}
+        timestamp: {type: string, format: date-time}
+    AlarmActionRequest:
+      type: object
+      additionalProperties: false
+      required: [actionContent]
+      properties:
+        actionContent: {type: string, minLength: 1, maxLength: 2000}
+        actionAt: {type: string, format: date-time}
+        startEffectCheck: {type: boolean, default: true}
+    InventoryStatus:
+      type: object
+      properties:
+        lineId: {type: string, format: uuid}
+        currentQuantity: {type: integer, minimum: 0}
+        maximumQuantity: {type: integer, minimum: 0}
+        productionPerMinute: {type: number, minimum: 0}
+        consumptionPerMinute: {type: number, minimum: 0}
+        remainingMinutes: {type: number, nullable: true}
+        stopForecastAt: {type: string, format: date-time, nullable: true}
+        recoveryForecastAt: {type: string, format: date-time, nullable: true}
+        marginMinutes: {type: number, nullable: true}
+        risk: {type: string, enum: [SAFE, WARNING, DANGER]}
+        expectedLossAmount: {type: number, minimum: 0}
+        maintained: {type: boolean}
+    InventoryEnvelope:
+      type: object
+      properties:
+        success: {type: boolean}
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/InventoryStatus'}
+        timestamp: {type: string, format: date-time}
+    ProductionStatus:
+      type: object
+      properties:
+        actualQuantity: {type: integer, minimum: 0}
+        targetQuantity: {type: integer, minimum: 0}
+        achievementRate: {type: number, nullable: true}
+        planDifference: {type: integer}
+    ProductionEnvelope:
+      type: object
+      properties:
+        success: {type: boolean}
+        data: {$ref: '#/components/schemas/ProductionStatus'}
+        timestamp: {type: string, format: date-time}
+    PartReplacementRequest:
+      type: object
+      additionalProperties: false
+      required: [replacedAt, reason, workContent]
+      properties:
+        replacedAt: {type: string, format: date-time}
+        reason: {type: string, minLength: 1, maxLength: 500}
+        workContent: {type: string, minLength: 1, maxLength: 2000}
+    EquipmentWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [equipmentCode, name, type, lineId, processOrder, communicationType]
+      properties:
+        equipmentCode: {type: string, minLength: 1, maxLength: 50, pattern: '^[A-Z0-9_-]+$'}
+        name: {type: string, minLength: 1, maxLength: 100}
+        type: {type: string, minLength: 1, maxLength: 100}
+        serialNumber: {type: string, maxLength: 100}
+        floor: {type: string, maxLength: 50}
+        lineId: {type: string, format: uuid}
+        processOrder: {type: integer, minimum: 1}
+        managerUserId: {type: string, format: uuid, nullable: true}
+        communicationType: {type: string, enum: [MODBUS_TCP, OPC_UA, MQTT]}
+        layoutX: {type: number, format: double}
+        layoutY: {type: number, format: double}
+        layoutZ: {type: number, format: double}
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required: [activationStatus]
+      properties:
+        activationStatus: {$ref: '#/components/schemas/ActivationStatus'}
+    LineWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [name, displayOrder]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        displayOrder: {type: integer, minimum: 1}
+        activationStatus: {$ref: '#/components/schemas/ActivationStatus'}
+        equipmentPositions:
+          type: array
+          items:
+            type: object
+            required: [equipmentId, processOrder]
+            properties:
+              equipmentId: {type: string, format: uuid}
+              processOrder: {type: integer, minimum: 1}
+              layoutX: {type: number}
+              layoutY: {type: number}
+              layoutZ: {type: number}
+    DataItemWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [equipmentId, dataItemCode, name, unit, collectionIntervalSeconds, decimalPlaces]
+      properties:
+        equipmentId: {type: string, format: uuid}
+        dataItemCode: {type: string, minLength: 1, maxLength: 50, pattern: '^[A-Z0-9_-]+$'}
+        name: {type: string, minLength: 1, maxLength: 100}
+        unit: {type: string, minLength: 1, maxLength: 20}
+        collectionIntervalSeconds: {type: integer, minimum: 1, maximum: 3600, default: 2}
+        decimalPlaces: {type: integer, minimum: 0, maximum: 6, default: 2}
+        activationStatus: {$ref: '#/components/schemas/ActivationStatus'}
+    ThresholdWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [direction, warningThreshold, criticalThreshold]
+      properties:
+        direction: {type: string, enum: [UPPER, LOWER]}
+        warningThreshold: {type: number, format: double}
+        criticalThreshold: {type: number, format: double}
+    PartWriteRequest:
+      type: object
+      additionalProperties: false
+      required: [equipmentId, name, specification, managementNumber, managementBasis, replacementThreshold]
+      properties:
+        equipmentId: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 100}
+        specification: {type: string, minLength: 1, maxLength: 200}
+        managementNumber: {type: string, minLength: 1, maxLength: 50}
+        managementBasis: {type: string, enum: [OPERATING_HOURS, ELAPSED_DAYS]}
+        replacementThreshold: {type: integer, minimum: 1}
+        activationStatus: {$ref: '#/components/schemas/ActivationStatus'}
+    JudgementSettings:
+      type: object
+      additionalProperties: false
+      required:
+        - communicationTimeoutSeconds
+        - unacknowledgedReminderMinutes
+        - effectTargetCount
+        - consecutiveThresholdCount
+        - inventoryWarningMinutes
+        - inventoryDangerMinutes
+      properties:
+        communicationTimeoutSeconds: {type: integer, minimum: 5, maximum: 300, default: 15}
+        unacknowledgedReminderMinutes: {type: integer, minimum: 1, maximum: 1440, default: 5}
+        effectTargetCount: {type: integer, minimum: 1, maximum: 1000, default: 20}
+        consecutiveThresholdCount: {type: integer, minimum: 1, maximum: 20, default: 3}
+        inventoryWarningMinutes: {type: integer, minimum: 1}
+        inventoryDangerMinutes: {type: integer, minimum: 1}
+    CalculationSettings:
+      type: object
+      additionalProperties: false
+      required: [hourlyProductionQuantity, productUnitPrice, dailyProductionTarget, lines]
+      properties:
+        hourlyProductionQuantity: {type: number, minimum: 0}
+        productUnitPrice: {type: number, minimum: 0}
+        dailyProductionTarget: {type: integer, minimum: 0}
+        lines:
+          type: array
+          items:
+            type: object
+            required: [lineId, maximumInventory, consumptionPerMinute, estimatedRepairMinutes]
+            properties:
+              lineId: {type: string, format: uuid}
+              maximumInventory: {type: integer, minimum: 0}
+              consumptionPerMinute: {type: number, minimum: 0}
+              estimatedRepairMinutes: {type: integer, minimum: 0}
+    MeasurementIngestionRequest:
+      type: object
+      additionalProperties: false
+      required: [messageId, equipmentCode, dataItemCode, value, unit, measuredAt]
+      properties:
+        messageId: {type: string, format: uuid}
+        equipmentCode: {type: string}
+        dataItemCode: {type: string}
+        value: {type: number, format: double}
+        unit: {type: string}
+        measuredAt: {type: string, format: date-time}
+    HeartbeatIngestionRequest:
+      type: object
+      additionalProperties: false
+      required: [messageId, equipmentCode, sentAt]
+      properties:
+        messageId: {type: string, format: uuid}
+        equipmentCode: {type: string}
+        sentAt: {type: string, format: date-time}
+    ProductionEventIngestionRequest:
+      type: object
+      additionalProperties: false
+      required: [messageId, lineCode, equipmentCode, eventType, quantity, occurredAt]
+      properties:
+        messageId: {type: string, format: uuid}
+        lineCode: {type: string}
+        equipmentCode: {type: string}
+        eventType: {type: string, enum: [GOOD_UNIT_COMPLETED, SCRAP_UNIT, INVENTORY_ADJUSTED]}
+        quantity: {type: integer, minimum: 1}
+        occurredAt: {type: string, format: date-time}
+    SuccessEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: {type: boolean, example: true}
+        data:
+          type: object
+          additionalProperties: true
+        timestamp: {type: string, format: date-time}
+        requestId: {type: string, format: uuid}
+    PagedEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: {type: boolean, example: true}
+        data:
+          type: object
+          required: [content, page, size, totalElements, totalPages]
+          properties:
+            content:
+              type: array
+              items: {type: object, additionalProperties: true}
+            page: {type: integer, minimum: 0}
+            size: {type: integer, minimum: 1}
+            totalElements: {type: integer, format: int64, minimum: 0}
+            totalPages: {type: integer, minimum: 0}
+        timestamp: {type: string, format: date-time}
+        requestId: {type: string, format: uuid}
+    ErrorResponse:
+      type: object
+      required: [success, error, timestamp]
+      properties:
+        success: {type: boolean, example: false}
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string, example: VALIDATION_FAILED}
+            message: {type: string, example: 요청값을 확인해 주세요.}
+            fieldErrors:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: {type: string}
+                  reason: {type: string}
+        timestamp: {type: string, format: date-time}
+        requestId: {type: string, format: uuid}

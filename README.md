@@ -1,57 +1,68 @@
-# SFAAS — 설비통합관제시스템
+# STF (Save The Factory) Backend
 
-생산설비 실시간 통합관제 및 분석 시스템 (Integrated Equipment Monitoring System)
+등속조인트 생산설비 통합관제 시스템의 Spring Boot 백엔드입니다.
 
-공장 내 주요 설비 데이터를 통합 수집·관리하고, 실시간 관제 화면을 통해 설비 상태 가시성을 확보하고 장애 대응 체계를 강화하는 시스템입니다.
+## Technology
 
-## 추진 배경
+- Java 21
+- Spring Boot 4.1.2
+- Spring Web MVC, Spring Security, OAuth2 Resource Server
+- Spring Data JPA, MySQL 8.4, Flyway
+- WebSocket/STOMP
+- OpenAPI 3.0.3 and Swagger UI
+- Gradle 9.8.2
 
-- 설비 이상 여부를 작업자가 직접 확인하는 방식이라 고장 인지와 초기 대응이 늦음
-- 설비 가동·정지·비가동 데이터가 따로 모여서 전체 설비 현황 파악이 어려움
-- 실시간 알람·모니터링 체계가 없어 설비 고장 시 생산 중단 위험이 큼
-- 알람·고장·가동 이력이 쌓이지 않아 데이터 기반 유지보수 판단이 어려움
+## Prerequisites
 
-## 개발 범위
+- JDK 21
+- Docker Desktop
+- Git
 
-1. 설비 데이터 수집 및 통합 DB 구축
-2. DB 연동 데이터 처리 및 저장 API 개발
-3. 설비 모니터링 및 관제 대시보드 개발
-4. 설비 알람 및 유지보수 관리 기능 구축
+## First run
 
-## 화면 구성
+Copy the local Docker environment example.
 
-| idx | 화면명 | 설명 | 원천 데이터 |
-| --- | --- | --- | --- |
-| 0 | 로그인 | 시스템 로그인 | - |
-| 1 | 설비종합현황 | 공장 내 전체 설비 상태·가동 현황 통합 대시보드 (OEE 포함) | 설비 데이터 |
-| 2 | 설비모니터링 | 실시간 센서 데이터 시각화, MTTF/MTBF, 이벤트 로그 | 설비 센서 데이터 |
-| 3 | 알람및유지보수관리 | 알람 현황·추이, 이력 조회, 설비별 알람 빈도 | 설비, 알람 데이터 |
-| 4 | 설비위치및상세현황 (옵션) | 공장 레이아웃 기반 설비 위치·상세 정보 | 공장 레이아웃, 설비 데이터 |
-
-## 기술 스택
-
-| 구분 | 기술 |
-| --- | --- |
-| 백엔드 | Spring Boot, Spring Security, RESTful API |
-| 프론트엔드 | HTML, CSS, JavaScript, jQuery, Apache ECharts |
-| 데이터베이스 | MySQL (DB 모델링, 데이터 표준화) |
-
-## 디렉터리 구조
-
-```
-SFAAS_Project/
-├── backend/        Spring Boot 서버 (API, 인증, 데이터 처리)
-├── frontend/       Web SCADA 관제 화면
-├── db/             스키마 DDL, 샘플 데이터
-└── docs/           설계 산출물
+```powershell
+Copy-Item .env.example .env
 ```
 
-## 일정
+Start MySQL.
 
-
-## 시작하기
-
-```bash
-git clone https://github.com/balkary/SFAAS_Project.git
-cd SFAAS_Project
+```powershell
+docker compose up -d
+docker compose ps
 ```
+
+Run tests. Tests use an in-memory H2 database and do not require Docker.
+
+```powershell
+.\gradlew.bat clean test
+```
+
+Run the backend.
+
+```powershell
+.\gradlew.bat bootRun
+```
+
+## Local URLs
+
+- Application: `http://localhost:8080`
+- Health: `http://localhost:8080/actuator/health`
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
+
+Spring Security can require authentication until the team security configuration is implemented.
+
+## Stop services
+
+```powershell
+docker compose stop
+```
+
+Use `docker compose down` only when you intentionally want to remove containers. The named `mysql-data` volume keeps database data unless the volume is also deleted.
+
+## Collaboration
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting development. API changes must update [docs/openapi.yaml](docs/openapi.yaml) in the same pull request.
