@@ -8,6 +8,7 @@
 - Spring Boot 4.1.2
 - Spring Web MVC, Spring Security, OAuth2 Resource Server
 - Spring Data JPA, MySQL 8.4, Flyway
+- Spring Data Redis, Redis 7.4
 - WebSocket/STOMP
 - OpenAPI 3.0.3 and Swagger UI
 - Gradle 9.8.2
@@ -26,14 +27,15 @@ Copy the local Docker environment example.
 Copy-Item .env.example .env
 ```
 
-Start MySQL.
+Start MySQL and Redis.
 
 ```powershell
 docker compose up -d
 docker compose ps
 ```
 
-Run tests. Tests use an in-memory H2 database and do not require Docker.
+Run tests. Tests use an in-memory H2 database and create the Redis client
+configuration without connecting to a Redis server, so Docker is not required.
 
 ```powershell
 .\gradlew.bat clean test
@@ -54,6 +56,14 @@ Run the backend.
 - OpenAPI YAML: `http://localhost:8080/v3/api-docs.yaml`
 
 Spring Security can require authentication until the team security configuration is implemented.
+
+## Backend responsibility
+
+- Node-RED receives Modbus, OPC UA and MQTT data and forwards normalized data over HTTP/REST.
+- Spring Boot validates incoming data, serves REST APIs and sends real-time WebSocket messages.
+- Redis keeps current equipment state, last-received timestamps and latest values with TTLs.
+- MySQL keeps persistent history, alarms, actions and master data.
+- Modbus, OPC UA and MQTT client libraries are intentionally not included in this backend project.
 
 ## Stop services
 
