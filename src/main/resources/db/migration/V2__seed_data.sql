@@ -151,17 +151,17 @@ INSERT INTO `system_setting` (`setting_key`, `name`, `setting_group`, `setting_v
   ('UNIT_PRICE',         '개당 금액',                'CALC',  '0',  '원', 0,  NULL);
 
 -- ───────── 9. 계정 (5) ─────────
--- 가상 이름. 모두 승인. 휴대전화는 비움
+-- 가상 이름. 모두 승인. 텔레그램은 아직 연결하지 않아서 대화 번호를 비움
 -- 비밀번호는 공통 임시 비밀번호의 BCrypt 값. 첫 로그인 때 변경하도록 must_change_password = TRUE
-INSERT INTO `account` (`login_id`, `password_hash`, `name`, `phone`, `role`, `approval_status`,
+INSERT INTO `account` (`login_id`, `password_hash`, `name`, `role`, `approval_status`,
                        `approved_at`, `approved_by`, `must_change_password`) VALUES
-  ('admin01', '$2a$10$Sb.dmMfR78ZzyWXXpJ5RfumM3cVgYm8Z58K/otmyAtf3RbOzs0Xk.', '정관리', NULL, 'SYSTEM_ADMIN', 'APPROVED',
+  ('admin01', '$2a$10$Sb.dmMfR78ZzyWXXpJ5RfumM3cVgYm8Z58K/otmyAtf3RbOzs0Xk.', '정관리', 'SYSTEM_ADMIN', 'APPROVED',
    CURRENT_TIMESTAMP, NULL, TRUE);
 
 -- 나머지 4개는 관리자 아이디로 승인한 사람 번호를 찾습니다
-INSERT INTO `account` (`login_id`, `password_hash`, `name`, `phone`, `role`, `approval_status`,
+INSERT INTO `account` (`login_id`, `password_hash`, `name`, `role`, `approval_status`,
                        `approved_at`, `approved_by`, `must_change_password`)
-SELECT v.`login_id`, '$2a$10$Sb.dmMfR78ZzyWXXpJ5RfumM3cVgYm8Z58K/otmyAtf3RbOzs0Xk.', v.`name`, NULL, v.`role`, 'APPROVED',
+SELECT v.`login_id`, '$2a$10$Sb.dmMfR78ZzyWXXpJ5RfumM3cVgYm8Z58K/otmyAtf3RbOzs0Xk.', v.`name`, v.`role`, 'APPROVED',
        CURRENT_TIMESTAMP, a.`account_id`, TRUE
 FROM (
             SELECT 'linemgr01' AS login_id, '강라인' AS name, 'LINE_MANAGER' AS role
