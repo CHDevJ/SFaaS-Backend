@@ -1,6 +1,6 @@
--- STF 설비통합관제 시스템 첫 스키마 (Flyway V1__init_schema.sql)
+-- STF 설비통합관제 시스템 첫 스키마 (Flyway V1)
 -- 만든 방법: erd.dbml (dbdiagram.io 형식) 을 DBML 도구 (dbml2sql) 로 변환
--- 대상: MySQL 8 / InnoDB / utf8mb4 (MySQL 8.0.46에서 실행해 확인. 팀 환경은 MySQL 8.4)
+-- 대상: MySQL 8.0 / InnoDB / utf8mb4
 -- 표 23개 / 외래 키 31개
 -- 표를 바꿀 때는 이 파일을 고치지 말고 V2부터 새 파일을 추가합니다
 
@@ -96,6 +96,7 @@ CREATE TABLE `data_item` (
   `state_label_1` varchar(20) COMMENT '1일 때 표시. 상태값에만 넣음 (예: 열림)',
   `alarm_state_value` tinyint COMMENT '알람 발생 값. 상태값에만 넣음. 0 또는 1. 비우면 알람을 만들지 않음',
   `alarm_state_grade` varchar(20) COMMENT '알람 등급. 상태값에만 넣음. 허용 값: CAUTION 주의 / CRITICAL 경보',
+  `reset_time` time COMMENT '0으로 되돌리는 시각. 누적값에만 넣음. 매일 이 시각에 누적을 0으로 되돌림 (예: 00:00)',
   `sort_order` int NOT NULL DEFAULT 0 COMMENT '표시 순서. 순서가 앞선 항목을 배치도의 주요 측정값으로 표시',
   `deleted_at` datetime COMMENT '삭제 시각. 비어 있으면 사용 중인 항목',
   `created_at` datetime NOT NULL DEFAULT (CURRENT_TIMESTAMP) COMMENT '등록 시각',
@@ -108,7 +109,7 @@ CREATE TABLE `part` (
   `name` varchar(100) NOT NULL COMMENT '부품 이름. 예: 냉각 필터',
   `spec` varchar(100) COMMENT '규격',
   `manage_no` varchar(50) COMMENT '관리 번호',
-  `manage_basis` varchar(20) NOT NULL COMMENT '관리 기준. 허용 값: OPERATING_HOURS 가동 시간 / ELAPSED_DAYS 경과 일',
+  `manage_basis` varchar(20) NOT NULL COMMENT '수명 계산 기준. 허용 값: OPERATING_HOURS 가동 시간 / ELAPSED_DAYS 경과 일',
   `replace_limit` int NOT NULL COMMENT '교체 기준 값. 가동 시간 기준이면 시간. 경과 일 기준이면 일',
   `last_replaced_at` datetime NOT NULL COMMENT '최근 교체 일시. 처음 등록할 때는 장착한 일시',
   `deleted_at` datetime COMMENT '삭제 시각. 비어 있으면 사용 중인 부품',
@@ -139,7 +140,7 @@ CREATE TABLE `measurement_latest` (
   `data_item_id` bigint PRIMARY KEY COMMENT '항목 번호',
   `measured_value` double NOT NULL COMMENT '값',
   `measured_at` datetime(3) NOT NULL COMMENT '측정 시각',
-  `received_at` datetime(3) NOT NULL COMMENT '받은 시각. 항목의 마지막 수신 시각',
+  `received_at` datetime(3) NOT NULL COMMENT '받은 시각. 항목의 마지막 통신 시각',
   `value_grade` varchar(20) NOT NULL DEFAULT 'NORMAL' COMMENT '값 구분. 지금 값을 기준과 비교한 결과. 허용 값: NORMAL 정상 / CAUTION 주의 / CRITICAL 경보',
   `out_streak` int NOT NULL DEFAULT 0 COMMENT '벗어남 연속 횟수. 주의 기준을 연속으로 벗어난 횟수. 기준 안의 값이 들어오면 0',
   `critical_streak` int NOT NULL DEFAULT 0 COMMENT '경보 연속 횟수. 경보 기준을 연속으로 벗어난 횟수. 아니면 0',
@@ -150,7 +151,7 @@ CREATE TABLE `equipment_state` (
   `equipment_id` bigint PRIMARY KEY COMMENT '설비 번호',
   `status` varchar(20) NOT NULL COMMENT '상태. 허용 값: RUNNING 가동 / IDLE 대기 / CAUTION 주의 / FAULT 고장 / COMMUNICATION_LOST 통신 끊김',
   `status_since` datetime NOT NULL COMMENT '상태 시작 시각',
-  `last_received_at` datetime(3) COMMENT '마지막 수신 시각. 이 설비의 값을 마지막으로 받은 시각',
+  `last_received_at` datetime(3) COMMENT '마지막 통신 시각. 이 설비의 값을 마지막으로 받은 시각',
   `updated_at` datetime NOT NULL DEFAULT (CURRENT_TIMESTAMP) COMMENT '수정 시각'
 );
 
@@ -185,7 +186,7 @@ CREATE TABLE `alarm` (
   `trigger_value` double NOT NULL COMMENT '발생 때 값',
   `limit_value` double NOT NULL COMMENT '발생 때 기준. 알람을 만들 때 적용한 기준 값',
   `value_state` varchar(20) NOT NULL DEFAULT 'ABNORMAL' COMMENT '값 상태. 허용 값: ABNORMAL 기준 벗어남 / RECOVERED 정상 복귀',
-  `process_state` varchar(20) NOT NULL DEFAULT 'UNACKNOWLEDGED' COMMENT '처리 상태. 허용 값: UNACKNOWLEDGED 미확인 / ACKNOWLEDGED 확인 / ACTION_TAKEN 조치 / EFFECT_VERIFICATION 효과 확인 / CLOSED 종료',
+  `process_state` varchar(20) NOT NULL DEFAULT 'UNACKNOWLEDGED' COMMENT '처리 상태. 허용 값: UNACKNOWLEDGED 미확인 / ACKNOWLEDGED 확인 / ACTION_TAKEN 조치 / CLOSED 종료',
   `process_result` varchar(20) COMMENT '처리 결과. 종료할 때 채움. 허용 값: EFFECTIVE 효과 있음 / FALSE_POSITIVE 오경보',
   `occurred_at` datetime NOT NULL COMMENT '발생 시각',
   `grade_changed_at` datetime COMMENT '등급 변경 시각. 주의에서 경보로 올라간 시각',
@@ -220,17 +221,17 @@ CREATE TABLE `alarm_log` (
   `log_id` bigint PRIMARY KEY AUTO_INCREMENT COMMENT '기록 번호',
   `alarm_id` bigint NOT NULL COMMENT '알람 번호',
   `event_type` varchar(20) NOT NULL COMMENT '처리 종류. 허용 값: OCCUR 발생 / GRADE_UP 등급 상향 / RECOVER 값 정상 복귀 / CONFIRM 확인과 담당 지정 / ACTION 조치 / VERIFY_START 효과 확인 시작 / RECUR 재발 / FALSE_POSITIVE 오경보 신고 / CLOSE 종료 / RENOTIFY 미확인 재알림',
-  `actor_id` bigint COMMENT '처리한 사람. 비어 있으면 서버가 자동으로 처리한 줄',
+  `actor_id` bigint COMMENT '처리자. 비어 있으면 서버가 자동으로 처리한 줄',
   `content` varchar(500) COMMENT '처리 내용',
   `created_at` datetime NOT NULL COMMENT '시각'
 );
 
 CREATE TABLE `notification_log` (
   `notification_id` bigint PRIMARY KEY AUTO_INCREMENT COMMENT '전송 번호',
-  `alarm_id` bigint COMMENT '알람 번호. 알람과 관계없는 전송은 비워 둠 (가입 승인 결과와 시험 전송)',
-  `account_id` bigint COMMENT '받는 사람. 가입을 거절한 신청자는 줄을 지우기 때문에 비워 둠',
-  `receiver_name` varchar(50) NOT NULL COMMENT '받는 사람 이름. 보낼 때의 이름을 복사',
-  `notify_type` varchar(20) NOT NULL COMMENT '알림 종류. 허용 값: OCCUR 발생 / GRADE_UP 등급 상향 / RENOTIFY 미확인 재알림 / RECUR 재발 / ASSIGN 조치 담당 지정 / SIGNUP_RESULT 가입 승인 결과 / TEST 시험 전송',
+  `alarm_id` bigint COMMENT '알람 번호. 알람과 관계없는 전송은 비워 둠 (가입 승인 결과와 테스트 메시지 발송)',
+  `account_id` bigint COMMENT '수신자. 가입을 거절한 신청자는 줄을 지우기 때문에 비워 둠',
+  `receiver_name` varchar(50) NOT NULL COMMENT '수신자 이름. 보낼 때의 이름을 복사',
+  `notify_type` varchar(20) NOT NULL COMMENT '알림 종류. 허용 값: OCCUR 발생 / GRADE_UP 등급 상향 / RENOTIFY 미확인 재알림 / RECUR 재발 / ASSIGN 조치 담당 지정 / SIGNUP_RESULT 가입 승인 결과 / TEST 테스트 메시지 발송',
   `message` varchar(1000) NOT NULL COMMENT '보낸 내용',
   `send_result` varchar(20) NOT NULL COMMENT '전송 결과. 허용 값: SUCCESS 성공 / FAILURE 실패',
   `fail_reason` varchar(500) COMMENT '실패 사유. 예: 없는 번호',
@@ -264,12 +265,12 @@ CREATE TABLE `assembly_stop` (
 CREATE TABLE `change_log` (
   `change_id` bigint PRIMARY KEY AUTO_INCREMENT COMMENT '변경 번호',
   `changed_at` datetime NOT NULL COMMENT '변경 시각',
-  `changed_by` bigint NOT NULL COMMENT '바꾼 사람',
+  `changed_by` bigint NOT NULL COMMENT '변경자',
   `target_type` varchar(20) NOT NULL COMMENT '항목 종류. 허용 값: EQUIPMENT 설비 / LINE 라인 / DATA_ITEM 데이터 항목 / THRESHOLD 임계값 / PART 장착 부품 / SETTING 설정값 / ACCOUNT 계정 / DUTY 알람 당번',
   `target_name` varchar(100) NOT NULL COMMENT '바꾼 대상. 예: OR-04 냉각액 유량',
   `field_name` varchar(50) NOT NULL COMMENT '바꾼 항목. 예: 경보 기준',
   `old_value` varchar(500) COMMENT '이전 값',
-  `new_value` varchar(500) COMMENT '바꾼 값'
+  `new_value` varchar(500) COMMENT '변경 값'
 );
 
 CREATE INDEX `idx_auth_token_account` ON `auth_token` (`account_id`);
