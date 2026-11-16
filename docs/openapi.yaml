@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: STF Save The Factory API
-  version: 4.0.0
+  version: 5.0.0
   license:
     name: Internal Project Use Only
     url: https://sfaas5-team.atlassian.net/wiki/spaces/SF5
@@ -26,7 +26,7 @@ tags:
   - {name: MasterData, description: 설비관리 기준정보}
   - {name: SystemSetting, description: 시스템 판정과 계산 설정}
   - {name: SystemUser, description: 계정 관리}
-  - {name: Kakao, description: 카카오톡 연결과 전송}
+  - {name: Telegram, description: 텔레그램 본인 연결과 전송}
   - {name: Audit, description: 변경 이력}
   - {name: Duty, description: 알람 당번}
   - {name: Internal, description: Node-RED 내부 수집}
@@ -1609,7 +1609,7 @@ paths:
       tags: [SystemUser]
       operationId: resetUserPassword
       summary: 관리자 비밀번호 초기화
-      description: 12자리 임시 비밀번호를 생성해 카카오 알림으로 전달하고 30분 뒤 만료한다. 사용자는 다음 로그인 후 비밀번호를 변경해야 한다.
+      description: 12자리 임시 비밀번호를 생성해 연결된 계정의 텔레그램으로 전달하고 30분 뒤 만료한다. 사용자는 다음 로그인 후 비밀번호를 변경해야 한다. 미연결 계정은 별도 전달 계약 확정 전까지 초기화를 거절한다.
       x-api-id: USR-005
       x-requirement-ids: [FR1403]
       x-nfr-ids: [NFR01, NFR02, NFR06]
@@ -1698,12 +1698,82 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
 
-  /system/kakao/test-messages:
+  /telegram/link-tokens:
     post:
-      tags: [Kakao]
-      operationId: sendKakaoTestMessage
+      tags: [Telegram]
+      operationId: createMyTelegramLinkToken
+      summary: 내 텔레그램 연결 URL 발급
+      x-api-id: TLG-001
+      x-requirement-ids: [FR1405]
+      x-nfr-ids: [NFR02]
+      x-interface-ids: [IFR03]
+      x-business-rule-ids: [BR-TLG-001]
+      x-test-ids: [TC-TLG-001-01]
+      x-permissions: [SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE]
+      responses:
+        '200':
+          description: 10분간 유효한 연결 URL
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramLinkResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /telegram/me/connection:
+    get:
+      tags: [Telegram]
+      operationId: getMyTelegramConnection
+      summary: 내 텔레그램 연결 상태
+      x-api-id: TLG-002
+      x-requirement-ids: [FR1405]
+      x-nfr-ids: [NFR02]
+      x-interface-ids: [IFR03]
+      x-business-rule-ids: [BR-TLG-002]
+      x-test-ids: [TC-TLG-002-01]
+      x-permissions: [SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE]
+      responses:
+        '200':
+          description: 연결 여부와 시각
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramConnectionResponse'}
+    delete:
+      tags: [Telegram]
+      operationId: unlinkMyTelegram
+      summary: 내 텔레그램 연결 해제
+      x-api-id: TLG-003
+      x-requirement-ids: [FR1405]
+      x-nfr-ids: [NFR02]
+      x-interface-ids: [IFR03]
+      x-business-rule-ids: [BR-TLG-003]
+      x-test-ids: [TC-TLG-003-01]
+      x-permissions: [SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE]
+      responses:
+        '204': {description: 연결 해제}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /telegram/me/test-messages:
+    post:
+      tags: [Telegram]
+      operationId: sendMyTelegramTestMessage
+      summary: 내 텔레그램 시험 발송
+      x-api-id: TLG-004
+      x-requirement-ids: [FR1405]
+      x-nfr-ids: [NFR02, NFR05]
+      x-interface-ids: [IFR03]
+      x-business-rule-ids: [BR-TLG-004]
+      x-test-ids: [TC-TLG-004-01]
+      x-permissions: [SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE]
+      responses:
+        '200':
+          description: 발송 결과
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TelegramTestMessageResponse'}
+        '422': {$ref: '#/components/responses/BusinessRuleViolation'}
+  /system/telegram/test-messages:
+    post:
+      tags: [Telegram]
+      operationId: sendTelegramTestMessage
       summary: 테스트 메시지 발송
-      x-api-id: KAK-001
+      x-api-id: TLG-005
       x-requirement-ids: [FR1406]
       x-nfr-ids: [NFR02, NFR05]
       x-interface-ids: [IFR03]
@@ -1714,21 +1784,21 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/KakaoTestMessageRequest'}
+            schema: {$ref: '#/components/schemas/TelegramTestMessageRequest'}
       responses:
         '200':
           description: 발송 성공 또는 실패 사유
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/KakaoTestMessageResponse'}
+              schema: {$ref: '#/components/schemas/TelegramTestMessageResponse'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '422': {$ref: '#/components/responses/BusinessRuleViolation'}
-  /system/kakao/deliveries:
+  /system/telegram/deliveries:
     get:
-      tags: [Kakao]
-      operationId: getKakaoDeliveries
-      summary: 카카오톡 전송 결과 조회
-      x-api-id: KAK-002
+      tags: [Telegram]
+      operationId: getTelegramDeliveries
+      summary: 텔레그램 전송 결과 조회
+      x-api-id: TLG-006
       x-requirement-ids: [FR0507]
       x-nfr-ids: [NFR05]
       x-interface-ids: [IFR03]
@@ -1749,7 +1819,7 @@ paths:
           description: 당일 집계와 전송 기록
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/KakaoDeliveryPageResponse'}
+              schema: {$ref: '#/components/schemas/TelegramDeliveryPageResponse'}
         '403': {$ref: '#/components/responses/Forbidden'}
 
   /system/change-histories:
@@ -1925,7 +1995,7 @@ paths:
       tags: [Internal]
       operationId: ingestMeasurements
       summary: Node-RED 설비 데이터 수집
-      description: 미등록 설비 또는 데이터 항목과 형식 오류는 저장하지 않는다.
+      description: 설비별 3초 묶음 메시지. 미등록 설비·항목, 값 종류 불일치 또는 형식 오류가 하나라도 있으면 전체 거절한다. prod_count를 같은 메시지에서 수신한다.
       servers:
         - {url: /internal/v1, description: Node-RED 내부 API}
       security:
@@ -1952,38 +2022,6 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422': {$ref: '#/components/responses/BusinessRuleViolation'}
-  /production-events:
-    post:
-      tags: [Internal]
-      operationId: ingestProductionEvent
-      summary: Node-RED 생산 이벤트 수집
-      description: 생산량·효과 확인·재고 계산에 사용하는 프로젝트 내부 수집 인터페이스다.
-      servers:
-        - {url: /internal/v1, description: Node-RED 내부 API}
-      security:
-        - internalApiKey: []
-      x-api-id: INT-002
-      x-requirement-ids: [FR0608, FR0901, FR0907]
-      x-nfr-ids: [NFR09]
-      x-interface-ids: [IFR01]
-      x-business-rule-ids: []
-      x-test-ids: []
-      x-permissions: [NODE_RED]
-      x-proposed: true
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/ProductionEventIngestionRequest'}
-      responses:
-        '202':
-          description: 생산 이벤트 접수 성공
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/IngestionAcceptedResponse'}
-        '400': {$ref: '#/components/responses/ValidationError'}
-        '401': {$ref: '#/components/responses/Unauthorized'}
-        '422': {$ref: '#/components/responses/BusinessRuleViolation'}
 
 x-websocket:
   endpoint: /ws
@@ -2007,7 +2045,14 @@ x-mqtt:
   flow: equipment/PLC -> MQTT/Modbus/OPC UA -> Node-RED -> HTTP REST -> Spring Boot
   topics:
     - {topic: 'stf/equipment/{equipmentCode}/values', qos: 1, retained: false, interfaceId: IFR01}
-    - {topic: 'stf/line/{lineCode}/production', qos: 1, retained: false, interfaceId: IFR01}
+  collectionIntervalSeconds: 3
+  messageShape: equipmentCode, measuredAt, messageId, values[]
+  communicationTimeoutSeconds: 30
+  productionCounter:
+    dataItemCode: prod_count
+    valueType: CUMULATIVE
+    resetTimeSource: data_item.reset_time
+  nodeRedDelivery: MQTT 입력을 변환해 POST /internal/v1/measurements로 전달
 x-non-rest-requirements:
   - requirementIds: [FR0102, FR0103]
     implementation: JWT 인증 필터와 Spring Security 권한 검사
@@ -2018,7 +2063,7 @@ x-non-rest-requirements:
   - requirementIds: [FR0401, FR0402, FR0403, FR0404, FR0405]
     implementation: 측정값/상태값 알람 판정과 중복 방지 및 값 정상 복귀
   - requirementIds: [FR0503, FR0506]
-    implementation: 카카오톡 알림 발송과 실패 1회 재시도
+    implementation: 텔레그램 알림 발송과 실패 1회 재시도
   - requirementIds: [FR1101]
     implementation: 가동시간 또는 경과일 기준 부품 사용량 계산
   - requirementIds: [FR1502, FR1503]
@@ -2166,11 +2211,11 @@ components:
           schema: {$ref: '#/components/schemas/ErrorResponse'}
   schemas:
     Identifier:
-      type: string
-      format: uuid
-      description: 개발을 위해 제안한 식별자 형식
-      x-proposed: true
-      example: 8eaa7b68-2db1-4d0b-b676-bda548c2a110
+      type: integer
+      format: int64
+      minimum: 1
+      description: 최종 ERD의 BIGINT 자동 증가 식별자
+      example: 1
     Position:
       type: string
       description: 직책
@@ -2305,7 +2350,7 @@ components:
         userId: {$ref: '#/components/schemas/Identifier'}
         loginId: {type: string, minLength: 4, maxLength: 20}
         name: {type: string, maxLength: 100}
-        phoneNumber: {type: string, pattern: '^01[016789]-?\d{3,4}-?\d{4}$'}
+        telegramConnected: {type: boolean, description: 텔레그램 본인 연결 여부}
         position: {$ref: '#/components/schemas/Position'}
         permission: {$ref: '#/components/schemas/Permission'}
         accountStatus: {$ref: '#/components/schemas/AccountStatus'}
@@ -2339,20 +2384,19 @@ components:
         data: {$ref: '#/components/schemas/TokenData'}
     SignupRequest:
       type: object
-      required: [loginId, password, name, phoneNumber]
+      required: [loginId, password, name]
       properties:
         loginId: {type: string, minLength: 4, maxLength: 20, pattern: '^[a-z0-9]{4,20}$'}
         password: {type: string, format: password, minLength: 8, maxLength: 64, pattern: '^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$', writeOnly: true}
         name: {type: string, minLength: 1, maxLength: 100}
-        phoneNumber: {type: string, pattern: '^01[016789]-?\d{3,4}-?\d{4}$'}
     Signup:
       type: object
-      required: [requestId, loginId, name, phoneNumber, accountStatus, requestedAt]
+      required: [requestId, loginId, name, accountStatus, requestedAt, telegramLink]
       properties:
         requestId: {$ref: '#/components/schemas/Identifier'}
         loginId: {type: string}
         name: {type: string}
-        phoneNumber: {type: string}
+        telegramLink: {$ref: '#/components/schemas/TelegramLink'}
         accountStatus: {$ref: '#/components/schemas/AccountStatus'}
         requestedAt: {type: string, format: date-time}
     SignupResponse:
@@ -2652,8 +2696,8 @@ components:
             remainingMinutes: {type: integer, minimum: 0, nullable: true}
             expectedDepletionAt: {type: string, format: date-time, nullable: true}
             expectedRecoveryAt: {type: string, format: date-time, nullable: true}
-            activeAlarmId: {type: string, format: uuid, nullable: true}
-            sourceEquipmentId: {type: string, format: uuid, nullable: true}
+            activeAlarmId: {type: integer, format: int64, nullable: true}
+            sourceEquipmentId: {type: integer, format: int64, nullable: true}
     InventoryDetailResponse:
       type: object
       required: [success, data]
@@ -2685,8 +2729,8 @@ components:
         remainingMinutes: {type: integer, nullable: true, minimum: 0}
         stage: {$ref: '#/components/schemas/InventoryStage'}
         assemblyStopExpectedAt: {type: string, format: date-time, nullable: true}
-        sourceEquipmentId: {type: string, format: uuid, nullable: true, x-proposed: true}
-        activeAlarmId: {type: string, format: uuid, nullable: true, x-proposed: true}
+        sourceEquipmentId: {type: integer, format: int64, nullable: true}
+        activeAlarmId: {type: integer, format: int64, nullable: true}
         recoveryExpectedAt: {type: string, format: date-time, nullable: true}
         marginMinutes: {type: integer, nullable: true}
         marginStatus: {type: string, enum: [AVAILABLE, SHORTAGE], nullable: true}
@@ -2697,7 +2741,7 @@ components:
       type: object
       required: [lines]
       properties:
-        representativeLineId: {type: string, format: uuid, nullable: true, x-proposed: true}
+        representativeLineId: {type: integer, format: int64, nullable: true}
         earliestAssemblyStopExpectedAt: {type: string, format: date-time, nullable: true}
         lines: {type: array, items: {$ref: '#/components/schemas/LineStopForecast'}}
     AssemblyStopForecastResponse:
@@ -2839,7 +2883,7 @@ components:
       properties:
         cause: {type: string, minLength: 1, maxLength: 1000}
         actionContent: {type: string, minLength: 1, maxLength: 4000}
-        replacedPartId: {type: string, format: uuid, nullable: true, x-proposed: true}
+        replacedPartId: {type: integer, format: int64, nullable: true}
         replacedAt: {type: string, format: date-time, nullable: true}
         replacementReason: {type: string, maxLength: 1000, nullable: true}
     AlarmActionData:
@@ -2850,7 +2894,7 @@ components:
         processStatus: {$ref: '#/components/schemas/AlarmProcessStatus'}
         actionedAt: {type: string, format: date-time}
         actionedBy: {$ref: '#/components/schemas/UserBrief'}
-        partReplacementId: {type: string, format: uuid, nullable: true, x-proposed: true}
+        partReplacementId: {type: integer, format: int64, nullable: true}
     AlarmActionResponse:
       type: object
       required: [success, data]
@@ -3127,7 +3171,7 @@ components:
         date: {type: string, format: date}
         lossAmount: {type: number, minimum: 0}
         assemblyStopMinutes: {type: number, format: double, minimum: 0}
-        causeEquipmentId: {type: string, format: uuid, nullable: true, x-proposed: true}
+        causeEquipmentId: {type: integer, format: int64, nullable: true}
         causeEquipmentName: {type: string, nullable: true}
     LossStatistics:
       type: object
@@ -3410,12 +3454,13 @@ components:
         data: {$ref: '#/components/schemas/CalculationSettings'}
     User:
       type: object
-      required: [userId, loginId, name, phoneNumber, position, permission, accountStatus, createdAt, updatedAt]
+      required: [userId, loginId, name, position, permission, accountStatus, telegramConnected, createdAt, updatedAt]
       properties:
         userId: {$ref: '#/components/schemas/Identifier'}
         loginId: {type: string, minLength: 4, maxLength: 20}
         name: {type: string, maxLength: 100}
-        phoneNumber: {type: string, pattern: '^01[016789]-?\d{3,4}-?\d{4}$'}
+        telegramConnected: {type: boolean}
+        telegramLinkedAt: {type: string, format: date-time, nullable: true}
         position: {$ref: '#/components/schemas/Position'}
         permission: {$ref: '#/components/schemas/Permission'}
         accountStatus: {$ref: '#/components/schemas/AccountStatus'}
@@ -3424,10 +3469,9 @@ components:
         updatedAt: {type: string, format: date-time}
     UserUpdateRequest:
       type: object
-      required: [name, phoneNumber, position]
+      required: [name, position]
       properties:
         name: {type: string, minLength: 1, maxLength: 100}
-        phoneNumber: {type: string, pattern: '^01[016789]-?\d{3,4}-?\d{4}$'}
         position: {$ref: '#/components/schemas/Position'}
     SignupApprovalRequest:
       type: object
@@ -3459,12 +3503,37 @@ components:
         success: {type: boolean, enum: [true]}
         data: {type: array, items: {$ref: '#/components/schemas/User'}}
         meta: {$ref: '#/components/schemas/PageMeta'}
-    KakaoTestMessageRequest:
+    TelegramLink:
+      type: object
+      required: [linkUrl, qrPayload, expiresAt]
+      properties:
+        linkUrl: {type: string, format: uri, description: 봇 deep link}
+        qrPayload: {type: string, format: uri, description: QR 코드에 넣을 동일 URL}
+        expiresAt: {type: string, format: date-time}
+    TelegramLinkResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: {type: boolean, enum: [true]}
+        data: {$ref: '#/components/schemas/TelegramLink'}
+    TelegramConnection:
+      type: object
+      required: [connected]
+      properties:
+        connected: {type: boolean}
+        linkedAt: {type: string, format: date-time, nullable: true}
+    TelegramConnectionResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success: {type: boolean, enum: [true]}
+        data: {$ref: '#/components/schemas/TelegramConnection'}
+    TelegramTestMessageRequest:
       type: object
       required: [userId]
       properties:
         userId: {$ref: '#/components/schemas/Identifier'}
-    KakaoTestMessageResult:
+    TelegramTestMessageResult:
       type: object
       required: [userId, result, sentAt]
       properties:
@@ -3472,42 +3541,51 @@ components:
         result: {$ref: '#/components/schemas/DeliveryResult'}
         failureReason: {type: string, nullable: true}
         sentAt: {type: string, format: date-time}
-    KakaoTestMessageResponse:
+    TelegramTestMessageResponse:
       type: object
       required: [success, data]
       properties:
         success: {type: boolean, enum: [true]}
-        data: {$ref: '#/components/schemas/KakaoTestMessageResult'}
-    KakaoDelivery:
+        data: {$ref: '#/components/schemas/TelegramTestMessageResult'}
+    TelegramDelivery:
       type: object
       required: [deliveryId, sentAt, recipient, messageSummary, result]
       properties:
         deliveryId: {$ref: '#/components/schemas/Identifier'}
         sentAt: {type: string, format: date-time}
         recipient: {$ref: '#/components/schemas/UserBrief'}
-        alarmId: {type: string, format: uuid, nullable: true, x-proposed: true}
+        alarmId: {type: integer, format: int64, nullable: true}
         messageSummary: {type: string}
         result: {$ref: '#/components/schemas/DeliveryResult'}
         failureReason: {type: string, nullable: true}
-    KakaoDeliverySummary:
+    TelegramDeliverySummary:
       type: object
       required: [totalCount, successCount, failureCount]
       properties:
         totalCount: {type: integer, minimum: 0}
         successCount: {type: integer, minimum: 0}
         failureCount: {type: integer, minimum: 0}
-    KakaoDeliveryPageData:
+    TelegramDeliveryPageData:
       type: object
-      required: [summary, items]
+      required: [summary, items, recipientCounts]
       properties:
-        summary: {$ref: '#/components/schemas/KakaoDeliverySummary'}
-        items: {type: array, items: {$ref: '#/components/schemas/KakaoDelivery'}}
-    KakaoDeliveryPageResponse:
+        summary: {$ref: '#/components/schemas/TelegramDeliverySummary'}
+        items: {type: array, items: {$ref: '#/components/schemas/TelegramDelivery'}}
+        recipientCounts: {type: array, items: {$ref: '#/components/schemas/TelegramRecipientCount'}}
+    TelegramRecipientCount:
+      type: object
+      required: [recipient, totalCount, successCount, failureCount]
+      properties:
+        recipient: {$ref: '#/components/schemas/UserBrief'}
+        totalCount: {type: integer, minimum: 0}
+        successCount: {type: integer, minimum: 0}
+        failureCount: {type: integer, minimum: 0}
+    TelegramDeliveryPageResponse:
       type: object
       required: [success, data, meta]
       properties:
         success: {type: boolean, enum: [true]}
-        data: {$ref: '#/components/schemas/KakaoDeliveryPageData'}
+        data: {$ref: '#/components/schemas/TelegramDeliveryPageData'}
         meta: {$ref: '#/components/schemas/PageMeta'}
     ChangeHistory:
       type: object
@@ -3571,26 +3649,17 @@ components:
       type: object
       required: [dataItemCode, valueType, value]
       properties:
-        dataItemCode: {type: string, minLength: 1, maxLength: 100, pattern: '^[A-Z0-9_\-]+$', description: 프로젝트 내부 데이터 항목 코드}
+        dataItemCode: {type: string, minLength: 1, maxLength: 50, pattern: '^[a-z][a-z0-9_]*$', description: V2 data_item.item_code와 동일}
         valueType: {$ref: '#/components/schemas/DataValueType'}
-        value: {oneOf: [{type: number}, {type: string}]}
+        value: {type: number, description: STATE는 0 또는 1, CUMULATIVE는 0 이상의 정수}
     MeasurementIngestionRequest:
       type: object
       required: [messageId, equipmentCode, measuredAt, values]
       properties:
-        messageId: {type: string, format: uuid, description: 중복 제거 키}
-        equipmentCode: {type: string, minLength: 1, maxLength: 100}
-        measuredAt: {type: string, format: date-time}
+        messageId: {type: string, minLength: 1, maxLength: 200, example: 'OR-04-1-20261117T090000.000', description: 설비 코드와 측정 시각을 합친 중복 제거 키}
+        equipmentCode: {type: string, minLength: 1, maxLength: 20, pattern: '^[A-Z]{2}-[0-9]{2}-[1-9][0-9]*$', example: OR-04-1}
+        measuredAt: {type: string, format: date-time, example: '2026-11-17T09:00:00+09:00', description: Node-RED가 기록한 시각}
         values: {type: array, minItems: 1, maxItems: 500, items: {$ref: '#/components/schemas/MeasurementValueIngestion'}}
-    ProductionEventIngestionRequest:
-      type: object
-      required: [messageId, lineCode, equipmentCode, quantity, producedAt]
-      properties:
-        messageId: {type: string, format: uuid, description: 중복 제거 키}
-        lineCode: {type: string, minLength: 1, maxLength: 100, x-proposed: true}
-        equipmentCode: {type: string, minLength: 1, maxLength: 100}
-        quantity: {type: integer, format: int64, minimum: 1}
-        producedAt: {type: string, format: date-time}
     IngestionAccepted:
       type: object
       required: [messageId, acceptedAt, duplicate]
