@@ -1,0 +1,104 @@
+# 백엔드 단독 구현 현황 (2026-11-17)
+
+- 작업 위치: 기존 로컬 stf 저장소, feature/SF5-34-alarm-judgement 브랜치
+- 신규 파일: 운영 코드 52개, 단위테스트 38개
+- 검증: .\gradlew.bat clean test --no-daemon; 테스트 110개, 실패 0, 오류 0, 건너뜀 0
+- 구현 범위: 수집 배치 검증·누적 생산량·중복 방지, 설비/통신/알람 판정과 처리 흐름, 재고·조립 손실·부품 수명, 당번, 통계, 텔레그램 수신자·재시도·일회용 연결 토큰·HTTP 전송기, 판정 설정 및 기준정보 임계값 검증, 설비 사진 형식·크기 검증, 내부 API 키 비교
+- 인증: v5 계정 입력·비밀번호 정책, JWT Access 30분, Refresh 7일·회전·재사용 시 family 폐기, 로그인·로그아웃·현재 사용자·비밀번호 변경 흐름, 브라우저 Refresh 보안 쿠키를 DB/세션 저장소 인터페이스 뒤에서 구현
+- 보류: DB 계정/이력 저장소 및 트랜잭션 어댑터, Refresh family·JWT 폐기 저장소의 실제 구현, 인증·조회·관리 API 컨트롤러, WebSocket 연결, 텔레그램 실제 봇 설정과 장비 연동, 프론트엔드 연결. 관련 데이터와 외부 서비스가 준비되면 연동 및 통합테스트 필요
+- 계약 우선순위: docs/openapi.yaml. 기존 docs/API_SPEC.md와 docs/openapi.yaml의 미커밋 수정은 이번 구현에서 변경하지 않음
+- 확정: 2026-11-17 사용자 결정에 따라 인증은 v5 OpenAPI 정책(Refresh Token, lastLoginAt)을 적용. DB 연동 시 최종 연결한다.
+- DB 담당 확인 필요: 최종 ERD의 알람/조치/부품 문자열 길이와 OpenAPI 최대 길이 충돌.
+- B 담당의 미완료 항목과 A 연결 경계: [BACKEND_B_REMAINING.md](BACKEND_B_REMAINING.md).
+
+## 신규 파일 전체 목록
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmComparisonDecisionService.java
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmDecisionService.java
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmEvaluationResult.java
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmEvaluationState.java
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmGrade.java
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmListDecisionService.java
+- src/main/java/com/sfaasproject/stf/alarm/service/AlarmReading.java
+- src/main/java/com/sfaasproject/stf/alarm/service/RecommendedActionDecisionService.java
+- src/main/java/com/sfaasproject/stf/alarm/workflow/AlarmProcessStatusMapper.java
+- src/main/java/com/sfaasproject/stf/alarm/workflow/AlarmWorkflowDecisionService.java
+- src/main/java/com/sfaasproject/stf/alarm/workflow/AlarmWorkflowState.java
+- src/main/java/com/sfaasproject/stf/auth/service/AuthFlowService.java
+- src/main/java/com/sfaasproject/stf/auth/service/AuthPolicyService.java
+- src/main/java/com/sfaasproject/stf/auth/service/JwtAccessTokenService.java
+- src/main/java/com/sfaasproject/stf/auth/service/RefreshCookieService.java
+- src/main/java/com/sfaasproject/stf/auth/service/RefreshTokenService.java
+- src/main/java/com/sfaasproject/stf/common/ApiExceptionHandler.java
+- src/main/java/com/sfaasproject/stf/common/ApiResponse.java
+- src/main/java/com/sfaasproject/stf/common/DomainException.java
+- src/main/java/com/sfaasproject/stf/duty/service/DutyScheduleDecisionService.java
+- src/main/java/com/sfaasproject/stf/equipment/service/CommunicationStatusSummaryService.java
+- src/main/java/com/sfaasproject/stf/equipment/service/CurrentDataItemDecisionService.java
+- src/main/java/com/sfaasproject/stf/equipment/service/EquipmentPhotoValidationService.java
+- src/main/java/com/sfaasproject/stf/equipment/service/EquipmentStatusDecisionService.java
+- src/main/java/com/sfaasproject/stf/equipment/service/EquipmentStatusTransitionService.java
+- src/main/java/com/sfaasproject/stf/equipment/service/OverviewMetricsDecisionService.java
+- src/main/java/com/sfaasproject/stf/inventory/service/AssemblyLossDecisionService.java
+- src/main/java/com/sfaasproject/stf/inventory/service/InventoryForecastService.java
+- src/main/java/com/sfaasproject/stf/measurement/dto/IngestionAccepted.java
+- src/main/java/com/sfaasproject/stf/measurement/dto/MeasurementIngestionRequest.java
+- src/main/java/com/sfaasproject/stf/measurement/repository/IngestionStore.java
+- src/main/java/com/sfaasproject/stf/measurement/security/InternalApiKeyVerifier.java
+- src/main/java/com/sfaasproject/stf/measurement/service/IngestionMessageGuard.java
+- src/main/java/com/sfaasproject/stf/measurement/service/IngestionProcessor.java
+- src/main/java/com/sfaasproject/stf/measurement/service/IngestionValidationService.java
+- src/main/java/com/sfaasproject/stf/measurement/service/MeasurementTrendDecisionService.java
+- src/main/java/com/sfaasproject/stf/measurement/service/ProductionCounterService.java
+- src/main/java/com/sfaasproject/stf/measurement/service/RedisIngestionMessageGuard.java
+- src/main/java/com/sfaasproject/stf/part/service/PartLifeDecisionService.java
+- src/main/java/com/sfaasproject/stf/statistics/service/AlarmCountStatisticsService.java
+- src/main/java/com/sfaasproject/stf/statistics/service/AlarmHistoryMetricsService.java
+- src/main/java/com/sfaasproject/stf/statistics/service/EquipmentRankingDecisionService.java
+- src/main/java/com/sfaasproject/stf/statistics/service/EquipmentTimeStatisticsService.java
+- src/main/java/com/sfaasproject/stf/statistics/service/FalsePositiveStatisticsService.java
+- src/main/java/com/sfaasproject/stf/statistics/service/LossAvoidanceStatisticsService.java
+- src/main/java/com/sfaasproject/stf/system/service/DataItemThresholdValidationService.java
+- src/main/java/com/sfaasproject/stf/system/service/SystemSettingsValidationService.java
+- src/main/java/com/sfaasproject/stf/telegram/service/RedisTelegramLinkTokenStore.java
+- src/main/java/com/sfaasproject/stf/telegram/service/TelegramBotSender.java
+- src/main/java/com/sfaasproject/stf/telegram/service/TelegramDeliveryService.java
+- src/main/java/com/sfaasproject/stf/telegram/service/TelegramLinkTokenService.java
+- src/main/java/com/sfaasproject/stf/telegram/service/TelegramRecipientDecisionService.java
+- src/test/java/com/sfaasproject/stf/alarm/service/AlarmComparisonDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/alarm/service/AlarmDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/alarm/service/AlarmListDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/alarm/service/RecommendedActionDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/alarm/workflow/AlarmProcessStatusMapperTest.java
+- src/test/java/com/sfaasproject/stf/alarm/workflow/AlarmWorkflowDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/auth/service/AuthFlowServiceTest.java
+- src/test/java/com/sfaasproject/stf/auth/service/AuthPolicyServiceTest.java
+- src/test/java/com/sfaasproject/stf/auth/service/RefreshCookieServiceTest.java
+- src/test/java/com/sfaasproject/stf/auth/service/TokenServicesTest.java
+- src/test/java/com/sfaasproject/stf/duty/service/DutyScheduleDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/equipment/service/CommunicationStatusSummaryServiceTest.java
+- src/test/java/com/sfaasproject/stf/equipment/service/CurrentDataItemDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/equipment/service/EquipmentPhotoValidationServiceTest.java
+- src/test/java/com/sfaasproject/stf/equipment/service/EquipmentStatusDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/equipment/service/EquipmentStatusTransitionServiceTest.java
+- src/test/java/com/sfaasproject/stf/equipment/service/OverviewMetricsDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/inventory/service/AssemblyLossDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/inventory/service/InventoryForecastServiceTest.java
+- src/test/java/com/sfaasproject/stf/measurement/security/InternalApiKeyVerifierTest.java
+- src/test/java/com/sfaasproject/stf/measurement/service/IngestionProcessorTest.java
+- src/test/java/com/sfaasproject/stf/measurement/service/IngestionValidationServiceTest.java
+- src/test/java/com/sfaasproject/stf/measurement/service/MeasurementTrendDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/measurement/service/ProductionCounterServiceTest.java
+- src/test/java/com/sfaasproject/stf/measurement/service/RedisIngestionMessageGuardTest.java
+- src/test/java/com/sfaasproject/stf/part/service/PartLifeDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/statistics/service/AlarmCountStatisticsServiceTest.java
+- src/test/java/com/sfaasproject/stf/statistics/service/AlarmHistoryMetricsServiceTest.java
+- src/test/java/com/sfaasproject/stf/statistics/service/EquipmentRankingDecisionServiceTest.java
+- src/test/java/com/sfaasproject/stf/statistics/service/EquipmentTimeStatisticsServiceTest.java
+- src/test/java/com/sfaasproject/stf/statistics/service/FalsePositiveStatisticsServiceTest.java
+- src/test/java/com/sfaasproject/stf/statistics/service/LossAvoidanceStatisticsServiceTest.java
+- src/test/java/com/sfaasproject/stf/system/service/DataItemThresholdValidationServiceTest.java
+- src/test/java/com/sfaasproject/stf/system/service/SystemSettingsValidationServiceTest.java
+- src/test/java/com/sfaasproject/stf/telegram/service/RedisTelegramLinkTokenStoreTest.java
+- src/test/java/com/sfaasproject/stf/telegram/service/TelegramBotSenderTest.java
+- src/test/java/com/sfaasproject/stf/telegram/service/TelegramDeliveryAndTokenTest.java
+- src/test/java/com/sfaasproject/stf/telegram/service/TelegramRecipientDecisionServiceTest.java

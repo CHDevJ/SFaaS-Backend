@@ -1,6 +1,6 @@
 # STF 설비통합관제 API 명세서
 
-- 문서 버전: 4.0.0
+- 문서 버전: 5.0.0
 - 작성 기준일: 2026-11-16
 - 대상 시스템: 등속조인트 생산 공정 설비통합관제 시스템
 - REST Base URL: `/api/v1`
@@ -13,10 +13,13 @@
 
 ### 1.1 기준 문서와 우선순위
 
-1. 요구사항정의서 1.0(2026-11-16): FR 91건, NFR 13건, IFR 4건
-2. 화면설계서 1.0(2026-11-16): 화면 84장
-3. 기능 변경 내역(2026-11-16): 추가 12건, 삭제 7건, 변경 59건
-4. 화면 HTML/PNG(2026-11-16): 입력 필드와 사용자 흐름 확인용
+1. 최신 요구사항정의서(2026-11-16): FR 92건, NFR 13건, IFR 4건
+2. 최신 화면설계서(2026-11-16): 화면 94개
+3. 최신 기능 변경 내역(2026-11-16): 추가 13건, 삭제 7건, 변경 61건
+4. Jira SF5-19 댓글과 Confluence 메시지 규격: 내부 수집 형식
+5. 최종 ERD 설계서 v0.3 및 Flyway V1/V2 브랜치: 저장 구조와 초기 코드
+
+위 문서가 v4와 충돌하면 최신 요구사항·기능 변경·화면설계를 우선하고, SF5-19의 확정된 메시지 규격과 최종 ERD를 반영한다. 그 밖의 빈 값에 한해 v4의 프로젝트 제안값을 유지한다.
 
 ### 1.2 이번 명세에 반영한 변경
 
@@ -29,23 +32,23 @@
 
 | ID | 항목 | 확정한 제안값 |
 |---|---|---|
-| P-01 | 식별자 | 모든 내부 식별자는 UUID v4, 현장 코드는 별도 문자열 |
+| P-01 | 식별자 | 최종 ERD의 내부 식별자는 BIGINT 자동 증가, 현장 코드는 별도 문자열 |
 | P-02 | 페이징 | page 0부터, 기본 size 20, 최대 100 |
 | P-03 | JWT | Access Token 30분, Refresh Token 7일, Refresh Rotation 사용 |
 | P-04 | 로그아웃 | Access Token jti denylist와 Refresh Token family 폐기 |
 | P-05 | 로그인 기록 | 성공 시 `lastLoginAt` 갱신, 실패 시 유지 |
 | P-06 | 비밀번호 | 8~64자, 영문·숫자·특수문자 각각 1개 이상 |
 | P-07 | 계정 | 회원가입은 승인대기, 승인 시 활성. 초기화 시 `PASSWORD_CHANGE_REQUIRED` |
-| P-08 | 수집·통신 | 값 2초, heartbeat 5초, 15초 미수신 시 통신 끊김 |
+| P-08 | 수집·통신 | 설비별 묶음 메시지 3초, 마지막 수신 후 30초 초과 시 통신 끊김 |
 | P-09 | 알람 판정 | 기준 이탈 3회 연속 발생, 정상 범위 3회 연속 복귀 |
 | P-10 | 효과 확인 | 라인 끝 검사기 통과 20개 동안 미재발 시 효과 있음 |
 | P-11 | 재고 단계 | 30분 이하 주의, 10분 이하 위험 |
 | P-12 | 속도 계산 | 최근 10분 이동 구간의 생산·소비 건수로 분당 속도 계산 |
-| P-13 | 같은 알람 | `equipmentId + dataItemId + conditionType` 조합 |
-| P-14 | 카카오 | 타임아웃 3초, 실패 1초 뒤 1회 재시도, 휴대전화 번호 기반 알림톡 |
+| P-13 | 같은 알람 | 종료되지 않은 동일 `dataItemId` 한 건(ERD `open_item_id` 유일 제약) |
+| P-14 | 텔레그램 | 본인 연결용 일회용 토큰 10분, 발송 실패 1초 뒤 1회 재시도, 연결된 `telegram_chat_id`로 전송 |
 | P-15 | WebSocket | `/ws`, STOMP heartbeat 10초, 재연결 최대 30초 지수 백오프 |
-| P-16 | MQTT | QoS 1, retained false, messageId UUID 중복 제거 |
-| P-17 | 내부 수집 | `X-Internal-Api-Key`, 요청당 값 최대 500개 |
+| P-16 | MQTT | QoS 1, retained false, 설비별 3초 묶음 메시지, messageId 24시간 중복 제거 |
+| P-17 | 내부 수집 | `X-Internal-Api-Key`, 설비별 값 1~500개, 하나라도 미등록·형식 오류면 메시지 전체 거절 |
 | P-18 | 사진 | JPG/PNG/WebP, 최대 5MB |
 
 ## 3. 문서 간 불일치 사항
@@ -59,10 +62,15 @@
 | C-05 | 화면에는 통신 현황이 설비관리 아래 있고 헤더에서 모든 사용자가 이동함 | 세 직책 모두 조회 허용 |
 | C-06 | 기능목록의 화면 예시에는 실제처럼 보이는 온도, 유량, 금액이 있으나 요구사항은 실제 공정값을 확정하지 않음 | 예시는 API 제약/기본값으로 사용하지 않음 |
 | C-07 | 공통 규칙은 비활성 우선이나 FR1303·FR1307·FR1403은 삭제를 명시함 | DELETE API를 제공하되 DB에서는 감사·이력 보존을 위해 논리 삭제 |
+| C-08 | v4는 카카오·휴대전화, 최신 문서는 텔레그램 본인 연결 | 카카오 계약과 전화번호 필드를 제거하고 텔레그램 연결·전송 계약으로 교체 |
+| C-09 | v4의 UUID와 최종 ERD의 BIGINT 충돌 | API 내부 ID는 int64, 설비·항목 코드는 문자열 |
+| C-10 | v4의 2초 수집·15초 끊김과 SF5-19·V2의 3초·30초 충돌 | 설비별 3초 묶음, 30초 통신 끊김 적용 |
+| C-11 | v4의 INT-002와 SF5-19의 누적 생산 수집 충돌 | `prod_count`를 INT-001에 포함하고 INT-002를 제거 |
+| C-12 | API 상태 ACTION과 ERD 상태 ACTION_TAKEN | 공개 API는 ACTION, DB 저장값은 ACTION_TAKEN으로 변환 |
 
 ## 4. 작성 시 사용한 명시적 가정
 
-- 식별자는 UUID v4, 설비의 현장 식별자는 별도 `equipmentCode`로 둔다.
+- 식별자는 최종 ERD의 BIGINT를 사용하고 설비의 현장 식별자는 별도 `equipmentCode`로 둔다.
 - 등록/수정 시각과 이벤트 시각은 ISO 8601 `date-time`으로 송수신한다.
 - 직책 코드는 `SYSTEM_ADMIN`, `LINE_MANAGER`, `MAINTENANCE`로 확정한다. `permission`은 `SYSTEM_ADMIN -> ADMIN`, 나머지는 `GENERAL`로 파생한다.
 - 시스템관리 `/system/**`와 당번 수정은 `SYSTEM_ADMIN`만 접근하고, 그 밖의 화면 API는 세 직책이 접근한다.
@@ -115,7 +123,7 @@
 | CommunicationStatus | `CONNECTED`, `DISCONNECTED` | 연결, 끊김 | FR0204 |
 | HeaderCommunicationStatus | `ALL_NORMAL`, `PARTIAL_DISCONNECTED`, `ALL_DISCONNECTED` | 전체 정상, 일부 끊김, 전체 끊김 | FR0205 |
 
-`ThresholdDirection`, 식별자 타입, 데이터 항목 코드, 오류코드 영문명은 개발을 위해 필요한 제안값이며 OpenAPI에 `x-proposed: true`로 표시한다.
+`ThresholdDirection`과 오류코드 영문명은 개발을 위해 필요한 제안값이며 OpenAPI에 `x-proposed: true`로 표시한다. `ACTION`은 DB의 `ACTION_TAKEN`에 대응한다. 효과 확인은 별도 처리 단계가 아니라 `ACTION` 내부에서 진행한다.
 
 ## 7. 전체 API 목록
 
@@ -170,11 +178,11 @@
 | SYS-001~004 | 시스템 | 판정/계산 설정 조회·수정 | 복수 | `/system/settings/...` | 예 | ADMIN | FR1401, FR1402 | 기본 규칙 | P1 |
 | USR-001~005 | 시스템 | 계정 조회·수정·삭제·초기화 | 복수 | `/system/users...` | 예 | SYSTEM_ADMIN | FR1403 | TC-USR-001~005 | P0 |
 | APR-001~003 | 시스템 | 가입 신청 목록·승인·거절 | 복수 | `/system/signup-requests...` | 예 | SYSTEM_ADMIN | FR0107 | TC-APR-001~003 | P0 |
-| KAK-001~002 | 시스템 | 카카오 테스트·전송결과 | 복수 | `/system/kakao...` | 예 | SYSTEM_ADMIN | FR0507, FR1406 | TC-KAK-001~002 | P2 |
+| TLG-001~004 | 텔레그램 | 본인 연결 URL·상태·해제·시험 발송 | 복수 | `/telegram/...` | 예 | 전체 | FR1405 | TC-TLG-001~004 | P1 |
+| TLG-005~006 | 시스템 | 관리자 시험 발송·전송결과 | 복수 | `/system/telegram/...` | 예 | SYSTEM_ADMIN | FR0507, FR1406 | TC-TLG-005~006 | P2 |
 | AUD-001 | 시스템 | 변경 이력 | GET | `/system/change-histories` | 예 | ADMIN | FR1407 | 기본 규칙 | P1 |
 | DUT-001~006 | 담당자 | 알람 당번 CRUD·캘린더 | 복수 | `/system/alarm-duty-schedules...`, `/alarm-duty-schedules/calendar` | 예 | 조회 전체/수정 SYSTEM_ADMIN | FR1408, FR1409 | TC-DUT-001~006 | P1 |
 | INT-001 | 내부수집 | 설비 값 수집 | POST | `/internal/v1/measurements` | 내부키 | Node-RED | FR0201, IFR01 | 기본 규칙 | P0 |
-| INT-002 | 내부수집 | 생산 이벤트 수집 | POST | `/internal/v1/production-events` | 내부키 | Node-RED | FR0608, FR0901 | 기본 규칙 | P1 |
 
 테스트 ID가 `기본 규칙`인 API는 `TC-{API ID}-01`을 기본 정상 시나리오, `TC-{API ID}-02`를 인증·검증 오류 시나리오로 확정한다.
 
@@ -190,7 +198,7 @@
 | AUTH-002 | Refresh Token cookie | 새 Access/Refresh Token | Rotation 후 이전 Refresh 폐기 | AUTH_REFRESH_TOKEN_INVALID | 재사용 탐지 시 token family 전체 폐기 |
 | AUTH-003 | Bearer + Refresh cookie | 204 | Access jti와 Refresh family 폐기 | AUTH_TOKEN_INVALID | 멱등 처리 |
 | AUTH-004 | Bearer | `CurrentUser` | 토큰 사용자 재조회 | AUTH_TOKEN_INVALID | 파생 permission 포함 |
-| AUTH-005 | `loginId,password,name,phoneNumber` | 신청 ID와 승인대기 상태 | 아이디 중복·형식 검증, 비밀번호 해시 저장 | USER_LOGIN_ID_DUPLICATE, VALIDATION_ERROR | 직책은 신청자가 고르지 않음 |
+| AUTH-005 | `loginId,password,name` | 신청 ID·승인대기 상태·텔레그램 연결 URL | 아이디 중복·형식 검증, 비밀번호 해시 저장 | USER_LOGIN_ID_DUPLICATE, VALIDATION_ERROR | 직책은 신청자가 고르지 않음, 연결 URL 10분 유효 |
 | AUTH-006 | `currentPassword,newPassword` | 204 | 현재 비밀번호 확인, 정책 검증, 모든 기존 토큰 폐기 | AUTH_INVALID_CREDENTIALS, PASSWORD_POLICY_VIOLATION | 초기화 계정도 동일 API 사용 |
 | COM-001 | lineId, status, page, size, sort | 통신 요약과 설비별 연결/마지막 수신/오늘 끊김 | 끊김 많은 순 정렬 가능 | LINE_NOT_FOUND | 화면 위치는 Q-07 |
 | COM-002 | 없음 | 전체/끊긴 설비 수, 헤더 상태, 전체 끊김 시작시각 | 전체 정상/일부/전체 끊김 판정 | - | WebSocket으로 변경 통지 |
@@ -239,9 +247,10 @@
 | MST-009~011 | 값 종류별 항목/임계값 | 항목과 통계 참고값 | 측정/상태/누적 조건 검증, 주의가 경보보다 먼저 | INVALID_THRESHOLD_ORDER | 임계값 저장 후 다음 판정부터 적용 |
 | MST-014~017 | 부품명·규격·관리번호·수명기준·교체기준 | 장착부품 기준정보 | 삭제 시 과거 교체 기록 유지 | PART_NOT_FOUND | 논리 삭제, 단위는 수명 기준과 일치 |
 | SYS-001~004 | 판정 5개 설정/개당 금액 | 현재 설정 | 허용범위 검증, 변경 이력 자동 기록 | SETTING_OUT_OF_RANGE | 화면 예시 범위는 요구사항 기반이나 운영값은 DB 설정 |
-| USR-001~005 | 이름/아이디/직책/휴대전화 | 계정 목록/상세 | SYSTEM_ADMIN 전용, 삭제는 논리 삭제 | USER_NOT_FOUND, USER_SELF_DELETE_FORBIDDEN | 최종 로그인·등록·수정시각 포함 |
-| APR-001~003 | 신청 ID, 승인 직책 | 승인대기 목록/승인 계정/204 | 승인대기에서만 처리, 거절은 신청 삭제 | SIGNUP_REQUEST_STATE_CONFLICT | 승인 결과 카카오 실패는 승인 롤백 안 함 |
-| KAK-001~002 | 사용자/날짜/전송결과 | 테스트 결과·발송 페이지 | 전화번호 기반, 3초 timeout, 1회 retry | KAKAO_DELIVERY_FAILED | 연결 API 없음 |
+| USR-001~005 | 이름/아이디/직책 | 계정 목록/상세 | SYSTEM_ADMIN 전용, 삭제는 논리 삭제 | USER_NOT_FOUND, USER_SELF_DELETE_FORBIDDEN | 텔레그램 연결 여부·시각 표시 |
+| APR-001~003 | 신청 ID, 승인 직책 | 승인대기 목록/승인 계정/204 | 승인대기에서만 처리, 거절은 신청 삭제 | SIGNUP_REQUEST_STATE_CONFLICT | 승인 결과 텔레그램 실패는 승인 롤백 안 함 |
+| TLG-001~004 | 본인 | 연결 URL·연결 상태·해제·시험 발송 | 봇 `/start <token>`으로 연결, 토큰 10분·1회용 | TELEGRAM_NOT_CONNECTED | 본인만 연결·해제 |
+| TLG-005~006 | 사용자/날짜/전송결과 | 시험 발송·당일 집계·수신자별 건수·발송 목록 | 연결된 계정만 발송, 실패 1초 후 1회 재시도 | TELEGRAM_DELIVERY_FAILED | 실패 사유 기록, 알람 처리와 트랜잭션 분리 |
 | AUD-001 | 기간, 항목종류, 검색어, 페이지 | 변경시각·변경자·항목·이전/변경값 | 저장 시 자동 기록 | INVALID_PERIOD | 비밀번호/토큰 값 기록 금지 |
 | DUT-001~006 | 시작일·종료일·보전 담당자 목록 | 목록·현재·월별 캘린더 | 기간 공백 금지, 보전 담당자 1명 이상, 수정은 SYSTEM_ADMIN | DUTY_GAP_NOT_ALLOWED, DUTY_OVERLAP | 삭제는 마지막 예정 일정만 허용 |
 
@@ -275,7 +284,8 @@
 | SETTING | SETTING_OUT_OF_RANGE | 422 | 허용 범위 안의 값을 입력해 주세요. | 설정 범위 위반 | FR1401, 제안 코드 |
 | DUTY | DUTY_GAP_NOT_ALLOWED | 422 | 당번이 없는 기간을 만들 수 없습니다. | 저장/삭제 후 공백 | FR1408, 제안 코드 |
 | DUTY | DUTY_OVERLAP | 409 | 같은 기간에 이미 당번이 있습니다. | 기간 중복 | FR1408, 제안 코드 |
-| KAKAO | KAKAO_DELIVERY_FAILED | 422 | 메시지 발송에 실패했습니다. | 재시도까지 실패 | FR0506, FR1406, 제안 코드 |
+| TELEGRAM | TELEGRAM_NOT_CONNECTED | 422 | 텔레그램 연결이 필요합니다. | 미연결 계정 시험 발송 | FR1405, 제안 코드 |
+| TELEGRAM | TELEGRAM_DELIVERY_FAILED | 422 | 메시지 발송에 실패했습니다. | 재시도까지 실패 | FR0506, FR1406, 제안 코드 |
 | INVENTORY | INVENTORY_DATA_INSUFFICIENT | 422 | 재고 계산에 필요한 데이터가 부족합니다. | 최근 10분 데이터 부족 | FR0901~FR0909, 제안 코드 |
 | COMMON | INVALID_PERIOD | 400 | 조회 기간을 확인해 주세요. | 시작 > 종료 | 제안 코드 |
 | COMMON | VALIDATION_ERROR | 400 | 입력값을 확인해 주세요. | 형식/필수값 | NFR09, 제안 코드 |
@@ -305,7 +315,7 @@
 | 토픽 | 목적 | 발행 조건 | 권한 | Payload 핵심 | 요구사항 | 주기/순서/중복 |
 |---|---|---|---|---|---|---|
 | `/topic/equipment-status` | 설비 상태 변경 | 상태 변경 시 | 전체 | eventId,sequence,equipmentId,status,statusStartedAt,occurredAt | FR0302 | 이벤트 발생 시, eventId 중복 제거 |
-| `/topic/measurements/{equipmentId}` | 선택 설비 최신 값 | 유효 값 저장 시 | 전체 | eventId,sequence,dataItemId,value,valueType,measuredAt | FR0201, FR1501 | 2초, eventId 중복 제거 |
+| `/topic/measurements/{equipmentId}` | 선택 설비 최신 값 | 유효 값 저장 시 | 전체 | eventId,sequence,dataItemId,value,valueType,measuredAt | FR0201, FR1501 | 3초 수집, eventId 중복 제거 |
 | `/topic/alarms` | 새 알람/등급/단계 변경 | 알람 변경 시 | 전체 | eventId,sequence,alarmId,eventType,grade,processStatus,occurredAt | FR0501, FR0601 | 이벤트 발생 시 |
 | `/topic/alarm-counts` | 미확인 알람 수 | 미확인 수 변경 시 | 전체 | eventId,sequence,unacknowledgedCount | FR0502 | 변경 시 |
 | `/topic/inventory` | 재고/소진 예측 변경 | 재계산 시 | 전체 | eventId,sequence,lineId,quantity,stage,remainingMinutes | FR0902, FR1501 | 10초 |
@@ -320,11 +330,9 @@ Spring Boot는 Mosquitto를 직접 구독하지 않는다. 데이터 흐름은 `
 
 | 구분 | 제안 토픽 | 발행자 | 구독자 | QoS | 주기 | Payload | 중복/오류 |
 |---|---|---|---|---:|---|---|---|
-| 측정/상태/누적값 | `stf/equipment/{equipmentCode}/values` | Node-RED 가상설비 | Node-RED 수집 플로우 | 1 | 2초 | messageId,equipmentCode,dataItemCode,valueType,value,measuredAt | retained=false, messageId UUID 24시간 중복 제거 |
-| heartbeat | `stf/equipment/{equipmentCode}/heartbeat` | Node-RED 가상설비 | Node-RED 수집 플로우 | 1 | 5초 | messageId,equipmentCode,sentAt | 15초 미수신 시 끊김 |
-| 생산 이벤트 | `stf/line/{lineCode}/production` | Node-RED 가상설비 | Node-RED 수집 플로우 | 1 | 이벤트 발생 시 | messageId,lineCode,equipmentCode,quantity,producedAt | retained=false, messageId 중복 제거 |
+| 측정/상태/누적값 | `stf/equipment/{equipmentCode}/values` | Node-RED 가상설비 | Node-RED 수집 플로우 | 1 | 3초 | messageId,equipmentCode,measuredAt,values[] | retained=false, messageId 24시간 중복 제거 |
 
-Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq/{sourceTopic}`으로 원문과 오류를 발행하고 저장하지 않는다. Node-RED가 변환한 HTTP 요청은 `INT-001`, `INT-002`를 따른다.
+Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq/{sourceTopic}`으로 원문과 오류를 발행하고 저장하지 않는다. Node-RED는 설비별 묶음 메시지의 `run_signal`(STATE), `prod_count`(CUMULATIVE), 센서 측정값을 `INT-001`에 함께 보낸다. `prod_count` 감소 시 새 값부터 차이를 계산하고, 통신 끊김은 마지막 수신 후 30초 초과로 판정한다. 등록되지 않은 항목 또는 값 종류 불일치가 하나라도 있으면 전체 메시지를 422로 거절한다. 내부 키는 `INTERNAL_API_KEY` 환경변수에서 주입하며 원문을 저장·기록하지 않는다.
 
 ## 13. 요구사항-API 추적표
 
@@ -336,7 +344,7 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 | FR0104 | 로그아웃 | AUTH-003 |  |  |  | O |  |
 | FR0105 | 로그인 사용자 표시 | AUTH-004 |  |  |  | O |  |
 | FR0106 | 회원가입 | AUTH-005 |  |  |  | O | 승인대기 저장 |
-| FR0107 | 가입 승인 | APR-001~003 |  | notifications |  | O | 승인 결과 카카오 발송 |
+| FR0107 | 가입 승인 | APR-001~003 |  | notifications |  | O | 연결된 계정은 텔레그램 발송 |
 | FR0108 | 비밀번호 변경 | AUTH-006, USR-005 |  |  |  | O | 초기화 후 강제 변경 포함 |
 | FR0201 | 측정값 수집 | INT-001 | O | measurements | values | O |  |
 | FR0202 | 통신 끊김 감지 | 수신시각 스케줄 판정 | O | equipment-status |  | O |  |
@@ -352,11 +360,11 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 | FR0405 | 상태값 판정 | 알람 판정 서비스 | O | alarms |  | O | 화면 예시 일부 없음 |
 | FR0501 | 화면 알림 | - |  | notifications |  | O |  |
 | FR0502 | 미확인 알람 수 | ALM-001 |  | alarm-counts |  | O |  |
-| FR0503 | 카카오톡 알림 | 카카오 발송 서비스 | O |  |  | O |  |
+| FR0503 | 텔레그램 알림 | 텔레그램 발송 서비스 | O |  |  | O | 연결된 계정에만 발송 |
 | FR0504 | 미확인 재알림 | 재알림 스케줄러 | O | notifications |  | O |  |
 | FR0505 | 재발 알림 | 재발 처리 서비스 | O | notifications |  | O |  |
-| FR0506 | 전송 실패 처리 | 카카오 재시도 서비스 | O |  |  | O |  |
-| FR0507 | 전송 결과 조회 | KAK-002 |  |  |  | O |  |
+| FR0506 | 전송 실패 처리 | 텔레그램 재시도 서비스 | O |  |  | O |  |
+| FR0507 | 전송 결과 조회 | TLG-006 |  |  |  | O |  |
 | FR0508 | 담당 지정 알림 | ALM-004 | O | notifications |  | O |  |
 | FR0601 | 알람 목록 조회 | ALM-001 |  | alarms |  | O |  |
 | FR0602 | 경과 시간 계산 | ALM-001, ALM-003 | O |  |  | O | 화면 표시 경과는 Front 재계산 |
@@ -412,7 +420,8 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 | FR1401 | 판정 설정 | SYS-001, SYS-002 |  |  |  | O |  |
 | FR1402 | 계산 기준값 | SYS-003, SYS-004 |  |  |  | O |  |
 | FR1403 | 계정 관리 | USR-001~005 |  |  |  | O | 등록은 회원가입·승인으로 처리 |
-| FR1406 | 테스트 메시지 | KAK-001 |  |  |  | O | 휴대전화 번호 기반 |
+| FR1405 | 텔레그램 본인 연결 | TLG-001~004 |  |  |  | O | 연결 URL/QR 10분 |
+| FR1406 | 테스트 메시지 | TLG-005 |  |  |  | O | 연결된 계정만 |
 | FR1407 | 설정 변경 이력 | AUD-001 | O |  |  | O |  |
 | FR1408 | 알람 당번 | DUT-001~005 |  |  |  | O |  |
 | FR1409 | 당번 캘린더 | DUT-006 |  |  |  | O | 모든 직책 조회 |
@@ -435,9 +444,9 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 - [ ] 임계값 순서와 판정 설정 허용 범위 위반이 422인지 검증한다.
 - [ ] 당번 추가/수정/삭제 후 공백과 중복 기간을 거부하는지 검증한다.
 - [ ] WebSocket 재연결 후 REST 재조회로 상태가 일치하는지 검증한다.
-- [ ] 카카오 실패가 알람 처리 트랜잭션을 롤백하지 않는지 검증한다.
+- [ ] 텔레그램 실패가 알람 처리 트랜잭션을 롤백하지 않는지 검증한다.
 - [ ] 페이징의 전체 건수와 정렬이 동일 조건에서 안정적인지 검증한다.
-- [ ] 비밀번호, JWT, 카카오 토큰이 응답/로그/감사이력에 노출되지 않는지 검증한다.
+- [ ] 비밀번호, JWT, 텔레그램 봇 토큰·chat ID가 응답/로그/감사이력에 노출되지 않는지 검증한다.
 
 ## 15. 운영 전 교체 가능한 프로젝트 제안값
 
@@ -445,10 +454,19 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 - 손실 방지액은 `정지 전 복구 건수의 예상 평균정지시간 × 시간당 생산량 × 개당 금액` 합계로 계산한다.
 - 예상 손실액은 `max(0, 복구예상시각-정지예상시각) × 시간당 생산량 × 개당 금액`으로 계산한다.
 - 미확인 단계에서는 오경보 신고를 허용하지 않고 확인 단계부터 허용한다.
-- 관리자 비밀번호 초기화는 12자리 임시 비밀번호를 생성해 카카오 알림톡으로 1회 전달하고 30분 뒤 만료한다.
+- 관리자 비밀번호 초기화는 12자리 임시 비밀번호를 생성해 연결된 계정의 텔레그램으로 1회 전달하고 30분 뒤 만료한다. 미연결 계정의 전달 방법은 계정 관리 구현 전에 별도 계약으로 확정한다.
 - 사진은 JPG/PNG/WebP 5MB 이하로 받고 객체 저장소의 서명 URL은 10분 유효하다.
 - 운영 합의로 값을 바꿀 때 요구사항정의서, 이 문서, OpenAPI, 테스트를 같은 변경으로 갱신한다.
 
 ## 16. OpenAPI 3.0.3 YAML
 
 Spring Boot 구현의 기계 판독 기준은 `docs/openapi.yaml`이다. API 주소, Method, DTO 필드, Enum, 오류 응답을 변경할 때 이 문서와 YAML을 함께 수정한다.
+
+## 17. v5 구현 제안값과 경계
+
+- 텔레그램은 봇과의 개인 대화만 사용한다. 봇 deep link의 `/start <token>`은 256비트 난수이며 Redis에 해시로 10분 보관하고 사용 시 삭제한다. 봇 토큰은 환경변수로만 주입한다. 내부망 서버는 공개 webhook 대신 long polling으로 수신한다.
+- 발송 대상: 새 알람·주의·경보·등급 상향은 모든 라인 관리자, 미확인 3분 재알림은 모든 라인 관리자와 시스템 관리자(알람당 1회), 재발은 기존 담당자, 담당 지정은 당번 중 선택된 보전 담당자다. 값 정상 복귀·공정 상태 변경·재고 단계·통신 끊김은 화면 알림만 보낸다.
+- 텔레그램 발송은 원 업무 트랜잭션 커밋 뒤에 실행하며, 1초 뒤 한 번만 재시도한다. 성공·실패와 읽기 쉬운 실패 사유를 `notification_log`에 저장한다. 미연결 계정은 화면 알림만 받는다.
+- SF5-19의 수집 메시지는 설비별 3초 묶음이고, 식별자는 `OR-04-1-20261117T090000.000` 같은 200자 이하 문자열이다. 27개 설비 코드와 `run_signal`·`prod_count`·측정값 15개는 V2 초기 데이터와 일치시킨다.
+- 멱등성은 Redis `ingest:message:{messageId}`의 처리 중(60초)·완료(24시간) 상태로 관리한다. DB 트랜잭션 실패 시 처리 중 키를 제거한다. `prod_count`는 이전 값과의 차이를 사용하며 감소는 `data_item.reset_time`을 따른 초기화로 취급한다.
+- 이 페이지의 기술 제안값은 실제 공장 수치가 아니다. PLC 주소, 임계값 중 가정 6건, 개당 금액과 실제 운영 시간은 현장 또는 강사 확인 후 교체한다.
