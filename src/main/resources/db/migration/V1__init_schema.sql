@@ -9,7 +9,8 @@ CREATE TABLE `account` (
   `login_id` varchar(50) UNIQUE NOT NULL COMMENT '아이디. 중복 불가. 삭제한 계정의 아이디도 다시 쓸 수 없음',
   `password_hash` varchar(100) COMMENT '비밀번호. 암호화한 값만 저장 (BCrypt). 삭제한 계정은 비움',
   `name` varchar(50) NOT NULL COMMENT '이름. 삭제해도 남김. 지난 처리 기록에 이름을 보여 주기 위해서',
-  `phone` varchar(20) COMMENT '휴대전화 번호. 카카오톡 알림을 받을 번호. 삭제한 계정은 비움',
+  `telegram_chat_id` varchar(30) UNIQUE COMMENT '텔레그램 대화 번호. 텔레그램 봇과 연결하면 채움. 비어 있으면 텔레그램 알림을 받지 않음. 삭제한 계정은 비움',
+  `telegram_linked_at` datetime COMMENT '텔레그램 연결 시각. 봇과 연결한 시각. 연결을 끊으면 비움',
   `role` varchar(20) COMMENT '직책. 가입을 승인할 때 정함. 승인 전에는 비어 있음. 허용 값: SYSTEM_ADMIN 시스템관리자 / LINE_MANAGER 라인 관리자 / MAINTENANCE 보전 담당자',
   `approval_status` varchar(20) NOT NULL DEFAULT 'PENDING' COMMENT '승인 상태. 승인된 계정만 로그인 가능. 허용 값: PENDING 승인 대기 / APPROVED 승인',
   `approved_at` datetime COMMENT '승인 시각',
@@ -234,7 +235,7 @@ CREATE TABLE `notification_log` (
   `notify_type` varchar(20) NOT NULL COMMENT '알림 종류. 허용 값: OCCUR 발생 / GRADE_UP 등급 상향 / RENOTIFY 미확인 재알림 / RECUR 재발 / ASSIGN 조치 담당 지정 / SIGNUP_RESULT 가입 승인 결과 / TEST 테스트 메시지 발송',
   `message` varchar(1000) NOT NULL COMMENT '보낸 내용',
   `send_result` varchar(20) NOT NULL COMMENT '전송 결과. 허용 값: SUCCESS 성공 / FAILURE 실패',
-  `fail_reason` varchar(500) COMMENT '실패 사유. 예: 없는 번호',
+  `fail_reason` varchar(500) COMMENT '실패 사유. 예: 사용자가 봇을 차단함',
   `retry_count` int NOT NULL DEFAULT 0 COMMENT '다시 보낸 횟수',
   `sent_at` datetime NOT NULL COMMENT '전송 시각'
 );
@@ -349,7 +350,7 @@ ALTER TABLE `alarm_action` COMMENT = '조치. 알람에 한 조치와 그 조치
 
 ALTER TABLE `alarm_log` COMMENT = '알람 처리 기록. 알람에 생긴 일을 시간순으로 쌓는 테이블입니다. 누가 언제 무엇을 했는지 남깁니다';
 
-ALTER TABLE `notification_log` COMMENT = '카카오톡 전송 기록. 카카오톡으로 보낸 알림과 그 결과입니다. 전송 한 번이 한 줄입니다';
+ALTER TABLE `notification_log` COMMENT = '텔레그램 전송 기록. 텔레그램으로 보낸 알림과 그 결과입니다. 전송 한 번이 한 줄입니다';
 
 ALTER TABLE `part_replacement` COMMENT = '부품 교체 이력. 부품을 교체한 기록입니다. 교체 한 번이 한 줄입니다';
 
