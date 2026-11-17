@@ -3,17 +3,23 @@ package com.sfaasproject.stf.operations.config;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.auth.security.AccessTokenAuthentication;
 import com.sfaasproject.stf.operations.port.BPorts.Users;
+import com.sfaasproject.stf.operations.service.BWebSocketSessions;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.*;
 import org.springframework.messaging.*;
 import org.springframework.messaging.simp.config.*;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.stomp.*;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.*;
+import org.springframework.web.socket.CloseStatus;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 
 import java.time.Clock;
 
@@ -26,16 +32,19 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
     private final Users users;
     private final Clock clock;
     private final String[] origins;
+    private final BWebSocketSessions sessions;
 
     public BWebSocketConfiguration(
             JwtAccessTokenService jwt,
             Users users,
             Clock backendBClock,
             com.sfaasproject.stf.operations.service.BTokenGuard tokens,
+            BWebSocketSessions sessions,
             @Value(
                             "${stf.websocket.allowed-origins:http://localhost:5173,http://192.168.20.11:5173}")
                     String allowed) {
         this.tokens = tokens;
+        this.sessions = sessions;
         this.jwt = jwt;
         this.users = users;
         this.clock = backendBClock;
@@ -45,6 +54,44 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
     @Override
     public void registerStompEndpoints(StompEndpointRegistry endpoints) {
         endpoints.addEndpoint("/ws").setAllowedOrigins(origins);
+    }
+
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        registration.addDecoratorFactory(handler -> new WebSocketHandlerDecorator(handler) {
+            @Override
+            public void afterConnectionEstablished(WebSocketSession socket) throws Exception {
+                sessions.opened(socket);
+                try {
+                    super.afterConnectionEstablished(socket);
+                } catch (Exception failure) {
+                    sessions.closed(socket.getId());
+                    throw failure;
+                }
+            }
+
+            @Override
+            public void afterConnectionClosed(WebSocketSession socket, CloseStatus status) throws Exception {
+                try {
+                    super.afterConnectionClosed(socket, status);
+                } finally {
+                    sessions.closed(socket.getId());
+                }
+            }
+        });
+    }
+
+    @Override
+    public void configureClientOutboundChannel(ChannelRegistration registration) {
+        registration.interceptors(new ChannelInterceptor() {
+            @Override
+            public Message<?> preSend(Message<?> message, MessageChannel channel) {
+                if (SimpMessageHeaderAccessor.getMessageType(message.getHeaders()) == SimpMessageType.MESSAGE
+                        && !sessions.permitDelivery(SimpMessageHeaderAccessor.getSessionId(message.getHeaders())))
+                    return null;
+                return message;
+            }
+        });
     }
 
     @Bean
@@ -86,6 +133,7 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
                                         com.sfaasproject.stf.auth.service.AuthPolicyService.Position.valueOf(user.position().name()),
                                         claims.jti(), claims.issuedAt(), claims.expiresAt());
                                 headers.setUser(new AccessTokenAuthentication(current));
+                                sessions.authenticated(headers.getSessionId(), current);
                             } catch (RuntimeException invalid) {
                                 throw new MessageDeliveryException("Authentication required");
                             }

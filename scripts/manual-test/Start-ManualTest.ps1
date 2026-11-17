@@ -57,7 +57,7 @@ MANUAL_LOGIN_PASSWORD="+$config.MANUAL_LOGIN_PASSWORD+"
         $sql = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'demo-data.sql') -Raw
         Invoke-ManualSql $sql | Out-Null
     }
-    $docs = Invoke-ManualHttp '/v3/api-docs'
+    $docs = Invoke-ManualHttp '/v3/api-docs' -TimeoutSeconds 30
     if ($docs.Status -ne 200) { throw 'Swagger schema failed. See server log.' }
     $token = & (Join-Path $PSScriptRoot 'Get-ManualTestToken.ps1')
     $check = Invoke-ManualHttp '/api/v1/overview/equipment-layout' $token

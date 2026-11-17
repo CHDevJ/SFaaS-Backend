@@ -39,7 +39,9 @@ class BWebSocketSecurityTest {
     @BeforeEach
     void setup() {
         var config =
-                new BWebSocketConfiguration(jwt, users, clock, tokens, "http://localhost:5173");
+                new BWebSocketConfiguration(jwt, users, clock, tokens,
+                        new com.sfaasproject.stf.operations.service.BWebSocketSessions(users, tokens, clock),
+                        "http://localhost:5173");
         var registration = new Registration();
         config.configureClientInboundChannel(registration);
         interceptor = registration.all().get(0);

@@ -28,7 +28,7 @@ Swagger 오른쪽 위 **Authorize**를 누르고 Value에 붙여넣는다. `Bear
 
 역할별 연습 계정은 badmin01(SYSTEM_ADMIN), bmaint01(MAINTENANCE), bline01(LINE_MANAGER)이다. 비밀번호는 최초 실행 시 `.env.manual-test`에 무작위로 생성한다. 원래 V2 계정은 수정하지 않으며 연습 계정의 비밀번호나 역할을 바꾸어도 재시작으로 덮어쓰지 않는다.
 
-봇 이름이 없으면 실제 회원가입 연결 URL을 만들 수 없다. 회원가입·실제 Telegram 연결은 TELEGRAM_BOT_USERNAME과 TELEGRAM_BOT_TOKEN 준비 후 확인한다. Refresh·로그아웃·내 정보 등 이번 A 브랜치에 없는 Controller는 A의 후속 구현 범위다.
+봇 이름이 없으면 실제 회원가입 연결 URL을 만들 수 없다. 회원가입·실제 Telegram 연결은 TELEGRAM_BOT_USERNAME과 TELEGRAM_BOT_TOKEN 준비 후 확인한다. Refresh·로그아웃·내 정보·비밀번호 변경도 A 후속 구현을 통합했다. 갱신은 쿠키를 사용하고 로그아웃·비밀번호 변경 후에는 JWT를 다시 발급받는다. 비밀번호 변경은 해당 연습 계정에도 실제 적용되며 재시작으로 복원하지 않는다.
 
 ## 추천 확인 순서
 
@@ -67,6 +67,12 @@ Telegram 봇 설정은 비워 두었다. 실제 발송·PLC 수집·자동 정�
 # 실제 HTTP 검증. 전용 DB에 [SMOKE] 측정 항목·알람 이력이 남는다.
 .\scripts\manual-test\Smoke-Test.ps1
 
+# 실제 STOMP 연결·구독 후 로그아웃 1008 종료 검증
+.\scripts\manual-test\Test-WebSocketSession.ps1
+
+# 실제 STOMP 연결·구독 후 로그아웃 1008 종료 검증
+.\scripts\manual-test\Test-WebSocketSession.ps1
+
 # 테스트 서버만 종료
 .\scripts\manual-test\Stop-ManualTest.ps1
 
@@ -89,4 +95,8 @@ Telegram 봇 설정은 비워 두었다. 실제 발송·PLC 수집·자동 정�
 
 기존 `compose.yaml`의 개발 DB(3307)·Redis(6379)와 분리했다. 테스트용 V1/V2/V3/V4 적용은 전용 DB에서만 수행한다. 공유 DB 적용과 backend 브랜치 머지는 별도다. 비밀번호·서명키·JWT는 문서·Git에 넣지 않는다.
 
-통합 전 기록: Gradle 233개·실제 HTTP 45개 통과. 현재 Swagger는 B API 40개와 A 로그인·가입·승인 API 5개를 제공한다. 최신 통합 검증 결과는 docs/BACKEND_B_GITHUB_RECHECK.md를 따른다.
+최신 결과: Gradle 398개·실제 HTTP 54개·WebSocket 4개 확인 통과. Swagger는 B 40개와 A 인증·가입·승인 9개, 총 49개를 제공한다. 233개 Excel 보고서는 통합 전 스냅샷이다. 최신 통합 검증 결과는 docs/BACKEND_B_GITHUB_RECHECK.md를 따른다.
+
+브라우저의 Secure Refresh 쿠키는 localhost 또는 HTTPS에서 확인한다. 현재 수동 서버는 같은 PC의 loopback 전용이다. 프론트 Vite에는 STF_BACKEND_URL=http://localhost:8081을 설정한다. Smoke-Test의 명시적 Cookie 헤더 검증은 브라우저 저장 검증을 대신하지 않는다.
+
+브라우저의 Secure Refresh 쿠키는 localhost 또는 HTTPS에서 확인한다. 현재 수동 서버는 같은 PC의 loopback 전용이다. 프론트 Vite에는 STF_BACKEND_URL=http://localhost:8081을 설정한다. Smoke-Test의 명시적 Cookie 헤더 검증은 브라우저 저장 검증을 대신하지 않는다.
