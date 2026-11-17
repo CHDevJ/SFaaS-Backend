@@ -51,7 +51,7 @@
 
 ## 테스트
 
-최신 통합 결과와 GitHub 재확인은 BACKEND_B_GITHUB_RECHECK.md를 따른다. 아래 233개 결과는 통합 전 검증 기록이다.
+최신 당번 감사·직책 변경·초기화 이력과 453개 검증 결과는 BACKEND_B_DUTY_RESET_HISTORY.md를 따른다. GitHub 통합 경위는 BACKEND_B_GITHUB_RECHECK.md를 따른다. 아래 233개 결과는 통합 전 검증 기록이다.
 
 - ./gradlew.bat clean test --no-daemon.
 - MySQL을 함께 검증하려면 테스트 전용 STF_TEST_MYSQL_URL·STF_TEST_MYSQL_PASSWORD를 제공한다. 격리 컨테이너의 stf_b_test URL이어야 하며 테스트마다 별도 스키마를 만든다.
@@ -74,3 +74,12 @@ backend b387df8(PR #11), A 587f3b0, frontend 1cdc56d(PR #12), Node-RED 89c201b. 
 > V4: A 인증의 account.last_login_at, auth_token.family_id·used_at, family 인덱스입니다. 적용·병합 순서는 V1→V2→V3→V4가 필요합니다. 이미 실행된 V1·V2는 고치지 않고 신규 마이그레이션으로 관리하겠습니다.
 >
 > 분리된 실제 MySQL 8.4 환경에서 전체 마이그레이션과 B 읽기·쓰기 검증을 완료했습니다. 공유 DB 적용은 하지 않았습니다. 텔레그램 연결 코드는 Redis에 10분, 통신 끊김은 COMM_TIMEOUT_SEC=30을 사용합니다. 비밀번호는 별도 비공개 경로로 관리합니다.
+
+
+## 당번 감사·직책 변경·비밀번호 초기화 발송 결과
+
+UserAdminService는 직책이 실제 바뀔 때 AccountPositionChangedEvent만 동기 발행한다. B는 MAINTENANCE에서 다른 직책으로 바뀌는 경우 기존 계정 삭제와 같은 대체 당번 검사를 적용한다. 대체자가 없는 현재·예정 일정은 422 DUTY_REPLACEMENT_REQUIRED이고 계정·당번·감사가 모두 롤백된다.
+
+B의 DutyApplicationService는 A AuditRecorder를 주입받아 시작일·종료일·담당자 변경을 같은 트랜잭션에 기록한다. 공통 예외 처리와 A 보안 체인은 수정하지 않았다.
+
+B 프로필에서는 BAuditedTemporaryPasswordSender가 A 단독 전송기보다 우선한다. A의 성공 확인 후 비밀번호 변경 정책을 유지하고 발송 결과 메타데이터만 트랜잭션 종료 후 별도 Outbox/notification_log에 저장한다. 메시지는 비밀정보 제외 고정 문구이며 결과 처리 재시도는 원문 재발송을 하지 않는다. V1~V4의 변경이나 새 마이그레이션은 없다.
