@@ -214,7 +214,7 @@
 | INV-003 | lineId | 현재·적정 재고, 입고/소비 속도, 사이클 타임, 소진 예상 | 최근 10분 이동 구간 계산 | LINE_NOT_FOUND, INVENTORY_DATA_INSUFFICIENT | 적정 재고는 판정 설정값 |
 | EQP-001~005 | lineId/processId/equipmentId | 화면 선택 목록과 설비 상세 | 존재/활성 상태 검증 | LINE/PROCESS/EQUIPMENT_NOT_FOUND | 상태값·누적값을 측정값과 분리 반환 |
 | MEAS-001 | dataItemId, from, to | 시각별 값, 기준선, 알람 시점, 통신 끊김 구간 | 설비 소속 항목만 허용 | DATA_ITEM_NOT_FOUND, INVALID_PERIOD | 상태값은 계단선, 누적값은 막대 표시용 타입 제공 |
-| MEAS-002 | alarmId, occurrenceIds(최대 5), beforeMinutes=30, afterMinutes=30 | 발생별 시계열·최고값·수리시간·조치·결과 | 같은 `alarmKey`만 비교 | ALARM_NOT_FOUND, ALARM_COMPARISON_MISMATCH | 기준 시각은 각 발생의 occurredAt |
+| MEAS-002 | alarmId | 발생 전후 시계열·평균·변화율·기준선 | OpenAPI 기준 발생 전후 10분 고정 | ALARM_NOT_FOUND | 기준 시각은 occurredAt |
 
 ### 8.3 알람 처리
 
@@ -470,3 +470,15 @@ Spring Boot 구현의 기계 판독 기준은 `docs/openapi.yaml`이다. API 주
 - SF5-19의 수집 메시지는 설비별 3초 묶음이고, 식별자는 `OR-04-1-20261117T090000.000` 같은 200자 이하 문자열이다. 27개 설비 코드와 `run_signal`·`prod_count`·측정값 15개는 V2 초기 데이터와 일치시킨다.
 - 멱등성은 Redis `ingest:message:{messageId}`의 처리 중(60초)·완료(24시간) 상태로 관리한다. DB 트랜잭션 실패 시 처리 중 키를 제거한다. `prod_count`는 이전 값과의 차이를 사용하며 감소는 `data_item.reset_time`을 따른 초기화로 취급한다.
 - 이 페이지의 기술 제안값은 실제 공장 수치가 아니다. PLC 주소, 임계값 중 가정 6건, 개당 금액과 실제 운영 시간은 현장 또는 강사 확인 후 교체한다.
+
+
+## 15. Back_B 연결 계약 (2026-11-17)
+
+- B 담당 40개 operation의 Controller·Request/Response DTO·검증과 응용 서비스를 구현했다. DB 쿼리 어댑터는 V1/V2 기반이며 추가 구조는 V3에 분리했다.
+- WebSocket 7개 destination의 메시지 타입은 OpenAPI components.schemas의 Event 스키마와 x-websocket.topics.schema를 따른다. STOMP CONNECT의 Bearer JWT를 확인하고 개인 알림 구독은 /user/queue/notifications로 제한한다.
+- 알림 전송 이력의 recipient는 삭제·거절 계정으로 현재 사용자 정보를 복원할 수 없으면 null이다. recipientName은 발송 당시 이름을 보존한다.
+- V3는 조치·오경보·교체 문자열 길이와 소수 교체 기준을 v5에 맞추며, 멱등성·당번 잠금·손실 방지 스냅샷·이벤트 보관 테이블을 추가한다. V1/V2 원본은 수정하지 않는다. 공유 DB 적용은 DB 담당자가 검토한다.
+- 계획 가동 시간 입력이 없는 현재 스키마에서는 선택 기간 전체를 장비별 계획 시간으로 사용한다. 부품 교체 임박 비율은 PART_DUE_SOON_PERCENT 설정(미설정 시 프로젝트 제안 80%)을 사용한다. 실제 운영 기준은 별도 설정으로 교체한다.
+- 실제 정지 손실은 assembly_stop의 정지 구간과 발생 당시 생산률·단가로 계산한다. 손실 방지 실적은 복구 전에 저장한 예측 스냅샷이 있는 효과 확인 완료 알람만 포함하고 과거 값을 역산해 만들어 내지 않는다.
+
+- 라인 가동률은 소속 장비의 가동시간 합계를 계획시간 합계로 나눈 가중 집계로 제공한다.

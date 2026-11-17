@@ -1,3 +1,7 @@
+# Back_B 추가 구현 (2026-11-17)
+
+현재 상태는 BACKEND_B_REMAINING.md와 BACKEND_B_INTEGRATION.md를 우선한다. B Controller·DTO·JDBC·이벤트·스케줄러 추가 후 전체 233개 테스트가 통과했다. 아래는 이전 도메인 단독 구현 당시 기록이다.
+
 # 백엔드 단독 구현 현황 (2026-11-17)
 
 - 작업 위치: 기존 로컬 stf 저장소, feature/SF5-34-alarm-judgement 브랜치

@@ -5,9 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.junit.jupiter.api.Test;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import org.junit.jupiter.api.Test;
 
 class AlarmDecisionServiceTest {
     private final AlarmDecisionService service = new AlarmDecisionService();
@@ -54,14 +55,20 @@ class AlarmDecisionServiceTest {
         var gradeUp = accept(measure(5, "20", AlarmReading.Direction.ABOVE, "10", "20"), state);
         assertEquals(AlarmEvaluationResult.Transition.GRADE_UP, gradeUp.transition());
         assertEquals(AlarmGrade.CRITICAL, gradeUp.state().openAlarm().grade());
-        var noDuplicate = accept(measure(6, "20", AlarmReading.Direction.ABOVE, "10", "20"), gradeUp.state());
+        var noDuplicate =
+                accept(measure(6, "20", AlarmReading.Direction.ABOVE, "10", "20"), gradeUp.state());
         assertEquals(AlarmEvaluationResult.Transition.NONE, noDuplicate.transition());
     }
 
     @Test
     void threeNormalValuesRecoverWithoutClosingOpenAlarm() {
-        var state = new AlarmEvaluationState(START, 3, 0, 0,
-                new AlarmEvaluationState.OpenAlarm(AlarmGrade.CAUTION, false));
+        var state =
+                new AlarmEvaluationState(
+                        START,
+                        3,
+                        0,
+                        0,
+                        new AlarmEvaluationState.OpenAlarm(AlarmGrade.CAUTION, false));
         for (int i = 1; i <= 2; i++) {
             var result = accept(measure(i, "9", AlarmReading.Direction.ABOVE, "10", "20"), state);
             assertEquals(AlarmEvaluationResult.Transition.NONE, result.transition());
@@ -71,15 +78,23 @@ class AlarmDecisionServiceTest {
         assertEquals(AlarmEvaluationResult.Transition.RECOVER, recovered.transition());
         assertTrue(recovered.state().openAlarm().valueRecovered());
         assertEquals(AlarmGrade.CAUTION, recovered.state().openAlarm().grade());
-        var stillOpen = accept(measure(4, "9", AlarmReading.Direction.ABOVE, "10", "20"), recovered.state());
+        var stillOpen =
+                accept(
+                        measure(4, "9", AlarmReading.Direction.ABOVE, "10", "20"),
+                        recovered.state());
         assertEquals(AlarmEvaluationResult.Transition.NONE, stillOpen.transition());
         assertTrue(stillOpen.state().openAlarm().valueRecovered());
     }
 
     @Test
     void recoveredOpenAlarmRecursWithoutCreatingAnotherAlarm() {
-        var state = new AlarmEvaluationState(START, 0, 0, 3,
-                new AlarmEvaluationState.OpenAlarm(AlarmGrade.CAUTION, true));
+        var state =
+                new AlarmEvaluationState(
+                        START,
+                        0,
+                        0,
+                        3,
+                        new AlarmEvaluationState.OpenAlarm(AlarmGrade.CAUTION, true));
         state = accept(measure(1, "10", AlarmReading.Direction.ABOVE, "10", "20"), state).state();
         state = accept(measure(2, "10", AlarmReading.Direction.ABOVE, "10", "20"), state).state();
         var result = accept(measure(3, "10", AlarmReading.Direction.ABOVE, "10", "20"), state);
@@ -102,41 +117,68 @@ class AlarmDecisionServiceTest {
 
     @Test
     void belowDirectionAndUnconfiguredOrCumulativeSamples() {
-        var result = accept(measure(0, "5", AlarmReading.Direction.BELOW, "10", "5"),
-                AlarmEvaluationState.empty());
+        var result =
+                accept(
+                        measure(0, "5", AlarmReading.Direction.BELOW, "10", "5"),
+                        AlarmEvaluationState.empty());
         assertEquals(1, result.state().criticalStreak());
         assertEquals(AlarmEvaluationResult.Transition.NONE, result.transition());
         assertFalse(service.evaluate(state(1, "1", null, null), result.state()).accepted());
-        var cumulative = new AlarmReading(1, START.plusMinutes(2), AlarmReading.Kind.CUMULATIVE,
-                BigDecimal.TEN, null, null, null, null, null);
+        var cumulative =
+                new AlarmReading(
+                        1,
+                        START.plusMinutes(2),
+                        AlarmReading.Kind.CUMULATIVE,
+                        BigDecimal.TEN,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null);
         assertFalse(service.evaluate(cumulative, result.state()).accepted());
     }
 
     @Test
     void outOfOrderAndDuplicateSamplesDoNotChangeState() {
         var current = new AlarmEvaluationState(START.plusMinutes(2), 2, 1, 0, null);
-        assertEquals(current, service.evaluate(measure(2, "20", AlarmReading.Direction.ABOVE,
-                "10", "20"), current).state());
-        assertEquals(current, service.evaluate(measure(1, "20", AlarmReading.Direction.ABOVE,
-                "10", "20"), current).state());
+        assertEquals(
+                current,
+                service.evaluate(
+                                measure(2, "20", AlarmReading.Direction.ABOVE, "10", "20"), current)
+                        .state());
+        assertEquals(
+                current,
+                service.evaluate(
+                                measure(1, "20", AlarmReading.Direction.ABOVE, "10", "20"), current)
+                        .state());
     }
 
     @Test
     void configuredStreakCanDifferFromDefaultThree() {
-        var first = service.evaluate(measure(0, "10", AlarmReading.Direction.ABOVE,
-                "10", "20"), AlarmEvaluationState.empty(), 2);
-        var second = service.evaluate(measure(1, "10", AlarmReading.Direction.ABOVE,
-                "10", "20"), first.state(), 2);
+        var first =
+                service.evaluate(
+                        measure(0, "10", AlarmReading.Direction.ABOVE, "10", "20"),
+                        AlarmEvaluationState.empty(),
+                        2);
+        var second =
+                service.evaluate(
+                        measure(1, "10", AlarmReading.Direction.ABOVE, "10", "20"),
+                        first.state(),
+                        2);
         assertEquals(AlarmEvaluationResult.Transition.OCCUR, second.transition());
     }
 
     @Test
     void invalidLimitOrderAndIncompleteStateRuleAreRejected() {
-        assertThrows(IllegalArgumentException.class, () -> service.evaluate(
-                measure(0, "12", AlarmReading.Direction.ABOVE, "20", "10"),
-                AlarmEvaluationState.empty()));
-        assertThrows(IllegalArgumentException.class, () -> service.evaluate(
-                state(0, "1", 1, null), AlarmEvaluationState.empty()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        service.evaluate(
+                                measure(0, "12", AlarmReading.Direction.ABOVE, "20", "10"),
+                                AlarmEvaluationState.empty()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.evaluate(state(0, "1", 1, null), AlarmEvaluationState.empty()));
     }
 
     private AlarmEvaluationResult accept(AlarmReading reading, AlarmEvaluationState previous) {
@@ -145,15 +187,60 @@ class AlarmDecisionServiceTest {
         return result;
     }
 
-    private AlarmReading measure(int minute, String value, AlarmReading.Direction direction,
-            String caution, String critical) {
-        return new AlarmReading(1, START.plusMinutes(minute), AlarmReading.Kind.MEASUREMENT,
-                new BigDecimal(value), direction, new BigDecimal(caution), new BigDecimal(critical),
-                null, null);
+    private AlarmReading measure(
+            int minute,
+            String value,
+            AlarmReading.Direction direction,
+            String caution,
+            String critical) {
+        return new AlarmReading(
+                1,
+                START.plusMinutes(minute),
+                AlarmReading.Kind.MEASUREMENT,
+                new BigDecimal(value),
+                direction,
+                new BigDecimal(caution),
+                new BigDecimal(critical),
+                null,
+                null);
     }
 
     private AlarmReading state(int minute, String value, Integer alarmValue, AlarmGrade grade) {
-        return new AlarmReading(1, START.plusMinutes(minute), AlarmReading.Kind.STATE,
-                new BigDecimal(value), null, null, null, alarmValue, grade);
+        return new AlarmReading(
+                1,
+                START.plusMinutes(minute),
+                AlarmReading.Kind.STATE,
+                new BigDecimal(value),
+                null,
+                null,
+                null,
+                alarmValue,
+                grade);
+    }
+
+    @org.junit.jupiter.api.Test
+    void normalRecoveryUsesItsOwnConfiguredStreak() {
+        var now = java.time.LocalDateTime.of(2026, 11, 17, 9, 0);
+        var reading =
+                new AlarmReading(
+                        1,
+                        now,
+                        AlarmReading.Kind.MEASUREMENT,
+                        new java.math.BigDecimal("5"),
+                        AlarmReading.Direction.ABOVE,
+                        new java.math.BigDecimal("10"),
+                        new java.math.BigDecimal("20"),
+                        null,
+                        null);
+        var previous =
+                new AlarmEvaluationState(
+                        now.minusSeconds(3),
+                        0,
+                        0,
+                        1,
+                        new AlarmEvaluationState.OpenAlarm(AlarmGrade.CRITICAL, false));
+        var result = new AlarmDecisionService().evaluate(reading, previous, 3, 2);
+        org.junit.jupiter.api.Assertions.assertEquals(
+                AlarmEvaluationResult.Transition.RECOVER, result.transition());
     }
 }

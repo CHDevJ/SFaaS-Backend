@@ -1,0 +1,67 @@
+package com.sfaasproject.stf.part.controller;
+
+import com.sfaasproject.stf.operations.dto.BContract.*;
+import com.sfaasproject.stf.operations.port.BReadPort.*;
+import com.sfaasproject.stf.operations.service.*;
+
+import jakarta.validation.Valid;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.*;
+
+@RestController
+@RequestMapping("/api/v1")
+@ConditionalOnProperty(name = "stf.backend-b.enabled", havingValue = "true")
+public class PartController {
+    private final BReadService reads;
+    private final PartApplicationService commands;
+
+    public PartController(BReadService reads, PartApplicationService commands) {
+        this.reads = reads;
+        this.commands = commands;
+    }
+
+    @GetMapping("/equipment/{equipmentId}/parts")
+    public InstalledPartListResponse getEquipmentParts(
+            @PathVariable("equipmentId") Long equipmentId) {
+        BAccess.current();
+        return reads.getEquipmentParts(new GetEquipmentPartsQuery(equipmentId));
+    }
+
+    @GetMapping("/parts/usage")
+    public PartUsagePageResponse getPartUsage(
+            @RequestParam(name = "lineId", required = false) Long lineId,
+            @RequestParam(name = "processId", required = false) Long processId,
+            @RequestParam(name = "equipmentId", required = false) Long equipmentId,
+            @RequestParam(name = "status", required = false) PartUsageStatus status,
+            @RequestParam(name = "page", required = false, defaultValue = "0") Integer page,
+            @RequestParam(name = "size", required = false, defaultValue = "20") Integer size) {
+        BAccess.current();
+        return reads.getPartUsage(
+                new GetPartUsageQuery(lineId, processId, equipmentId, status, page, size));
+    }
+
+    @GetMapping("/equipment/{equipmentId}/parts/{partId}/replacements")
+    public PartReplacementHistoryResponse getPartReplacementHistories(
+            @PathVariable("equipmentId") Long equipmentId,
+            @PathVariable("partId") Long partId,
+            @RequestParam(name = "from", required = false) OffsetDateTime from,
+            @RequestParam(name = "to", required = false) OffsetDateTime to) {
+        BAccess.current();
+        return reads.getPartReplacementHistories(
+                new GetPartReplacementHistoriesQuery(equipmentId, partId, from, to));
+    }
+
+    @PostMapping("/equipment/{equipmentId}/parts/{partId}/replacements")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PartReplacementResponse createPartReplacement(
+            @PathVariable("equipmentId") Long equipmentId,
+            @PathVariable("partId") Long partId,
+            @Valid @RequestBody PartReplacementRequest request) {
+        BAccess.current();
+        return commands.createPartReplacement(equipmentId, partId, request);
+    }
+}

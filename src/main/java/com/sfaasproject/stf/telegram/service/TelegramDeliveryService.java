@@ -4,9 +4,17 @@ import java.time.Duration;
 
 /** Called after the originating transaction commits; failure stays in the delivery result. */
 public class TelegramDeliveryService {
-    @FunctionalInterface public interface Sender { void send(String chatId, String message) throws Exception; }
-    @FunctionalInterface public interface Delay { void waitFor(Duration duration) throws InterruptedException; }
-    public record DeliveryResult(boolean successful, int retryCount, String failureReason) { }
+    @FunctionalInterface
+    public interface Sender {
+        void send(String chatId, String message) throws Exception;
+    }
+
+    @FunctionalInterface
+    public interface Delay {
+        void waitFor(Duration duration) throws InterruptedException;
+    }
+
+    public record DeliveryResult(boolean successful, int retryCount, String failureReason) {}
 
     private final Sender sender;
     private final Delay delay;
@@ -39,6 +47,6 @@ public class TelegramDeliveryService {
 
     private String safeReason(Exception ex) {
         // Provider exceptions can contain token, chat ID or request URL; never expose them.
-        return "텔레그램 발송에 실패했습니다: " + ex.getClass().getSimpleName();
+        return "텔레그램 메시지를 보내지 못했습니다. 봇 연결 상태를 확인해 주세요.";
     }
 }
