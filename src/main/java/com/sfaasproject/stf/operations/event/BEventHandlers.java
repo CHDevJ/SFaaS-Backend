@@ -17,6 +17,7 @@ public class BEventHandlers {
     private final Users users;
     private final Telegram connections;
     private final SimpMessagingTemplate socket;
+    private final Settings settings;
 
     public BEventHandlers(
             EventClaims claims,
@@ -27,6 +28,19 @@ public class BEventHandlers {
             Users users,
             Telegram connections,
             SimpMessagingTemplate socket) {
+        this(claims, tx, inventory, alarms, telegram, users, connections, socket, null);
+    }
+
+    public BEventHandlers(
+            EventClaims claims,
+            UnitOfWork tx,
+            InventoryRuntime inventory,
+            AlarmApplicationService alarms,
+            TelegramApplicationService telegram,
+            Users users,
+            Telegram connections,
+            SimpMessagingTemplate socket,
+            Settings settings) {
         this.claims = claims;
         this.tx = tx;
         this.inventory = inventory;
@@ -35,6 +49,7 @@ public class BEventHandlers {
         this.users = users;
         this.connections = connections;
         this.socket = socket;
+        this.settings = settings;
     }
 
     @EventListener
@@ -70,7 +85,8 @@ public class BEventHandlers {
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void alarm(BEvents.AlarmChanged event) {
-        socket.convertAndSend("/topic/alarms", event);
+        var message = BStompMessages.alarm(event);
+        if (message != null) socket.convertAndSend("/topic/alarms", message);
         if (event.eventType().equals("OCCUR")
                 || event.eventType().equals("GRADE_UP")
                 || event.eventType().equals("RENOTIFY")) {
@@ -101,25 +117,33 @@ public class BEventHandlers {
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void counts(BEvents.AlarmCounts event) {
-        socket.convertAndSend("/topic/alarm-counts", event);
+        socket.convertAndSend(
+                "/topic/alarm-counts",
+                new BStompMessages.AlarmCountMessage(
+                        event.eventId(), event.sequence(), alarms.activeCount()));
     }
 
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void effect(BEvents.EffectChanged event) {
-        socket.convertAndSend("/topic/alarm-effects/" + event.alarmId(), event);
+        // Keep old outbox events consumable; the removed v5 topic is not public in v7.
     }
 
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void inventory(BEvents.InventoryChanged event) {
-        socket.convertAndSend("/topic/inventory", event);
+        var thresholds = new BStompMessages.StageThresholds(
+                settings == null ? 30 : settings.integer("STOCK_LEVEL_MIN", 30),
+                settings == null ? 10 : settings.integer("STOCK_DANGER_MIN", 10));
+        socket.convertAndSend("/topic/inventory", BStompMessages.inventory(event, thresholds));
     }
 
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notification(BEvents.Notification event) {
-        socket.convertAndSendToUser(Long.toString(event.userId()), "/queue/notifications", event);
+        var message = BStompMessages.notification(event);
+        if (message != null)
+            socket.convertAndSendToUser(Long.toString(event.userId()), "/queue/notifications", message);
         notifySafely(
                 event.eventId(), event.userId(), event.alarmId(), event.type(), event.message());
     }

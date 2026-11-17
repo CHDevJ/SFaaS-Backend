@@ -64,6 +64,8 @@ public final class BPorts {
         List<Long> verifyingInLine(long lineId);
 
         int unacknowledgedCount();
+
+        int activeCount();
     }
 
     public record Part(long id, long equipmentId, String name) {}

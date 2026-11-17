@@ -48,6 +48,19 @@ class JdbcBFlowTest {
     ApplicationEventPublisher publisher;
     BEventPublisher events;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "UNACKNOWLEDGED,1", "ACKNOWLEDGED,1", "ACTION,1", "CLOSED,0"
+    })
+    void activeCountIncludesEveryNonClosedStateAndExcludesDeletedEquipment(String state, int expected) {
+        jdbc.update("UPDATE alarm SET process_state=? WHERE alarm_id=1", state);
+        assertEquals(expected, alarms.activeCount());
+        assertEquals(expected, commands.activeCount());
+        jdbc.update("UPDATE equipment SET deleted_at=? WHERE equipment_id=1",
+                java.sql.Timestamp.valueOf(now.toLocalDateTime()));
+        assertEquals(0, alarms.activeCount());
+    }
+
     @BeforeEach
     void setup() throws Exception {
         var source =
