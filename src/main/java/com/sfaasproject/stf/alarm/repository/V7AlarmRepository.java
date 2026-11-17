@@ -20,6 +20,12 @@ public class V7AlarmRepository {
         return db.rows("SELECT * FROM alarm ORDER BY occurred_at DESC,alarm_id DESC");
     }
 
+    public List<Map<String, Object>> activeFaults() {
+        return db.rows(
+                "SELECT * FROM alarm WHERE process_state='ACTIVE' AND grade='CRITICAL' AND"
+                    + " value_state='ABNORMAL' ORDER BY occurred_at,alarm_id");
+    }
+
     public Map<String, Object> find(long id) {
         return db.one("SELECT * FROM alarm WHERE alarm_id=?", id);
     }
@@ -31,7 +37,7 @@ public class V7AlarmRepository {
     public Map<String, Object> action(long id) {
         return db.one(
                 "SELECT * FROM alarm_action WHERE alarm_id=? ORDER BY acted_at DESC,action_id DESC"
-                    + " LIMIT 1",
+                        + " LIMIT 1",
                 id);
     }
 
@@ -42,8 +48,8 @@ public class V7AlarmRepository {
     public boolean complete(long id, long version, Action action) {
         if (db.update(
                         "UPDATE alarm SET"
-                            + " process_state='CLOSED',acted_at=?,closed_at=?,version=version+1"
-                            + " WHERE alarm_id=? AND process_state='ACTIVE' AND version=?",
+                                + " process_state='CLOSED',acted_at=?,closed_at=?,version=version+1"
+                                + " WHERE alarm_id=? AND process_state='ACTIVE' AND version=?",
                         time(action.closedAt()),
                         time(action.closedAt()),
                         id,
@@ -61,7 +67,7 @@ public class V7AlarmRepository {
                 time(action.closedAt()));
         db.update(
                 "INSERT INTO alarm_log(alarm_id,event_type,actor_id,content,created_at) VALUES"
-                    + " (?,'CLOSE',?,?,?)",
+                        + " (?,'CLOSE',?,?,?)",
                 id,
                 action.handledBy().userId(),
                 action.actionContent(),
@@ -100,7 +106,7 @@ public class V7AlarmRepository {
     public void value(long id, boolean recovered, OffsetDateTime at) {
         db.update(
                 "UPDATE alarm SET value_state=?,recovered_at=?,version=version+1 WHERE alarm_id=?"
-                    + " AND process_state='ACTIVE'",
+                        + " AND process_state='ACTIVE'",
                 recovered ? "RECOVERED" : "ABNORMAL",
                 recovered ? time(at) : null,
                 id);
@@ -109,7 +115,7 @@ public class V7AlarmRepository {
     public void escalate(long id, OffsetDateTime at) {
         db.update(
                 "UPDATE alarm SET grade='CRITICAL',grade_changed_at=?,version=version+1 WHERE"
-                    + " alarm_id=? AND process_state='ACTIVE'",
+                        + " alarm_id=? AND process_state='ACTIVE'",
                 time(at),
                 id);
     }

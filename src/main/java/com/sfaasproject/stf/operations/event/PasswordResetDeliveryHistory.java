@@ -60,6 +60,6 @@ public class PasswordResetDeliveryHistory {
                         + "send_result,fail_reason,retry_count,sent_at) VALUES (?,?,?,?,?,?,?,?)",
                 result.accountId(), result.receiverName(), "PASSWORD_RESET", REDACTED_MESSAGE,
                 result.successful() ? "SUCCESS" : "FAILURE", result.successful() ? null : FAILURE_REASON,
-                result.retryCount(), result.attemptedAt().toLocalDateTime());
+                result.retryCount(), com.sfaasproject.stf.operations.adapter.JdbcBDatabase.time(result.attemptedAt()));
     }
 }

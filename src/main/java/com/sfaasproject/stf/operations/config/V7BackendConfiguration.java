@@ -62,8 +62,33 @@ public class V7BackendConfiguration {
             JdbcBDatabase db,
             V7AlarmService alarms,
             ClosedAlarmStatisticsService metrics,
-            StopCauseStatisticsService causes) {
-        return new V7StatisticsService(context, db, alarms, metrics, causes);
+            StopCauseStatisticsService causes,
+            ActualLossCalculator actualLoss) {
+        return new V7StatisticsService(context, db, alarms, metrics, causes, actualLoss);
+    }
+
+    @Bean
+    public AssemblyStopRecorder assemblyStopRecorder(
+            JdbcBDatabase db,
+            V7Context context,
+            V7AlarmRepository alarms,
+            ActualLossCalculator loss,
+            UnitOfWork tx) {
+        return new AssemblyStopRecorder(
+                new com.sfaasproject.stf.statistics.repository.JdbcAssemblyStopObservationQuery(
+                        db, context, alarms),
+                new com.sfaasproject.stf.statistics.repository.AssemblyStopRepository(db),
+                loss,
+                tx);
+    }
+
+    @Bean
+    @ConditionalOnProperty(
+            name = "stf.backend-b.jobs-enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public AssemblyStopJobs assemblyStopJobs(AssemblyStopRecorder recorder) {
+        return new AssemblyStopJobs(recorder);
     }
 
     @Bean

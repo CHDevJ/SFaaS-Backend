@@ -111,6 +111,15 @@ class PasswordResetDeliveryIntegrationTest {
                 .param("date",LocalDate.now(clock).toString())).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.summary.totalCount").value(1));
     }
+    @Test void utcSerializedDeliveryIsStoredAndQueriedOnTheKoreanCalendarDate() throws Exception {
+        var at=OffsetDateTime.parse("2026-11-17T16:00:00Z");
+        var event=new PasswordResetDeliveryRecorded("kst-date-regression",target.getId(),target.getName(),true,0,at);
+        new TransactionTemplate(transactions).executeWithoutResult(status->events.publishEvent(event));
+        assertEquals(LocalDateTime.of(2026,11,18,1,0),jdbc.queryForObject("SELECT sent_at FROM notification_log",java.sql.Timestamp.class).toLocalDateTime());
+        mvc.perform(get("/api/v1/system/telegram/deliveries").header("Authorization",bearer(admin)).param("date","2026-11-18"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.summary.totalCount").value(1));
+    }
+
     @Test void failedDeliveryRemainsInHistoryDespitePasswordRollback(CapturedOutput output) throws Exception {
         provider(new DeliveryResult(false,1,"untrusted provider detail"));
         mvc.perform(post(path()).header("Authorization",bearer(admin))).andExpect(status().is(422))

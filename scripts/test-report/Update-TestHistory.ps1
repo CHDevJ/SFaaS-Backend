@@ -26,7 +26,7 @@ $hash=[Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($i
 $runId='RUN-'+[Convert]::ToHexString($hash).Substring(0,12)
 $history=if(Test-Path -LiteralPath $file){Get-Content -Raw -LiteralPath $file|ConvertFrom-Json}else{[pscustomobject]@{formatVersion=1;runs=@()}}
 if(@($history.runs|Where-Object id -eq $runId).Count){Write-Host "Already recorded: $runId";return}
-$run=[ordered]@{id=$runId;version=$Version;label=$Label;recordedAt=[DateTimeOffset]::Now.ToString('o');suiteTimestamps=@($stamps|Sort-Object -Unique);command=$Command;buildExitCode=$BuildExitCode;classes=$suites.Count;cases=@($cases);note='JUnit XML 판정. 요청 본문·인증값·실패 스택 원문 제외.'}
+$run=[ordered]@{id=$runId;version=$Version;label=$Label;recordedAt=[DateTimeOffset]::Now.ToString('o');suiteTimestamps=@($stamps|Sort-Object -Unique);command=$Command;buildExitCode=$BuildExitCode;classes=$suites.Count;gitCommit=((& git -C $root rev-parse HEAD) -join "");cases=@($cases);note='JUnit XML 판정. 요청 본문·인증값·실패 스택 원문 제외.'}
 $history.runs=@($history.runs)+$run
 [IO.File]::WriteAllText($file,($history|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
 Write-Host "Accumulated: $runId / $($cases.Count) tests"

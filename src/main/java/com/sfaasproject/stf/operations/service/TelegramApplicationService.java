@@ -122,7 +122,7 @@ public class TelegramApplicationService {
         Checks.range(page, 0, Integer.MAX_VALUE, "page");
         Checks.range(size, 1, 100, "size");
         return store.deliveries(
-                date == null ? LocalDate.now(clock) : date,
+                date == null ? LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))) : date,
                 result,
                 page == null ? 0 : page,
                 size == null ? 20 : size);

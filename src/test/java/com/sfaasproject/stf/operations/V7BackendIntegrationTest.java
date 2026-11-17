@@ -80,6 +80,8 @@ class V7BackendIntegrationTest {
     }
 
     @Autowired com.sfaasproject.stf.equipment.service.V7EquipmentAlarmBridge equipmentBridge;
+    @Autowired com.sfaasproject.stf.statistics.service.AssemblyStopRecorder stopRecorder;
+    @Autowired BEventPublisher events;
     @Autowired MockMvc mvc;
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtAccessTokenService jwt;
@@ -100,6 +102,7 @@ class V7BackendIntegrationTest {
         for (String table :
                 List.of(
                         "system_setting",
+                        "assembly_stop",
                         "backend_event_outbox",
                         "backend_event_claim",
                         "notification_log",
@@ -153,7 +156,7 @@ class V7BackendIntegrationTest {
                     now.minusDays(10).toLocalDateTime());
             jdbc.update(
                     "INSERT INTO equipment_state(equipment_id,status,status_since,last_received_at)"
-                        + " VALUES (?,?,?,?)",
+                            + " VALUES (?,?,?,?)",
                     n,
                     n == 1 ? "FAULT" : "RUNNING",
                     now.toLocalDateTime(),
@@ -180,7 +183,7 @@ class V7BackendIntegrationTest {
                     n == 5 ? 60 : 10);
             jdbc.update(
                     "INSERT INTO equipment_status_history(equipment_id,status,started_at,ended_at)"
-                        + " VALUES (?,'RUNNING',?,?)",
+                            + " VALUES (?,'RUNNING',?,?)",
                     n,
                     now.minusHours(1).toLocalDateTime(),
                     now.toLocalDateTime());
@@ -197,13 +200,13 @@ class V7BackendIntegrationTest {
                     + " (101,1,'coolant_temp','온도','MEASUREMENT',10,20,'ABOVE',2),(102,1,'coolant_flow','유량','MEASUREMENT',8,5,'BELOW',3)");
         jdbc.update(
                 "INSERT INTO"
-                    + " measurement_latest(data_item_id,measured_value,measured_at,received_at)"
-                    + " VALUES (101,30,?,?)",
+                        + " measurement_latest(data_item_id,measured_value,measured_at,received_at)"
+                        + " VALUES (101,30,?,?)",
                 now.toLocalDateTime(),
                 now.toLocalDateTime());
         jdbc.update(
                 "INSERT INTO measurement(data_item_id,measured_at,measured_value) VALUES"
-                    + " (101,?,30)",
+                        + " (101,?,30)",
                 now.toLocalDateTime());
         jdbc.update(
                 "INSERT INTO"
@@ -245,7 +248,7 @@ class V7BackendIntegrationTest {
                         .entrySet())
             jdbc.update(
                     "INSERT INTO system_setting(setting_key,name,setting_group,setting_value)"
-                        + " VALUES (?,?,?,?)",
+                            + " VALUES (?,?,?,?)",
                     e.getKey(),
                     e.getKey(),
                     e.getKey().equals("UNIT_PRICE")
@@ -299,12 +302,12 @@ class V7BackendIntegrationTest {
     void communicationTimeoutInvalidatesForecastAndRecoveryResumesIt() throws Exception {
         jdbc.update(
                 "INSERT INTO"
-                    + " data_item(data_item_id,equipment_id,item_code,name,item_kind,item_role)"
-                    + " VALUES (52,5,'run_signal','가동 신호','STATE','RUN_SIGNAL')");
+                        + " data_item(data_item_id,equipment_id,item_code,name,item_kind,item_role)"
+                        + " VALUES (52,5,'run_signal','가동 신호','STATE','RUN_SIGNAL')");
         jdbc.update(
                 "INSERT INTO"
-                    + " measurement_latest(data_item_id,measured_value,measured_at,received_at)"
-                    + " VALUES (52,1,?,?)",
+                        + " measurement_latest(data_item_id,measured_value,measured_at,received_at)"
+                        + " VALUES (52,1,?,?)",
                 now.toLocalDateTime(),
                 now.toLocalDateTime());
         ((MutableClock) clock).set(now.plusSeconds(30).toInstant());
@@ -326,14 +329,14 @@ class V7BackendIntegrationTest {
         int transitions =
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM equipment_status_history WHERE"
-                            + " status='COMMUNICATION_LOST'",
+                                + " status='COMMUNICATION_LOST'",
                         Integer.class);
         equipmentBridge.refreshCommunication();
         assertEquals(
                 transitions,
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM equipment_status_history WHERE"
-                            + " status='COMMUNICATION_LOST'",
+                                + " status='COMMUNICATION_LOST'",
                         Integer.class));
         ingest(
                 "as-reconnected",
@@ -346,6 +349,283 @@ class V7BackendIntegrationTest {
                 "RUNNING",
                 jdbc.queryForObject(
                         "SELECT status FROM equipment_state WHERE equipment_id=5", String.class));
+    }
+
+    @Test
+    void actualLossAggregatesBeforeRoundingAndKeepsHistoricalSnapshots() throws Exception {
+        jdbc.update(
+                "INSERT INTO"
+                    + " assembly_stop(started_at,ended_at,cause_equipment_id,hourly_output,unit_price)"
+                    + " VALUES (?,?,1,1080,1),(?,?,1,1080,1)",
+                now.minusSeconds(2).toLocalDateTime(),
+                now.minusSeconds(1).toLocalDateTime(),
+                now.minusSeconds(1).toLocalDateTime(),
+                now.toLocalDateTime());
+        mvc.perform(
+                        get("/api/v1/statistics/losses")
+                                .param("from", now.minusMinutes(1).toString())
+                                .param("to", now.plusSeconds(1).toString())
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.todayLossAmount").value(1))
+                .andExpect(jsonPath("$.data.daily[0].lossAmount").value(1));
+        mvc.perform(
+                        get("/api/v1/statistics/equipment-rankings")
+                                .param("from", now.minusMinutes(1).toString())
+                                .param("to", now.plusSeconds(1).toString())
+                                .param("sortBy", "lossAmount")
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].equipmentId").value(1))
+                .andExpect(jsonPath("$.data[0].lossAmount").value(1));
+        jdbc.update(
+                "UPDATE system_setting SET setting_value='99999' WHERE setting_key IN"
+                        + " ('HOURLY_OUTPUT','UNIT_PRICE')");
+        mvc.perform(
+                        get("/api/v1/statistics/losses")
+                                .param("from", now.minusMinutes(1).toString())
+                                .param("to", now.plusSeconds(1).toString())
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.todayLossAmount").value(1));
+    }
+
+    @Test
+    void assemblyFaultStartsOneActualStopAndRecoveryUsesOriginalCostSnapshot() throws Exception {
+        jdbc.update(
+                "UPDATE equipment_state SET status='FAULT',status_since=? WHERE equipment_id=5",
+                now.toLocalDateTime());
+        stopRecorder.refresh();
+        stopRecorder.refresh();
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        assertEquals(
+                5,
+                jdbc.queryForObject("SELECT cause_equipment_id FROM assembly_stop", Integer.class));
+        assertNull(jdbc.queryForObject("SELECT ended_at FROM assembly_stop", Object.class));
+        jdbc.update("UPDATE system_setting SET setting_value='1' WHERE setting_key='UNIT_PRICE'");
+        ((MutableClock) clock).set(now.plusMinutes(20).toInstant());
+        mvc.perform(
+                        get("/api/v1/statistics/losses")
+                                .param("from", now.toString())
+                                .param("to", now.plusMinutes(30).toString())
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.daily[0].lossAmount").value(6000000));
+        jdbc.update(
+                "UPDATE equipment_state SET status='RUNNING',status_since=? WHERE equipment_id=5",
+                now.plusMinutes(20).toLocalDateTime());
+        stopRecorder.refresh();
+        stopRecorder.refresh();
+        assertEquals(
+                6000000, jdbc.queryForObject("SELECT loss_amount FROM assembly_stop", Long.class));
+        assertEquals(
+                50000, jdbc.queryForObject("SELECT unit_price FROM assembly_stop", Long.class));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+    }
+
+    @Test
+    void zeroStockStartsStopWithSourceAlarmAndClosesOnlyAfterEveryCauseClears() {
+        jdbc.update("UPDATE stock_history SET qty=0 WHERE line_id=1");
+        stopRecorder.refresh();
+        assertEquals(
+                1,
+                jdbc.queryForObject("SELECT shortage_line_id FROM assembly_stop", Integer.class));
+        assertEquals(
+                100,
+                jdbc.queryForObject("SELECT cause_alarm_id FROM assembly_stop", Integer.class));
+        jdbc.update(
+                "UPDATE equipment_state SET status='FAULT',status_since=? WHERE equipment_id=5",
+                now.toLocalDateTime());
+        jdbc.update("UPDATE stock_history SET qty=1 WHERE line_id=1");
+        ((MutableClock) clock).set(now.plusMinutes(1).toInstant());
+        stopRecorder.refresh();
+        assertNull(jdbc.queryForObject("SELECT ended_at FROM assembly_stop", Object.class));
+        jdbc.update("UPDATE equipment_state SET status='RUNNING' WHERE equipment_id=5");
+        stopRecorder.refresh();
+        assertEquals(
+                300000, jdbc.queryForObject("SELECT loss_amount FROM assembly_stop", Long.class));
+    }
+
+    @Test
+    void unattributedShortageIsIncludedInItsLineStatisticsWithoutInventingEquipment()
+            throws Exception {
+        jdbc.update("UPDATE stock_history SET qty=0 WHERE line_id=2");
+        stopRecorder.refresh();
+        ((MutableClock) clock).set(now.plusMinutes(1).toInstant());
+        mvc.perform(
+                        get("/api/v1/statistics/losses")
+                                .param("from", now.toString())
+                                .param("to", now.plusMinutes(2).toString())
+                                .param("lineId", "2")
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.daily[0].lossAmount").value(300000))
+                .andExpect(jsonPath("$.data.daily[0].causeEquipmentId").isEmpty());
+    }
+
+    @Test
+    void communicationLossAloneDoesNotInventAnActualStopOrAnUnverifiedRecovery() {
+        jdbc.update("UPDATE equipment_state SET status='COMMUNICATION_LOST' WHERE equipment_id=5");
+        stopRecorder.refresh();
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        jdbc.update("UPDATE stock_history SET qty=0 WHERE line_id=1");
+        stopRecorder.refresh();
+        jdbc.update("UPDATE stock_history SET qty=300 WHERE line_id=1");
+        ((MutableClock) clock).set(now.plusMinutes(1).toInstant());
+        stopRecorder.refresh();
+        assertNull(jdbc.queryForObject("SELECT ended_at FROM assembly_stop", Object.class));
+        jdbc.update("UPDATE equipment_state SET status='RUNNING' WHERE equipment_id=5");
+        stopRecorder.refresh();
+        assertNotNull(jdbc.queryForObject("SELECT ended_at FROM assembly_stop", Object.class));
+    }
+
+    @Test
+    void concurrentStopReconciliationCreatesOneRowAndFailedOuterTransactionRollsBack()
+            throws Exception {
+        jdbc.update("UPDATE stock_history SET qty=0 WHERE line_id=1");
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        tx.execute(
+                                () -> {
+                                    stopRecorder.refresh();
+                                    throw new IllegalStateException("rollback");
+                                }));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var one = executor.submit(() -> stopRecorder.refresh());
+            var two = executor.submit(() -> stopRecorder.refresh());
+            one.get(10, TimeUnit.SECONDS);
+            two.get(10, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+    }
+
+    @Test
+    void reconciliationDoesNotBackdateUnknownCostsOrPredictiveDepletion() {
+        stopRecorder.refresh();
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        jdbc.update(
+                "UPDATE stock_history SET qty=0,recorded_at=? WHERE line_id=1",
+                now.minusDays(1).toLocalDateTime());
+        stopRecorder.refresh();
+        assertEquals(
+                java.sql.Timestamp.valueOf(now.toLocalDateTime()),
+                jdbc.queryForObject(
+                        "SELECT started_at FROM assembly_stop", java.sql.Timestamp.class));
+    }
+
+    @Test
+    void committedEquipmentEventCreatesStopAndRollbackOrReplayDoesNotDuplicateIt() {
+        var event =
+                new V7Events.EquipmentCommitted(
+                        "assembly-fault",
+                        1,
+                        5,
+                        com.sfaasproject.stf.operations.dto.V7Contract.EquipmentStatus.FAULT,
+                        now,
+                        now);
+        assertThrows(
+                IllegalStateException.class,
+                () ->
+                        tx.execute(
+                                () -> {
+                                    jdbc.update(
+                                            "UPDATE equipment_state SET"
+                                                    + " status='FAULT',status_since=? WHERE"
+                                                    + " equipment_id=5",
+                                            now.toLocalDateTime());
+                                    events.publish(event);
+                                    throw new IllegalStateException("rollback");
+                                }));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        tx.execute(
+                () -> {
+                    jdbc.update(
+                            "UPDATE equipment_state SET status='FAULT',status_since=? WHERE"
+                                    + " equipment_id=5",
+                            now.toLocalDateTime());
+                    events.publish(event);
+                    assertEquals(
+                            0,
+                            jdbc.queryForObject(
+                                    "SELECT COUNT(*) FROM assembly_stop", Integer.class));
+                    return null;
+                });
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        tx.execute(
+                () -> {
+                    events.publish(event);
+                    return null;
+                });
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+    }
+
+    @Test
+    void actualLossClipsAcrossMidnightAndCountsOverlappingStopsOnce() throws Exception {
+        var start = now.withHour(23).withMinute(59).withSecond(59);
+        var midnight = start.plusSeconds(1);
+        ((MutableClock) clock).set(midnight.plusSeconds(5).toInstant());
+        String fresh = "Bearer " + jwt.issue(1, Permission.ADMIN, clock.instant()).value();
+        jdbc.update(
+                "INSERT INTO"
+                    + " assembly_stop(started_at,ended_at,cause_equipment_id,hourly_output,unit_price)"
+                    + " VALUES (?,?,1,3600,1),(?,?,2,3600,1)",
+                start.toLocalDateTime(),
+                start.plusSeconds(3).toLocalDateTime(),
+                midnight.toLocalDateTime(),
+                midnight.plusSeconds(3).toLocalDateTime());
+        mvc.perform(
+                        get("/api/v1/statistics/losses")
+                                .param("from", start.toString())
+                                .param("to", midnight.plusSeconds(5).toString())
+                                .header("Authorization", fresh))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.todayLossAmount").value(3))
+                .andExpect(jsonPath("$.data.weeklyLossAmount").value(4))
+                .andExpect(jsonPath("$.data.daily[0].lossAmount").value(1))
+                .andExpect(jsonPath("$.data.daily[1].lossAmount").value(3));
+        mvc.perform(
+                        get("/api/v1/statistics/equipment-rankings")
+                                .param("from", start.toString())
+                                .param("to", midnight.plusSeconds(5).toString())
+                                .param("sortBy", "lossAmount")
+                                .header("Authorization", fresh))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].equipmentId").value(1))
+                .andExpect(jsonPath("$.data[0].lossAmount").value(3))
+                .andExpect(jsonPath("$.data[1].equipmentId").value(2))
+                .andExpect(jsonPath("$.data[1].lossAmount").value(1));
+        mvc.perform(
+                        get("/api/v1/statistics/losses")
+                                .param("from", start.toString())
+                                .param("to", midnight.plusSeconds(5).toString())
+                                .param("lineId", "2")
+                                .header("Authorization", fresh))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.todayLossAmount").value(1))
+                .andExpect(jsonPath("$.data.daily[1].lossAmount").value(1));
+        mvc.perform(
+                        get("/api/v1/statistics/equipment-rankings")
+                                .param("from", start.toString())
+                                .param("to", midnight.plusSeconds(5).toString())
+                                .param("sortBy", "lossAmount")
+                                .param("lineId", "2")
+                                .header("Authorization", fresh))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].equipmentId").value(2))
+                .andExpect(jsonPath("$.data[0].lossAmount").value(1));
+    }
+
+    @Test
+    void missingAssemblyMetadataDoesNotInventAStoppedAssemblyLine() {
+        jdbc.update("UPDATE line SET deleted_at=? WHERE line_id=5", now.toLocalDateTime());
+        jdbc.update("UPDATE stock_history SET qty=0 WHERE line_id=1");
+        stopRecorder.refresh();
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
     }
 
     @Test
@@ -371,7 +651,7 @@ class V7BackendIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
                                 "{\"equipmentText\":\"자유 입력 설비\",\"actionContent\":\"조치"
-                                    + " 완료\",\"cause\":\" \"}");
+                                        + " 완료\",\"cause\":\" \"}");
         mvc.perform(request)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.processStatus").value("CLOSED"))
@@ -482,8 +762,8 @@ class V7BackendIntegrationTest {
     void resetCounterKeepsLatestStockAndSuppressesUnverifiedSpeed() throws Exception {
         jdbc.update(
                 "UPDATE measurement_latest SET"
-                    + " counter_reset_at=?,counter_status='COUNTER_RESET_PENDING' WHERE"
-                    + " data_item_id=11",
+                        + " counter_reset_at=?,counter_status='COUNTER_RESET_PENDING' WHERE"
+                        + " data_item_id=11",
                 now.minusMinutes(1).toLocalDateTime());
         mvc.perform(get("/api/v1/inventory/lines/1").header("Authorization", user))
                 .andExpect(jsonPath("$.data.quantity").value(300))
@@ -514,7 +794,7 @@ class V7BackendIntegrationTest {
     void callbackRequiresIndependentSecretIsIdempotentAndRejectsGroupChats() throws Exception {
         String body =
                 "{\"update_id\":7,\"message\":{\"text\":\"/start"
-                    + " link-code\",\"chat\":{\"id\":900}}}";
+                        + " link-code\",\"chat\":{\"id\":900}}}";
         mvc.perform(
                         post("/internal/v1/telegram/updates")
                                 .contentType(MediaType.APPLICATION_JSON)
@@ -553,7 +833,7 @@ class V7BackendIntegrationTest {
     void v7DeletionAndPermissionChangePreserveUnusedDutyHistory() throws Exception {
         jdbc.update(
                 "INSERT INTO duty(duty_id,start_date,end_date) VALUES"
-                    + " (1,'2026-11-17','2026-11-20')");
+                        + " (1,'2026-11-17','2026-11-20')");
         jdbc.update("INSERT INTO duty_member(duty_id,account_id) VALUES (1,2)");
         mvc.perform(
                         put("/api/v1/system/users/2")
@@ -694,7 +974,7 @@ class V7BackendIntegrationTest {
                 305,
                 jdbc.queryForObject(
                         "SELECT qty FROM stock_history WHERE line_id=1 ORDER BY recorded_at DESC"
-                            + " LIMIT 1",
+                                + " LIMIT 1",
                         Integer.class));
         ingest(
                 "as-production",
@@ -707,20 +987,20 @@ class V7BackendIntegrationTest {
                 304,
                 jdbc.queryForObject(
                         "SELECT qty FROM stock_history WHERE line_id=1 ORDER BY recorded_at DESC"
-                            + " LIMIT 1",
+                                + " LIMIT 1",
                         Integer.class));
         assertEquals(
                 299,
                 jdbc.queryForObject(
                         "SELECT qty FROM stock_history WHERE line_id=2 ORDER BY recorded_at DESC"
-                            + " LIMIT 1",
+                                + " LIMIT 1",
                         Integer.class));
         ingest("or-stale", "OR-06-1", "production_count", "CUMULATIVE", 999, now.minusSeconds(2));
         assertEquals(
                 304,
                 jdbc.queryForObject(
                         "SELECT qty FROM stock_history WHERE line_id=1 ORDER BY recorded_at DESC"
-                            + " LIMIT 1",
+                                + " LIMIT 1",
                         Integer.class));
         jdbc.update("UPDATE data_item SET reset_time='00:00:00' WHERE data_item_id=11");
         ingest(
@@ -734,7 +1014,7 @@ class V7BackendIntegrationTest {
                 304,
                 jdbc.queryForObject(
                         "SELECT qty FROM stock_history WHERE line_id=1 ORDER BY recorded_at DESC"
-                            + " LIMIT 1",
+                                + " LIMIT 1",
                         Integer.class));
         assertEquals(
                 1,
@@ -810,7 +1090,7 @@ class V7BackendIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(
                                     "{\"update_id\":99,\"message\":{\"text\":\"/start"
-                                        + " link-code\",\"chat\":{\"id\":900}}}");
+                                            + " link-code\",\"chat\":{\"id\":900}}}");
                 var result = mvc.perform(req).andReturn();
                 String status = Integer.toString(result.getResponse().getStatus());
                 var responses = (Map<String, Map<String, Object>>) op.get("responses");
