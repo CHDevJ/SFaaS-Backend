@@ -5,11 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sfaasproject.stf.auth.AuthTestConfig;
 import com.sfaasproject.stf.common.DomainException;
+import com.sfaasproject.stf.common.paging.PageQuery;
+import com.sfaasproject.stf.equipment.service.MasterEquipmentService;
+import com.sfaasproject.stf.equipment.service.MasterEquipmentService.Command;
+import com.sfaasproject.stf.equipment.service.MasterEquipmentView;
 import com.sfaasproject.stf.equipment.service.MasterLineService;
 import com.sfaasproject.stf.equipment.service.MasterLineService.LayoutItem;
 import com.sfaasproject.stf.equipment.service.MasterLineView;
 import com.sfaasproject.stf.telegram.service.RedisTelegramLinkTokenStore;
 import com.sfaasproject.stf.user.service.TemporaryPasswordSender;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,6 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -40,6 +47,7 @@ class MySqlMasterLineTest {
     @MockitoBean TemporaryPasswordSender temporaryPasswordSender;
 
     @Autowired MasterLineService lines;
+    @Autowired MasterEquipmentService equipment;
     @Autowired JdbcTemplate jdbc;
 
     @DynamicPropertySource
@@ -120,7 +128,49 @@ class MySqlMasterLineTest {
                 .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "LINE_HAS_EQUIPMENT");
         assertThatThrownBy(() -> lines.updateLayout(lineId, List.of(new LayoutItem(equipmentId, 999)), actor))
                 .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "PROCESS_NOT_FOUND");
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type = 'EQUIPMENT'",
-                Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM change_log WHERE target_type = 'EQUIPMENT' AND field_name = '공정 배치'
+                  AND target_name = (SELECT equip_code FROM equipment WHERE equipment_id = ?)""",
+                Integer.class, equipmentId)).isEqualTo(2);
+    }
+
+    @Test
+    void equipmentWriteFlowWorksOnMySql() {
+        long actor = jdbc.queryForObject("SELECT MIN(account_id) FROM account", Long.class);
+        Map<String, Object> place = jdbc.queryForMap("""
+                SELECT p.line_id, p.process_seq FROM process p JOIN line l ON l.line_id = p.line_id
+                WHERE l.deleted_at IS NULL ORDER BY l.sort_order, p.process_seq LIMIT 1""");
+        long lineId = ((Number) place.get("line_id")).longValue();
+        int seq = ((Number) place.get("process_seq")).intValue();
+        String code = "VX-" + UUID.randomUUID().toString().substring(0, 8);
+        byte[] png = {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1};
+
+        MasterEquipmentView created = equipment.create(new Command(code, "검증 설비", "검증기", null, lineId, seq,
+                "MQTT", OffsetDateTime.parse("2026-11-17T08:30:00.789+09:00"),
+                new MockMultipartFile("photo", "p.png", "image/png", png), false), actor);
+        assertThat(created.registeredAt()).isEqualTo(LocalDateTime.of(2026, 11, 17, 8, 30));
+        assertThat(created.photoUrl()).startsWith("/api/v1/equipment-photos/");
+        assertThatThrownBy(() -> equipment.create(new Command(code, "중복", "검증기", null, lineId, seq, "MQTT", null,
+                null, false), actor))
+                .isInstanceOf(DomainException.class)
+                .hasFieldOrPropertyWithValue("code", "EQUIPMENT_CODE_DUPLICATE");
+
+        MasterEquipmentView updated = equipment.update(created.equipmentId(), new Command(null, "검증 설비 2",
+                "검증기", "SN-1", lineId, seq, "OPC_UA", null, null, true), actor);
+        assertThat(updated.photoUrl()).isNull();
+        assertThat(updated.registeredAt()).isEqualTo(LocalDateTime.of(2026, 11, 17, 8, 30));
+
+        jdbc.update("INSERT INTO data_item(equipment_id, item_code, name) VALUES (?, 'vx_temp', '검증 온도')",
+                created.equipmentId());
+        MasterEquipmentService.EquipmentPage page = equipment.list(lineId, created.equipmentId(), false,
+                PageQuery.of(0, 20));
+        assertThat(page.items().getContent()).singleElement()
+                .extracting(MasterEquipmentView::equipmentName).isEqualTo("검증 설비 2");
+
+        equipment.delete(created.equipmentId(), actor);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM data_item WHERE equipment_id = ? AND deleted_at IS NULL",
+                Integer.class, created.equipmentId())).isZero();
+        assertThat(equipment.list(lineId, created.equipmentId(), true, PageQuery.of(0, 20)).items().getContent())
+                .singleElement().extracting(MasterEquipmentView::deletedAt).isNotNull();
     }
 }

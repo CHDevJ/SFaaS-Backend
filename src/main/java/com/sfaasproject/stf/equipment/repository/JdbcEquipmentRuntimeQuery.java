@@ -35,12 +35,14 @@ public class JdbcEquipmentRuntimeQuery implements EquipmentRuntimeQuery {
 
         Map<Long, String> statuses = new HashMap<>();
         Map<Long, LocalDateTime> since = new HashMap<>();
-        jdbc.query("SELECT equipment_id, status, status_since FROM equipment_state WHERE equipment_id IN (" + in + ")",
+        Map<Long, LocalDateTime> received = new HashMap<>();
+        jdbc.query("SELECT equipment_id, status, status_since, last_received_at FROM equipment_state"
+                        + " WHERE equipment_id IN (" + in + ")",
                 rs -> {
                     long id = rs.getLong("equipment_id");
                     statuses.put(id, rs.getString("status"));
-                    Timestamp started = rs.getTimestamp("status_since");
-                    since.put(id, started == null ? null : started.toLocalDateTime());
+                    since.put(id, local(rs.getTimestamp("status_since")));
+                    received.put(id, local(rs.getTimestamp("last_received_at")));
                 }, args);
 
         Map<Long, Integer> alarms = new HashMap<>();
@@ -53,9 +55,14 @@ public class JdbcEquipmentRuntimeQuery implements EquipmentRuntimeQuery {
         Map<Long, Runtime> result = new HashMap<>();
         for (Long id : ids) {
             if (statuses.containsKey(id) || alarms.containsKey(id)) {
-                result.put(id, new Runtime(statuses.get(id), since.get(id), alarms.getOrDefault(id, 0)));
+                result.put(id, new Runtime(statuses.get(id), since.get(id), received.get(id),
+                        alarms.getOrDefault(id, 0)));
             }
         }
         return result;
+    }
+
+    private static LocalDateTime local(Timestamp timestamp) {
+        return timestamp == null ? null : timestamp.toLocalDateTime();
     }
 }

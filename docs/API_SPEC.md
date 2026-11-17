@@ -49,8 +49,9 @@
 | P-15 | WebSocket | `/ws`, STOMP heartbeat 10초, 재연결 최대 30초 지수 백오프 |
 | P-16 | MQTT | QoS 1, retained false, 설비별 3초 묶음 메시지, messageId 24시간 중복 제거 |
 | P-17 | 내부 수집 | `X-Internal-Api-Key`, 설비별 값 1~500개, 하나라도 미등록·형식 오류면 메시지 전체 거절 |
-| P-18 | 사진 | JPG/PNG/WebP, 최대 5MB |
+| P-18 | 사진 | JPG/PNG, 최대 5MB(화면설계서 S10·ERD 기준, 2026-11-17 사용자 결정으로 WebP 제외). 서버 폴더(`app.equipment.photo-dir`)에 128비트 난수 이름으로 저장하고 DB에는 이름만 둔다. 조회는 10분 동안 열리는 HMAC-SHA256 서명 상대 주소(MST-018)로 한다 |
 | P-19 | 라인 등록 | 등록 요청에 라인 종류가 없으므로 새 라인은 부품 라인(`PART`)으로 저장한다. 조립 라인(`ASSEMBLY`)은 초기 데이터의 한 줄만 둔다(2026-11-17 사용자 결정, MST-006) |
+| P-21 | 설비 수 | MST-001의 `registeredCount`는 사용 중(삭제 안 됨)인 설비 수, `monitoredCount`는 그중 사용 중인 데이터 항목이 1개 이상 있는 설비 수. `lineId` 조건만 따른다. `includeInactive=true`는 삭제한 설비도 목록에 넣는다(2026-11-17 사용자 결정) |
 | P-20 | 라인 배치 | MST-009는 해당 라인의 설비만, 그 라인에 이미 있는 공정 순서로만 옮긴다. 다른 라인 설비는 400, 없는 공정 순서는 422 `PROCESS_NOT_FOUND`. 라인 이동은 설비 수정(MST-003)에서 한다. 공정 등록 API는 계약에 없다(2026-11-17 사용자 결정) |
 
 ## 3. 문서 간 불일치 사항
@@ -69,6 +70,8 @@
 | C-10 | v4의 2초 수집·15초 끊김과 SF5-19·V2의 3초·30초 충돌 | 설비별 3초 묶음, 30초 통신 끊김 적용 |
 | C-11 | v4의 INT-002와 SF5-19의 누적 생산 수집 충돌 | `prod_count`를 INT-001에 포함하고 INT-002를 제거 |
 | C-12 | API 상태 ACTION과 ERD 상태 ACTION_TAKEN | 공개 API는 ACTION, DB 저장값은 ACTION_TAKEN으로 변환 |
+| C-14 | 설비 입력 길이가 이전 계약(코드 100, 이름 200, 종류 100, 시리얼 200, 통신 방식 자유 문자열)과 ERD(`equip_code` 20, `name` 100, `equip_type` 50, `serial_no` 50, `comm_type` 3종)가 다름 | ERD 길이를 따르고 통신 방식은 `MODBUS_TCP`·`OPC_UA`·`MQTT`만 받는다(2026-11-17 사용자 결정, MST-002·003) |
+| C-15 | 화면설계서 S10은 등록 일시를 필수 입력으로 두고 목록에도 보이나 이전 계약에는 없음 | 요청에 선택 `registeredAt`(비우면 등록은 현재 시각, 수정은 원래 값), 응답에 `registeredAt`·`deletedAt`을 추가(2026-11-17 사용자 결정) |
 | C-13 | 라인 이름이 이전 계약은 최대 100자, ERD `line.name`은 `varchar(50) UNIQUE`이며 삭제한 라인도 줄이 남음 | 요청 최대 50자. 삭제한 라인을 포함해 이름이 겹치면 409 `LINE_NAME_DUPLICATE`(2026-11-17 사용자 결정, MST-006·007) |
 
 ## 4. 작성 시 사용한 명시적 가정
@@ -175,6 +178,7 @@
 | STA-007 | 통계 | 손실액 | GET | `/statistics/losses` | 예 | ADMIN, GENERAL | FR1209 | 기본 규칙 | P2 |
 | STA-008 | 통계 | 손실 방지 실적 | GET | `/statistics/loss-avoidance` | 예 | ADMIN, GENERAL | FR1212 | 기본 규칙 | P2 |
 | MST-001~004 | 기준정보 | 설비 조회/등록/수정/삭제 | 복수 | `/master/equipment...` | 예 | 전체 | FR1301~FR1303 | TC-MST-001~004 | P0 |
+| MST-018 | 기준정보 | 설비 사진 조회(서명 주소) | GET | `/equipment-photos/{fileName}` | 아니오(10분 서명) | 전체 | FR1302 | 기본 규칙 | P1 |
 | MST-005~008 | 기준정보 | 라인·배치 관리 | 복수 | `/master/lines...` | 예 | ADMIN, GENERAL | FR1304 | 기본 규칙 | P1 |
 | MST-009~013 | 기준정보 | 배치·데이터 항목·임계값 | 복수 | `/master/.../data-items...` | 예 | ADMIN, GENERAL | FR1304~FR1306 | 기본 규칙 | P0 |
 | MST-014~017 | 기준정보 | 장착 부품 조회/등록/수정/삭제 | 복수 | `/master/.../parts...` | 예 | 전체 | FR1307 | TC-MST-014~017 | P1 |
@@ -245,7 +249,8 @@
 
 | API ID | 요청 | 정상 응답 | 검증·업무 처리 | 주요 오류 | 구현 주의 |
 |---|---|---|---|---|---|
-| MST-001~004 | 설비 기본/설치/통신/사진 | 설비 기준정보 | 코드 중복 금지, 등록 후 코드 수정 금지, 발생 알람 있으면 삭제 거부 | EQUIPMENT_CODE_DUPLICATE, EQUIPMENT_HAS_ACTIVE_ALARM | 논리 삭제, 알람·교체 이력 보존 |
+| MST-001~004 | 설비 기본/설치/통신/사진(multipart) | 설비 기준정보와 등록/감시 설비 수 | 코드 중복 금지(삭제한 설비 포함), 등록 후 코드 수정 금지, 라인의 기존 공정 순서로만 배치, 발생 알람 있으면 삭제 거부 | LINE_NOT_FOUND, EQUIPMENT_NOT_FOUND, EQUIPMENT_CODE_DUPLICATE, PROCESS_NOT_FOUND, EQUIPMENT_HAS_ACTIVE_ALARM | 논리 삭제 시 데이터 항목·장착 부품도 함께 논리 삭제하고 알람·교체 이력 보존(화면설계서 P07). 라인 줄을 먼저 잠근 뒤 설비 줄을 잠근다. 삭제한 사람은 변경 이력에 남김. 사진 저장은 롤백되면 지우고 교체된 옛 파일은 커밋 뒤 지운다. 길이 C-14, 등록 일시 C-15, 설비 수 P-21 |
+| MST-018 | 사진 파일 이름, `expires`, `signature` | 사진 바이너리 | 로그인 없이 열리되 10분 서명 검증 | EQUIPMENT_PHOTO_NOT_FOUND | 서명 불일치·만료·파일 없음은 모두 404(P-18) |
 | MST-005~009 | 라인명(최대 50자)·표시순서·설비 배치 | 라인/배치 | 이름 중복 거부(삭제한 라인 포함), 사용 중인 설비가 있는 라인 삭제 거부, 배치는 같은 라인의 기존 공정 순서로만 이동 | LINE_NOT_FOUND, LINE_NAME_DUPLICATE, LINE_HAS_EQUIPMENT, EQUIPMENT_NOT_FOUND, PROCESS_NOT_FOUND | 순서 변경은 일괄 원자 처리. 라인 줄을 잠그고 처리하며 변경 이력(LINE, 배치는 EQUIPMENT)을 같은 트랜잭션에 기록. 삭제한 사람은 변경 이력에 남김. 새 라인 종류는 P-19 |
 | MST-009~011 | 값 종류별 항목/임계값 | 항목과 통계 참고값 | 측정/상태/누적 조건 검증, 주의가 경보보다 먼저 | INVALID_THRESHOLD_ORDER | 임계값 저장 후 다음 판정부터 적용 |
 | MST-014~017 | 부품명·규격·관리번호·수명기준·교체기준 | 장착부품 기준정보 | 삭제 시 과거 교체 기록 유지 | PART_NOT_FOUND | 논리 삭제, 단위는 수명 기준과 일치 |
@@ -274,6 +279,7 @@
 | EQUIPMENT | EQUIPMENT_NOT_FOUND | 404 | 설비를 찾을 수 없습니다. | ID 없음 | 제안 코드 |
 | EQUIPMENT | EQUIPMENT_CODE_DUPLICATE | 409 | 이미 사용 중인 설비 코드입니다. | 코드 중복 | FR1302, 제안 코드 |
 | EQUIPMENT | EQUIPMENT_HAS_ACTIVE_ALARM | 422 | 발생 중인 알람이 있어 삭제할 수 없습니다. | 삭제 규칙 | FR1303, 제안 코드 |
+| EQUIPMENT | EQUIPMENT_PHOTO_NOT_FOUND | 404 | 사진을 찾을 수 없습니다. | 서명 불일치·만료·파일 없음 | P-18, 제안 코드(2026-11-17 사용자 결정) |
 | SENSOR | DATA_ITEM_NOT_FOUND | 404 | 데이터 항목을 찾을 수 없습니다. | 항목 없음 | 제안 코드 |
 | SENSOR | INVALID_THRESHOLD_ORDER | 422 | 주의·경보 기준 순서를 확인해 주세요. | 기준 역전 | FR1306, 제안 코드 |
 | ALARM | ALARM_NOT_FOUND | 404 | 알람을 찾을 수 없습니다. | ID 없음 | 제안 코드 |
@@ -420,7 +426,7 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 | FR1209 | 손실액 | STA-007 |  |  |  | O | 화면 없음 |
 | FR1212 | 손실 방지 실적 | STA-008 |  |  |  | O | 계산식 Q-02 |
 | FR1301 | 설비 조회 | MST-001 |  |  |  | O |  |
-| FR1302 | 설비 등록/수정 | MST-002, MST-003 |  |  |  | O |  |
+| FR1302 | 설비 등록/수정 | MST-002, MST-003, MST-018 |  |  |  | O | 사진은 서명 주소로 조회 |
 | FR1303 | 설비 삭제 | MST-004 |  |  |  | O | 논리 삭제, 이력 보존 |
 | FR1304 | 라인과 배치 | MST-005~009 |  |  |  | O |  |
 | FR1305 | 데이터 항목 | MST-010~012 |  |  |  | O | 일부 화면 없음 |
@@ -464,7 +470,7 @@ Payload는 UTF-8 JSON이다. 필수 필드 누락은 dead-letter 토픽 `stf/dlq
 - 예상 손실액은 `max(0, 복구예상시각-정지예상시각) × 시간당 생산량 × 개당 금액`으로 계산한다.
 - 미확인 단계에서는 오경보 신고를 허용하지 않고 확인 단계부터 허용한다.
 - 관리자 비밀번호 초기화는 12자리 임시 비밀번호를 생성해 연결된 계정의 텔레그램으로 1회 전달하고 30분 뒤 만료한다. 미연결 계정의 전달 방법은 계정 관리 구현 전에 별도 계약으로 확정한다.
-- 사진은 JPG/PNG/WebP 5MB 이하로 받고 객체 저장소의 서명 URL은 10분 유효하다.
+- 사진은 JPG/PNG 5MB 이하로 받아 서버 폴더에 저장하고, 서버가 만든 HMAC 서명 주소는 10분 유효하다(P-18). 여러 서버로 늘리거나 객체 저장소로 옮기면 저장 위치와 서명 방식을 함께 바꾼다.
 - 운영 합의로 값을 바꿀 때 요구사항정의서, 이 문서, OpenAPI, 테스트를 같은 변경으로 갱신한다.
 
 ## 16. OpenAPI 3.0.3 YAML

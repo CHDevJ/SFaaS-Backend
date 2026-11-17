@@ -1019,6 +1019,11 @@ paths:
       tags: [MasterData]
       operationId: getMasterEquipment
       summary: 기준정보 설비 조회
+      description: |
+        라인 표시순서, 공정 순서, 설비 번호순으로 돌려준다. includeInactive=true 면 삭제한 설비(deletedAt 이 있는 설비)도 포함한다.
+        registeredCount 는 사용 중인 설비 수, monitoredCount 는 그중 사용 중인 데이터 항목이 1개 이상 있는 설비 수다(API_SPEC P-21).
+        두 수는 lineId 조건만 따르고 equipmentId·includeInactive·페이지와는 상관없다. lineId 가 없는 라인이면 404 LINE_NOT_FOUND
+        (삭제한 라인은 includeInactive=true 일 때만 허용).
       x-api-id: MST-001
       x-requirement-ids: [FR1301]
       x-nfr-ids: [NFR07, NFR08]
@@ -1040,11 +1045,14 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/MasterEquipmentPageResponse'}
+        '400': {$ref: '#/components/responses/ValidationError'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
     post:
       tags: [MasterData]
       operationId: createMasterEquipment
       summary: 설비 등록
+      description: lineId 라인에 이미 있는 공정 순서(processOrder)로만 등록한다(API_SPEC P-20). 삭제한 설비의 코드도 다시 쓸 수 없다.
       x-api-id: MST-002
       x-requirement-ids: [FR1302]
       x-nfr-ids: [NFR07, NFR09]
@@ -1064,13 +1072,30 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/MasterEquipmentResponse'}
         '400': {$ref: '#/components/responses/ValidationError'}
-        '409': {$ref: '#/components/responses/Conflict'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: LINE_NOT_FOUND. 없거나 삭제한 라인
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '409':
+          description: EQUIPMENT_CODE_DUPLICATE. 삭제한 설비를 포함해 같은 코드가 있음
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '422':
+          description: PROCESS_NOT_FOUND. 라인에 없는 공정 순서
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /master/equipment/{equipmentId}:
     put:
       tags: [MasterData]
       operationId: updateMasterEquipment
       summary: 설비 수정
-      description: equipmentCode는 등록 후 수정할 수 없다.
+      description: |
+        equipmentCode는 등록 후 수정할 수 없다(보내도 무시). lineId 를 바꾸면 다른 라인으로 옮긴다.
+        registeredAt 을 비우면 원래 값을 둔다. photo 를 보내면 사진을 바꾸고, removePhoto=true 면 지운다(둘을 함께 보내면 400).
       x-api-id: MST-003
       x-requirement-ids: [FR1302]
       x-nfr-ids: [NFR07, NFR09]
@@ -1092,12 +1117,24 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/MasterEquipmentResponse'}
         '400': {$ref: '#/components/responses/ValidationError'}
-        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: EQUIPMENT_NOT_FOUND(없거나 삭제한 설비) 또는 LINE_NOT_FOUND
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '422':
+          description: PROCESS_NOT_FOUND. 라인에 없는 공정 순서
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
     delete:
       tags: [MasterData]
       operationId: deleteMasterEquipment
       summary: 설비 논리 삭제
-      description: deletedAt과 deletedBy를 기록하고 일반 조회·판정·알림 대상에서 제외한다.
+      description: |
+        deletedAt을 기록하고 일반 조회·판정·알림 대상에서 제외한다. equipment 에 삭제한 사람 컬럼이 없으므로 deletedBy 는
+        변경 이력(change_log)에 남긴다. 그 설비의 데이터 항목과 장착 부품도 함께 논리 삭제하고, 지난 알람과 교체 이력은 남긴다(화면설계서 P07).
       x-api-id: MST-004
       x-requirement-ids: [FR1303]
       x-nfr-ids: [NFR08]
@@ -1109,8 +1146,56 @@ paths:
         - {$ref: '#/components/parameters/EquipmentIdPath'}
       responses:
         '204': {description: 논리 삭제 성공}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/BusinessRuleViolation'}
+        '422':
+          description: EQUIPMENT_HAS_ACTIVE_ALARM. 종료되지 않은 알람이 있음
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+  /equipment-photos/{fileName}:
+    get:
+      tags: [MasterData]
+      operationId: getEquipmentPhoto
+      summary: 설비 사진 조회(서명 주소)
+      description: |
+        설비 응답의 photoUrl 그대로 연다. 화면의 img 태그가 쓰도록 로그인 없이 열리지만 10분 동안만 유효한 HMAC 서명이 있어야 한다(API_SPEC P-18).
+        서명이 틀렸거나 만료됐거나 파일이 없으면 모두 404 EQUIPMENT_PHOTO_NOT_FOUND 다. 만료되면 설비를 다시 조회해 새 주소를 받는다.
+      security: []
+      x-api-id: MST-018
+      x-requirement-ids: [FR1302]
+      x-nfr-ids: [NFR07]
+      x-interface-ids: []
+      x-business-rule-ids: []
+      x-test-ids: []
+      x-permissions: [ANONYMOUS]
+      parameters:
+        - name: fileName
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9a-f]{32}\.(jpg|png)$'}
+        - name: expires
+          in: query
+          required: true
+          description: 만료 시각(epoch 초)
+          schema: {type: integer, format: int64}
+        - name: signature
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: 사진 파일
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+        '404':
+          description: EQUIPMENT_PHOTO_NOT_FOUND
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /master/lines:
     get:
       tags: [MasterData]
@@ -2632,8 +2717,8 @@ components:
         processId: {$ref: '#/components/schemas/Identifier'}
         processName: {type: string}
         processOrder: {type: integer}
-        communicationMethod: {type: string}
-        photoUrl: {type: string, format: uri, nullable: true}
+        communicationMethod: {$ref: '#/components/schemas/CommunicationMethod'}
+        photoUrl: {type: string, format: uri-reference, nullable: true, description: '10분 동안 열리는 서명 상대 주소(MST-018). 사진이 없으면 null'}
     EquipmentDetailData:
       type: object
       required: [basicInfo, status, statusStartedAt, lastReceivedAt, measurements, stateValues, cumulativeValues]
@@ -3255,36 +3340,47 @@ components:
       properties:
         success: {type: boolean, enum: [true]}
         data: {$ref: '#/components/schemas/LossAvoidance'}
+    CommunicationMethod:
+      type: string
+      enum: [MODBUS_TCP, OPC_UA, MQTT]
+      x-enum-varnames: [Modbus TCP, OPC UA, MQTT]
+      description: ERD equipment.comm_type 과 화면설계서 S10 의 세 가지(API_SPEC C-14)
     EquipmentWriteRequest:
       type: object
+      description: 길이는 ERD equipment 컬럼에 맞춘다(API_SPEC C-14). 문자열 앞뒤 공백은 지우고 저장한다.
       required: [equipmentCode, equipmentName, equipmentType, lineId, processOrder, communicationMethod]
       properties:
-        equipmentCode: {type: string, minLength: 1, maxLength: 100, description: 등록 후 수정 불가}
-        equipmentName: {type: string, minLength: 1, maxLength: 200}
-        equipmentType: {type: string, minLength: 1, maxLength: 100}
-        serialNumber: {type: string, maxLength: 200, nullable: true}
+        equipmentCode: {type: string, minLength: 1, maxLength: 20, description: 등록 후 수정 불가}
+        equipmentName: {type: string, minLength: 1, maxLength: 100}
+        equipmentType: {type: string, minLength: 1, maxLength: 50}
+        serialNumber: {type: string, maxLength: 50, nullable: true, description: 비우면 null}
         lineId: {$ref: '#/components/schemas/Identifier'}
         processOrder: {type: integer, minimum: 1}
-        communicationMethod: {type: string, minLength: 1, maxLength: 100}
-        photo: {type: string, format: binary, nullable: true}
+        communicationMethod: {$ref: '#/components/schemas/CommunicationMethod'}
+        registeredAt: {type: string, format: date-time, nullable: true, description: '등록 일시(화면설계서 S10). 비우면 현재 시각. 초 단위로 저장(API_SPEC C-15)'}
+        photo: {type: string, format: binary, nullable: true, description: 'JPG 또는 PNG, 5MB 이하(API_SPEC P-18)'}
     EquipmentUpdateRequest:
       type: object
+      description: 길이는 ERD equipment 컬럼에 맞춘다(API_SPEC C-14).
       required: [equipmentName, equipmentType, lineId, processOrder, communicationMethod]
       properties:
-        equipmentName: {type: string, minLength: 1, maxLength: 200}
-        equipmentType: {type: string, minLength: 1, maxLength: 100}
-        serialNumber: {type: string, maxLength: 200, nullable: true}
+        equipmentName: {type: string, minLength: 1, maxLength: 100}
+        equipmentType: {type: string, minLength: 1, maxLength: 50}
+        serialNumber: {type: string, maxLength: 50, nullable: true, description: 비우면 null}
         lineId: {$ref: '#/components/schemas/Identifier'}
         processOrder: {type: integer, minimum: 1}
-        communicationMethod: {type: string, minLength: 1, maxLength: 100}
-        photo: {type: string, format: binary, nullable: true}
-        removePhoto: {type: boolean, default: false}
+        communicationMethod: {$ref: '#/components/schemas/CommunicationMethod'}
+        registeredAt: {type: string, format: date-time, nullable: true, description: 비우면 원래 값을 둔다(API_SPEC C-15)}
+        photo: {type: string, format: binary, nullable: true, description: 'JPG 또는 PNG, 5MB 이하. 보내면 사진을 바꾼다'}
+        removePhoto: {type: boolean, default: false, description: true 면 사진을 지운다. photo 와 함께 보내면 400}
     MasterEquipment:
       allOf:
         - {$ref: '#/components/schemas/EquipmentBasicInfo'}
         - type: object
-          required: [lastReceivedAt]
+          required: [registeredAt, deletedAt, lastReceivedAt]
           properties:
+            registeredAt: {type: string, format: date-time, description: 등록 일시(API_SPEC C-15)}
+            deletedAt: {type: string, format: date-time, nullable: true, description: '삭제 시각. 사용 중이면 null. includeInactive=true 일 때만 채워진 설비가 나옴'}
             lastReceivedAt: {type: string, format: date-time, nullable: true}
     MasterEquipmentPageData:
       type: object
