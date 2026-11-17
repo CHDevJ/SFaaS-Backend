@@ -31,7 +31,7 @@ $schema=Check 'ENV-003' 'OpenAPI JSON' GET '/v3/api-docs' 200 ''
 $doc=$schema.Body|ConvertFrom-Json
 $operationCount=0
 foreach($p in $doc.paths.PSObject.Properties){foreach($m in $p.Value.PSObject.Properties){if($m.Name -in 'get','post','put','patch','delete'){$operationCount++}}}
-if($operationCount -ne 49 -or $doc.components.securitySchemes.bearerAuth.scheme -ne 'bearer'){throw 'Expected 40 B and 9 A authentication/signup operations in Swagger.'}
+if($operationCount -ne 54 -or $doc.components.securitySchemes.bearerAuth.scheme -ne 'bearer'){throw 'Expected 40 B and 14 A authentication/user/signup operations in Swagger.'}
 $loginBody=& (Join-Path $PSScriptRoot 'Get-ManualTestLogin.ps1')|ConvertFrom-Json
 $loginResponse=Check 'AUTH-LIVE-001' '실제 로그인 성공' POST '/api/v1/auth/login' 200 '' $loginBody
 $loginJson=$loginResponse.Body|ConvertFrom-Json
@@ -95,6 +95,41 @@ Check 'WRITE-005' '보전 담당 조치 등록' POST "/api/v1/alarms/$smokeAlarm
 Check 'WRITE-006' '조치 후 효과 확인 조회' GET "/api/v1/alarms/$smokeAlarm/effect" 200 $maintenance|Out-Null
 Check 'VALID-001' '필수값 없는 조치 거절' POST "/api/v1/alarms/$smokeAlarm/actions" 400 $maintenance @{}|Out-Null
 Check 'VALID-002' '잘못된 Enum 거절' GET '/api/v1/alarms?grade=UNKNOWN' 400 $admin|Out-Null
+# User/deletion fixtures are confined to stf_b_manual by Invoke-ManualSql.
+Check 'USR-LIVE-001' '관리자 사용자 목록 조회' GET '/api/v1/system/users' 200 $admin|Out-Null
+$temporaryLogin='duty'+[guid]::NewGuid().ToString('N').Substring(0,12)
+$temporaryId=0L
+$temporaryDuties=[Collections.Generic.List[long]]::new()
+try {
+    $temporaryId=[long](@(Invoke-ManualSql "INSERT INTO account(login_id,password_hash,name,role,approval_status,approved_at) SELECT '$temporaryLogin',password_hash,'[SMOKE] 당번 삭제 검증','MAINTENANCE','APPROVED',NOW() FROM account WHERE login_id='bmaint01'; SELECT LAST_INSERT_ID();")[0])
+    Check 'USR-LIVE-002' '관리자 사용자 상세 조회' GET "/api/v1/system/users/$temporaryId" 200 $admin|Out-Null
+    $lastEnd=[string](@(Invoke-ManualSql "SELECT COALESCE(DATE_FORMAT(MAX(end_date),'%Y-%m-%d'),'NONE') FROM duty;")[0])
+    $from=if($lastEnd -eq 'NONE'){[DateTime]::Today}else{[DateTime]::ParseExact($lastEnd,'yyyy-MM-dd',[Globalization.CultureInfo]::InvariantCulture).AddDays(1)}
+    $through=$from.AddDays(2)
+    if($through -lt [DateTime]::Today){$through=[DateTime]::Today.AddDays(2)}
+    foreach($range in @(@{from=$from;to=$through},@{from=$through.AddDays(1);to=$through.AddDays(4)})){
+        $start=$range.from.ToString('yyyy-MM-dd');$end=$range.to.ToString('yyyy-MM-dd')
+        $id=[long](@(Invoke-ManualSql "INSERT INTO duty(start_date,end_date) VALUES('$start','$end'); SET @smoke_duty_id=LAST_INSERT_ID(); INSERT INTO duty_member(duty_id,account_id) VALUES(@smoke_duty_id,$temporaryId); SELECT @smoke_duty_id;")[0])
+        $temporaryDuties.Add($id)
+    }
+    $blocked=Check 'USR-DUT-001' '대체 당번 없는 계정 삭제 거절' DELETE "/api/v1/system/users/$temporaryId" 422 $admin
+    if(($blocked.Body|ConvertFrom-Json).error.code -ne 'DUTY_REPLACEMENT_REQUIRED'){throw 'Expected the replacement-required error code.'}
+    $replacement=@{startDate=$from.ToString('yyyy-MM-dd');endDate=$through.ToString('yyyy-MM-dd');dutyUserId=$maintId}
+    Check 'USR-DUT-002' '첫 일정 대체 보전 담당자 지정' PUT ("/api/v1/system/alarm-duty-schedules/"+$temporaryDuties[0]) 200 $admin $replacement|Out-Null
+    Check 'USR-DUT-003' '남은 예정 당번 때문에 삭제 거절' DELETE "/api/v1/system/users/$temporaryId" 422 $admin|Out-Null
+    $replacement.startDate=$through.AddDays(1).ToString('yyyy-MM-dd');$replacement.endDate=$through.AddDays(4).ToString('yyyy-MM-dd')
+    Check 'USR-DUT-004' '다음 일정 대체 보전 담당자 지정' PUT ("/api/v1/system/alarm-duty-schedules/"+$temporaryDuties[1]) 200 $admin $replacement|Out-Null
+    Check 'USR-DUT-005' '대체 담당자 지정 후 계정 삭제 성공' DELETE "/api/v1/system/users/$temporaryId" 204 $admin|Out-Null
+    Check 'USR-DUT-006' '삭제된 계정의 일반 조회 제외' GET "/api/v1/system/users/$temporaryId" 404 $admin|Out-Null
+} finally {
+    if($temporaryDuties.Count){
+        $ids=$temporaryDuties -join ','
+        Invoke-ManualSql "DELETE FROM duty_member WHERE duty_id IN ($ids); DELETE FROM duty WHERE duty_id IN ($ids);"|Out-Null
+    }
+    if($temporaryId -gt 0){
+        Invoke-ManualSql "UPDATE account SET deleted_at=COALESCE(deleted_at,NOW()),password_hash=NULL,telegram_chat_id=NULL,telegram_linked_at=NULL WHERE account_id=$temporaryId AND login_id='$temporaryLogin';"|Out-Null
+    }
+}
 $passed=@($results|Where-Object result -eq PASS).Count
 $failed=@($results|Where-Object result -eq FAIL).Count
 $summary=[pscustomobject]@{executedAt=[DateTimeOffset]::Now.ToString('o');baseUrl='http://localhost:8081';database='stf_b_manual';swaggerOperations=$operationCount;passed=$passed;failed=$failed;cases=$results}

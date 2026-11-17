@@ -1586,11 +1586,16 @@ paths:
         '400': {$ref: '#/components/responses/ValidationError'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: 마지막 시스템관리자의 직책은 바꿀 수 없음(LAST_SYSTEM_ADMIN_REQUIRED). 다른 사람을 먼저 시스템관리자로 지정해야 한다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
     delete:
       tags: [SystemUser]
       operationId: deleteSystemUser
       summary: 사용자 계정 논리 삭제
-      description: deletedAt과 deletedBy를 기록하고 로그인 및 일반 조회 대상에서 제외한다.
+      description: deletedAt을 기록하고 삭제자는 변경 이력에 남긴다. 현재·예정 당번의 유일한 보전 담당자는 대체 담당자를 먼저 지정해야 삭제할 수 있다. 계정 삭제·당번 제외·변경 이력은 함께 처리하고 완료된 과거 당번은 보존한다.
       x-api-id: USR-004
       x-requirement-ids: [FR1403]
       x-nfr-ids: [NFR02, NFR06]
@@ -1604,6 +1609,11 @@ paths:
         '204': {description: 논리 삭제 성공}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: 자기 계정 삭제(USER_SELF_DELETE_FORBIDDEN), 마지막 시스템관리자 삭제(LAST_SYSTEM_ADMIN_REQUIRED), 현재·예정 당번 대체 담당자 미지정(DUTY_REPLACEMENT_REQUIRED)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /system/users/{userId}/password-reset:
     post:
       tags: [SystemUser]
@@ -1623,6 +1633,11 @@ paths:
         '204': {description: 비밀번호 초기화 처리 성공}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '422':
+          description: 텔레그램 미연결(TELEGRAM_NOT_CONNECTED) 또는 발송 실패(TELEGRAM_DELIVERY_FAILED). 이 경우 비밀번호는 바뀌지 않는다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
 
   /system/signup-requests:
     get:

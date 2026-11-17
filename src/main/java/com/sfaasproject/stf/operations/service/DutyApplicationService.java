@@ -56,6 +56,8 @@ public class DutyApplicationService {
         BAccess.admin();
         return tx.execute(
                 () -> {
+                    duties.lockAssignee(request.dutyUserId());
+                    requireMaintenance(request.dutyUserId());
                     var list = new ArrayList<>(duties.lockedSchedules());
                     list.add(
                             new Duty(
@@ -78,6 +80,8 @@ public class DutyApplicationService {
         BAccess.admin();
         return tx.execute(
                 () -> {
+                    duties.lockAssignee(request.dutyUserId());
+                    requireMaintenance(request.dutyUserId());
                     var list = new ArrayList<>(duties.lockedSchedules());
                     require(list, id);
                     list.removeIf(d -> d.id() == id);
@@ -136,15 +140,31 @@ public class DutyApplicationService {
         return new DutyCalendarResponse(true, result);
     }
 
+    private void requireMaintenance(long userId) {
+        if (!users.maintenanceIds().contains(userId))
+            throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_MAINTENANCE",
+                    "사용 중인 보전 담당자를 선택해 주세요.");
+    }
+
     private void validate(List<Duty> values) {
+        var today = LocalDate.now(clock);
+        var active = users.maintenanceIds();
+        if (values.stream().anyMatch(d -> !d.to().isBefore(today) && !active.contains(d.userId())))
+            throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_MAINTENANCE",
+                    "사용 중인 보전 담당자를 선택해 주세요.");
         var from = values.stream().map(Duty::from).min(LocalDate::compareTo).orElseThrow();
         var to = values.stream().map(Duty::to).max(LocalDate::compareTo).orElseThrow();
-        rules.validate(schedules(values), from, to, users.maintenanceIds());
+        // Completed periods retain historical users, including deleted or reclassified accounts.
+        var historicalIds = values.stream().map(Duty::userId).collect(java.util.stream.Collectors.toSet());
+        rules.validate(schedules(values), from, to, historicalIds);
     }
 
     private List<Schedule> schedules(List<Duty> values) {
-        return values.stream()
-                .map(d -> new Schedule(d.id(), d.from(), d.to(), Set.of(d.userId())))
+        var grouped = new LinkedHashMap<Long, Set<Long>>();
+        values.forEach(d -> grouped.computeIfAbsent(d.id(), ignored -> new HashSet<>()).add(d.userId()));
+        return values.stream().collect(java.util.stream.Collectors.toMap(Duty::id, d -> d,
+                (first, ignored) -> first, LinkedHashMap::new)).values().stream()
+                .map(d -> new Schedule(d.id(), d.from(), d.to(), grouped.get(d.id())))
                 .toList();
     }
 
@@ -156,9 +176,9 @@ public class DutyApplicationService {
     }
 
     private DutySchedule dto(Duty duty) {
-        var user = users.active(duty.userId());
-        if (user == null) throw Checks.missing("USER_NOT_FOUND");
         var today = LocalDate.now(clock);
+        var user = duty.to().isBefore(today) ? users.historical(duty.userId()) : users.active(duty.userId());
+        if (user == null) throw Checks.missing("USER_NOT_FOUND");
         return new DutySchedule(
                 duty.id(),
                 duty.from(),

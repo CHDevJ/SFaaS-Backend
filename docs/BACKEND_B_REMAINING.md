@@ -1,10 +1,10 @@
-# 최신 A/B 통합 및 프론트 PR #12 대응 (2026-11-17)
+# 최신 A 사용자 관리 통합과 계정 삭제·당번 정책 (2026-11-17)
 
-기존 로컬 Back_B에서 A 587f3b0의 세션 API와 B 40개 API를 통합했다. 기존 A/B 코드는 e49e82f로 푸시했고 backend 이력도 연결했다. 로그아웃·만료·비활성 계정의 기존 WebSocket 구독 종료와 응답 토큰 계약을 보완했다.
+기존 로컬 Back_B에 A의 0a6e0e2를 원본 이력과 함께 통합했다. AUTH·APR·USR 14개와 B 40개, 총 54개 HTTP API를 제공한다. 계정 삭제 시 현재·예정 당번의 대체 보전 담당자가 없으면 422 DUTY_REPLACEMENT_REQUIRED로 거절하고, 대체 지정 후에는 해당 구성원만 제외한다. 과거 이력·일정 기간과 감사 원자성을 보존한다.
 
-Gradle 398개 / 실제 HTTP 54개 / 실제 WebSocket 4개 확인을 통과했다. 실패·오류·건너뜀 0. Swagger는 49개 operation이다. 상세 대응표와 최신 결과는 BACKEND_B_GITHUB_RECHECK.md를 따른다.
+최신 결과: Gradle 433개 / 실제 HTTP 62개 / STOMP 4개 확인 통과. 실패·오류·건너뜀 0이며 MySQL 5개 포함이다.
 
-남은 것은 공유 DB 배포·실제 Telegram/현장 연결·frontend의 backend 기준 동기화와 미정 계약 확정이다. 알람 상세 확장·다중 발생 비교·알림 읽음 이력은 v5에 없는 필드/동작이므로 임의 추가하지 않았다. 아래는 통합 전 B 담당 구현 기록이다.
+**남은 구현·담당·준비물은 [BACKEND_B_NEXT_STEPS.md](BACKEND_B_NEXT_STEPS.md)를 따른다.** A HTTP 30개 미구현, 수집 어댑터 활성화, 일반 당번 변경 감사·보전 직책 해제 시 당번 처리·비밀번호 초기화 발송 결과의 B 이력 연결, 이름 길이 계약 정합성, 공유 DB·프론트·Telegram/PLC 연결과 미정 계약 확장이 남아 있다. 아래는 통합 전 기록이다.
 
 # Back_B 구현 및 연결 현황 (2026-11-17)
 
@@ -37,7 +37,7 @@ INT-001 연결 어댑터도 선택적으로 제공한다. A의 수집 Controller
 | 항목 | 필요한 작업 |
 |---|---|
 | 공유 MySQL | DB 담당자가 V3와 추가 테이블을 검토 후 적용. 공유 서버에는 실행하지 않음 |
-| A 인증·사용자 | 로그인·갱신·로그아웃·내 정보·비밀번호 변경·가입 승인·SessionStore 연결 완료. 사용자 관리 등 나머지 A API는 별도 |
+| A 인증·사용자 | AUTH·APR·USR·SessionStore 연결 완료. 나머지 A HTTP API와 이름 길이 정합성은 NEXT_STEPS 참고 |
 | 프론트 | Back_B를 검토·병합한 뒤 frontend에서 npm run api:sync와 npm run check. 현재 스크립트는 origin/backend 고정 |
 | 텔레그램 | 실제 봇 이름·토큰 환경변수 설정 후 private 실발송 확인. 이번에는 외부 메시지를 보내지 않음 |
 | 현장 데이터 | Node-RED 대상 URL·내부 키, PLC 주소/배율·임계값·생산 카운터·운영 단가 설정 및 시연 |

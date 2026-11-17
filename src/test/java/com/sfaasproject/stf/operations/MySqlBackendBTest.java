@@ -224,4 +224,28 @@ class MySqlBackendBTest {
                                         today.plusDays(1), today.plusDays(3), maint)));
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM duty", Integer.class));
     }
+    @Test
+    @Order(5)
+    void accountDutyCleanupRequiresReplacementsAndPreservesPastRowsOnRealMySql() {
+        jdbc.update("INSERT INTO account(login_id,name,role,approval_status) VALUES"
+                + " ('cleanupmysql','삭제 검증','MAINTENANCE','APPROVED'),"
+                + " ('replacemysql','대체 검증','MAINTENANCE','APPROVED')");
+        long target=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='cleanupmysql'",Long.class);
+        long other=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='replacemysql'",Long.class);
+        var adapter=new JdbcBDuties(db,new JdbcBClaims(db));
+        LocalDate day=LocalDate.of(2070,1,5);
+        long past=tx.execute(()->adapter.insert(day.minusDays(8),day.minusDays(1),target)).id();
+        long current=tx.execute(()->adapter.insert(day,day.plusDays(3),target)).id();
+        long future=tx.execute(()->adapter.insert(day.plusDays(4),day.plusDays(8),target)).id();
+        var error=assertThrows(com.sfaasproject.stf.common.DomainException.class,
+                ()->tx.execute(()->adapter.excludeAccount(target,day)));
+        assertEquals("DUTY_REPLACEMENT_REQUIRED",error.code());
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM duty_member WHERE account_id=?",Integer.class,target));
+        for(long id:new long[]{current,future}) jdbc.update("INSERT INTO duty_member(duty_id,account_id) VALUES (?,?)",id,other);
+        assertEquals(2,tx.execute(()->adapter.excludeAccount(target,day)).size());
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM duty_member WHERE account_id=? AND duty_id=?",Integer.class,target,past));
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM duty_member WHERE account_id=?",Integer.class,other));
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM duty WHERE duty_id IN (?,?,?)",Integer.class,past,current,future));
+    }
+
 }

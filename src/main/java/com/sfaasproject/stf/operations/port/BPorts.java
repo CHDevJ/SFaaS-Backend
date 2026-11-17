@@ -78,6 +78,12 @@ public final class BPorts {
     public record Duty(long id, LocalDate from, LocalDate to, long userId) {}
 
     public interface Duties {
+        /** Lock the candidate account before the shared duty lock to match account deletion order. */
+        void lockAssignee(long userId);
+
+        /** Remove current/future memberships only when every affected period has a replacement. */
+        List<Duty> excludeAccount(long userId, LocalDate today);
+
         List<Duty> lockedSchedules();
 
         List<Duty> schedules();
