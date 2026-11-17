@@ -3483,12 +3483,25 @@ components:
       required: [reason]
       properties:
         reason: {type: string, minLength: 1, maxLength: 500}
+    SignupRequestSummary:
+      type: object
+      description: |
+        승인 대기 목록의 한 항목. 가입 응답(Signup)과 달리 telegramLink 가 없다. 연결 토큰은 해시로만 저장하고
+        10분 뒤 만료되어 이미 접수된 신청의 연결 주소는 만들 수 없으며, 승인 화면에는 연결 여부만 필요하다(FR0107).
+      required: [requestId, loginId, name, accountStatus, requestedAt, telegramConnected]
+      properties:
+        requestId: {$ref: '#/components/schemas/Identifier'}
+        loginId: {type: string}
+        name: {type: string}
+        accountStatus: {$ref: '#/components/schemas/AccountStatus'}
+        requestedAt: {type: string, format: date-time}
+        telegramConnected: {type: boolean, description: 신청자의 텔레그램 연결 여부}
     SignupPageResponse:
       type: object
       required: [success, data, meta]
       properties:
         success: {type: boolean, enum: [true]}
-        data: {type: array, items: {$ref: '#/components/schemas/Signup'}}
+        data: {type: array, items: {$ref: '#/components/schemas/SignupRequestSummary'}}
         meta: {$ref: '#/components/schemas/PageMeta'}
     UserResponse:
       type: object
