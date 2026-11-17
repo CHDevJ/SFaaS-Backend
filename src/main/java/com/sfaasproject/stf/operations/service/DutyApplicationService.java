@@ -6,6 +6,9 @@ import com.sfaasproject.stf.duty.service.DutyScheduleDecisionService.Schedule;
 import com.sfaasproject.stf.operations.dto.BContract.*;
 import com.sfaasproject.stf.operations.port.BPorts.*;
 
+import com.sfaasproject.stf.system.entity.AuditTargetType;
+import com.sfaasproject.stf.system.service.AuditRecorder;
+
 import org.springframework.http.HttpStatus;
 
 import java.time.*;
@@ -17,18 +20,21 @@ public class DutyApplicationService {
     private final UnitOfWork tx;
     private final DutyScheduleDecisionService rules;
     private final Clock clock;
+    private final AuditRecorder audit;
 
     public DutyApplicationService(
             Duties duties,
             Users users,
             UnitOfWork tx,
             DutyScheduleDecisionService rules,
-            Clock clock) {
+            Clock clock,
+            AuditRecorder audit) {
         this.duties = duties;
         this.users = users;
         this.tx = tx;
         this.rules = rules;
         this.clock = clock;
+        this.audit = audit;
     }
 
     public DutyScheduleListResponse getAlarmDutySchedules() {
@@ -53,7 +59,7 @@ public class DutyApplicationService {
     }
 
     public DutyScheduleResponse createAlarmDutySchedule(DutyScheduleWriteRequest request) {
-        BAccess.admin();
+        long actorId = BAccess.admin().userId();
         return tx.execute(
                 () -> {
                     duties.lockAssignee(request.dutyUserId());
@@ -66,24 +72,21 @@ public class DutyApplicationService {
                                     request.endDate(),
                                     request.dutyUserId()));
                     validate(list);
-                    return new DutyScheduleResponse(
-                            true,
-                            dto(
-                                    duties.insert(
-                                            request.startDate(),
-                                            request.endDate(),
-                                            request.dutyUserId())));
+                    var created = duties.insert(request.startDate(), request.endDate(), request.dutyUserId());
+                    recordChange(actorId, created.id(), List.of(), List.of(created));
+                    return new DutyScheduleResponse(true, dto(created));
                 });
     }
 
     public DutyScheduleResponse updateAlarmDutySchedule(Long id, DutyScheduleWriteRequest request) {
-        BAccess.admin();
+        long actorId = BAccess.admin().userId();
         return tx.execute(
                 () -> {
                     duties.lockAssignee(request.dutyUserId());
                     requireMaintenance(request.dutyUserId());
                     var list = new ArrayList<>(duties.lockedSchedules());
                     require(list, id);
+                    var before = list.stream().filter(d -> d.id() == id).toList();
                     list.removeIf(d -> d.id() == id);
                     var changed =
                             new Duty(
@@ -94,12 +97,13 @@ public class DutyApplicationService {
                     list.add(changed);
                     validate(list);
                     duties.update(changed);
+                    recordChange(actorId, id, before, List.of(changed));
                     return new DutyScheduleResponse(true, dto(changed));
                 });
     }
 
     public void deleteAlarmDutySchedule(Long id) {
-        BAccess.admin();
+        long actorId = BAccess.admin().userId();
         tx.execute(
                 () -> {
                     var list = new ArrayList<>(duties.lockedSchedules());
@@ -110,7 +114,9 @@ public class DutyApplicationService {
                                 HttpStatus.UNPROCESSABLE_CONTENT,
                                 "DUTY_GAP_NOT_ALLOWED",
                                 "마지막 예정 당번만 삭제할 수 있습니다.");
+                    var before = list.stream().filter(d -> d.id() == id).toList();
                     duties.delete(id);
+                    recordChange(actorId, id, before, List.of());
                     return null;
                 });
     }
@@ -138,6 +144,27 @@ public class DutyApplicationService {
                                     .toList()));
         }
         return new DutyCalendarResponse(true, result);
+    }
+
+    /** Field-level snapshots share the duty transaction; a failed audit rolls back the mutation. */
+    private void recordChange(long actorId, long id, List<Duty> before, List<Duty> after) {
+        recordField(actorId, id, "시작일", date(before, true), date(after, true));
+        recordField(actorId, id, "종료일", date(before, false), date(after, false));
+        recordField(actorId, id, "담당자", assignees(before), assignees(after));
+    }
+
+    private void recordField(long actorId, long id, String field, String before, String after) {
+        if (!Objects.equals(before, after))
+            audit.record(actorId, AuditTargetType.DUTY, "당번 " + id, field, before, after);
+    }
+
+    private String date(List<Duty> values, boolean start) {
+        return values.isEmpty() ? null : (start ? values.getFirst().from() : values.getFirst().to()).toString();
+    }
+
+    private String assignees(List<Duty> values) {
+        return values.isEmpty() ? null : values.stream().map(Duty::userId).distinct().sorted()
+                .map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
     }
 
     private void requireMaintenance(long userId) {

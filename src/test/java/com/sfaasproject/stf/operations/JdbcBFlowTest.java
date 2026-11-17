@@ -129,7 +129,7 @@ class JdbcBFlowTest {
                         clock);
         dutyCommands =
                 new DutyApplicationService(
-                        duties, users, tx, new DutyScheduleDecisionService(), clock);
+                        duties, users, tx, new DutyScheduleDecisionService(), clock, this::recordAudit);
         jdbc.update(
                 "INSERT INTO account(account_id,login_id,name,role,approval_status) VALUES"
                     + " (1,'admin','관리자','SYSTEM_ADMIN','APPROVED'),(2,'maint','보전','MAINTENANCE','APPROVED'),(3,'manager','라인','LINE_MANAGER','APPROVED')");
@@ -711,4 +711,10 @@ class JdbcBFlowTest {
         assertEquals(0, line.availabilityRate().compareTo(new java.math.BigDecimal("50")));
         assertEquals(0, line.plannedMinutes().compareTo(new java.math.BigDecimal("60")));
     }
+    void recordAudit(long actor, com.sfaasproject.stf.system.entity.AuditTargetType type,
+            String target, String field, String before, String after) {
+        jdbc.update("INSERT INTO change_log(changed_by,target_type,target_name,field_name,old_value,new_value,changed_at)"
+                + " VALUES (?,?,?,?,?,?,?)",actor,type.name(),target,field,before,after,LocalDateTime.now(clock));
+    }
+
 }

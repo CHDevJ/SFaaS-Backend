@@ -1563,6 +1563,7 @@ paths:
       tags: [SystemUser]
       operationId: updateSystemUser
       summary: 사용자 이름·직책·권한 수정
+      description: MAINTENANCE에서 다른 직책으로 변경할 때 현재·예정 당번의 대체 담당자가 먼저 있어야 한다. 직책 변경·당번 제외·감사 기록은 함께 처리하고 완료된 과거 당번은 보존한다.
       x-api-id: USR-003
       x-requirement-ids: [FR1403]
       x-nfr-ids: [NFR02, NFR06, NFR09]
@@ -1587,7 +1588,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422':
-          description: 마지막 시스템관리자의 직책은 바꿀 수 없음(LAST_SYSTEM_ADMIN_REQUIRED). 다른 사람을 먼저 시스템관리자로 지정해야 한다.
+          description: 마지막 시스템관리자 직책 변경(LAST_SYSTEM_ADMIN_REQUIRED) 또는 보전 직책 변경 전 현재·예정 당번 대체 담당자 미지정(DUTY_REPLACEMENT_REQUIRED). 대체 담당자를 먼저 지정해야 한다.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResponse'}
@@ -1619,7 +1620,7 @@ paths:
       tags: [SystemUser]
       operationId: resetUserPassword
       summary: 관리자 비밀번호 초기화
-      description: 12자리 임시 비밀번호를 생성해 연결된 계정의 텔레그램으로 전달하고 30분 뒤 만료한다. 사용자는 다음 로그인 후 비밀번호를 변경해야 한다. 미연결 계정은 별도 전달 계약 확정 전까지 초기화를 거절한다.
+      description: 12자리 임시 비밀번호를 생성해 연결된 계정의 텔레그램으로 전달하고 30분 뒤 만료한다. 사용자는 다음 로그인 후 비밀번호를 변경해야 한다. 미연결 계정은 별도 전달 계약 확정 전까지 초기화를 거절한다. 실제 발송 시도 결과는 초기화 성공·실패와 별개로 전송 이력에 남기되 임시 비밀번호 원문·메시지 본문은 저장하지 않는다. 전송 이력은 비밀정보를 제외한 고정 문구로 제공한다.
       x-api-id: USR-005
       x-requirement-ids: [FR1403]
       x-nfr-ids: [NFR01, NFR02, NFR06]
@@ -1814,6 +1815,7 @@ paths:
       tags: [Telegram]
       operationId: getTelegramDeliveries
       summary: 텔레그램 전송 결과 조회
+      description: 비밀번호 초기화 발송 성공·실패도 포함한다. 해당 메시지는 임시 비밀번호 발송 결과(비밀정보 제외)라는 고정 문구로 제공하며 비밀번호 원문은 포함하지 않는다.
       x-api-id: TLG-006
       x-requirement-ids: [FR0507]
       x-nfr-ids: [NFR05]
@@ -1892,6 +1894,7 @@ paths:
       tags: [Duty]
       operationId: createAlarmDutySchedule
       summary: 알람 당번 등록
+      description: 당번 저장과 같은 트랜잭션에서 시작일·종료일·담당자의 감사 기록을 남긴다.
       x-api-id: DUT-002
       x-requirement-ids: [FR1408]
       x-nfr-ids: [NFR02, NFR09]
@@ -1963,6 +1966,7 @@ paths:
       tags: [Duty]
       operationId: updateAlarmDutySchedule
       summary: 알람 당번 수정
+      description: 실제로 바뀐 시작일·종료일·담당자만 이전 값과 변경 값으로 감사 기록에 남긴다. 값이 같으면 감사 기록을 추가하지 않는다.
       x-api-id: DUT-004
       x-requirement-ids: [FR1408]
       x-nfr-ids: [NFR02, NFR09]
@@ -1991,6 +1995,7 @@ paths:
       tags: [Duty]
       operationId: deleteAlarmDutySchedule
       summary: 알람 당번 삭제
+      description: 삭제 전 시작일·종료일·담당자를 감사 기록에 보존한다. 삭제와 감사 기록은 함께 성공하거나 함께 롤백한다.
       x-api-id: DUT-005
       x-requirement-ids: [FR1408]
       x-nfr-ids: [NFR02]
