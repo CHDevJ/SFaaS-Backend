@@ -1,13 +1,22 @@
-## 2026-11-17 사용자 확정과 Back_B
+## 2026-11-17 최신 요구사항과 v6 전환
 
-현재 API 계약은 docs/openapi.yaml v5가 최우선이다. 기존 v4 제안값은 v5와 최신 요구사항에 없는 값에만 사용한다. B 구현 상태는 docs/BACKEND_B_REMAINING.md, 실행·팀 연결은 docs/BACKEND_B_INTEGRATION.md를 확인한다. 아래의 과거 v4 설명보다 이 결정을 우선한다.
+현재 구현 목표는 `docs/openapi.yaml` v6.0.0과 `docs/API_SPEC.md`다. 2026-11-17 요구사항정의서·기능목록·기능 변경·화면설계·공통동작·HTML/PNG를 반영했다. 기존 Back_B 코드와 `docs/BACKEND_B_REMAINING.md`, `docs/BACKEND_B_INTEGRATION.md`는 v5 구현 이력이며 v6 완료 증거로 사용하지 않는다. 문서 개정 요청만으로 기존 구현·DB를 자동 삭제하거나 마이그레이션하지 않는다.
+
+- 권한은 `ADMIN`, `USER` 두 가지다. 기존 직책 3종·파생 권한 모델을 새 API에 사용하지 않는다.
+- 알람은 `ACTIVE`, `CLOSED`다. 조치 완료 시 즉시 종료하며 정상 복귀는 값 상태만 바꾼다.
+- 확인·담당 지정·추천·오경보·효과 확인·재발·재알림·부품 교체·당번·손실 방지 API는 삭제 범위다. 삭제 API ID는 재사용하지 않는다.
+- 재고는 라인 끝 생산 누적 카운터와 조립 투입 누적 카운터가 기준이다. INT-002 생산 delta 이벤트를 재도입하지 않는다.
+- 예상 조치시간은 같은 설비·같은 dataItemId의 과거 종료 알람이 3건 이상이면 그 평균, 3건 미만이면 같은 설비 전체 종료 알람 평균, 기록이 없으면 defaultRecoveryMinutes(초기30분)를 적용한다. 원인 문구로 표본을 묶지 않는다.
+- 메뉴 발생 중 수와 개인 읽지 않은 수는 별도다. 텔레그램은 연결된 전체 계정에 발생·등급상승만 발송한다.
+- 분배는 A 41개/B 28개 operation이며 SYS/AUD는 A 소유다. 세부 목록은 API_SPEC의 API별 담당과 Confluence 분배 페이지를 따른다.
 
 ## 현재 문서 상태
 
 - 적용일: 2026-11-17
-- `docs/API_SPEC.md`는 요구사항정의서 v1.0(2026-11-16), 화면설계서, 기능 변경 내역을 통합한 **API 명세서 v5.0.0**이다.
-- `docs/openapi.yaml`은 `version: 5.0.0`, `x-specification-status: approved-project-proposal`인 구현 계약이다.
-- 요구사항에 없던 구현 필수값은 사용자의 지시에 따라 v4의 **프로젝트 제안값**으로 확정했으며, 변경 승인 전까지 백엔드·프론트엔드·테스트가 함께 따라야 한다.
+- `docs/API_SPEC.md`는 2026-11-17 자료 6개를 통합한 **API 명세서 v6.0.0**이다. 기능75건, NFR13건, IFR4건을 연결한다.
+- `docs/openapi.yaml`은 `version: 6.0.0`, `x-specification-status: approved-project-proposal`인 구현 계약이다.
+- `x-implementation-status: contract-updated-implementation-migration-required`는 기존 v5 구현의 전환이 필요함을 뜻한다. YAML lint 통과와 실제 API 구현 완료를 구분한다.
+- 요구사항에 없던 구현 필수값은 사용자의 기존 지시에 따라 v6의 **프로젝트 제안값**으로 정했다. 최신 명시 요구사항과 충돌하는 과거 제안은 사용하지 않는다.
 - 프로젝트 제안값은 실제 공장 수치나 현대위아의 실제 운영 기준을 뜻하지 않는다.
 - REST 경로, DTO, Enum, 오류코드, JWT, WebSocket, MQTT와 내부 수집 계약은 `docs/openapi.yaml`을 기준으로 구현한다.
 
@@ -165,7 +174,7 @@ fix/SF5-35-alarm
 - `docs/openapi.yaml`의 상태가 `approved-project-proposal`이고 실제 API 경로가 정의됨
 - `docs/openapi.yaml`과 실제 API가 일치함
 - 입력값 검증과 예외처리가 구현됨
-- 직책별 권한 검사가 적용됨
+- ADMIN/USER 권한 검사가 적용됨
 - 관련 테스트가 작성됨
 - 전체 Gradle 테스트가 통과함
 - 비밀번호와 토큰이 코드나 로그에 포함되지 않음
@@ -184,14 +193,14 @@ fix/SF5-35-alarm
 
 문서 우선순위:
 
-1. 요구사항정의서 v1.0(2026-11-16): 기능 범위와 업무 흐름의 단일 기준
-2. 화면설계서 v1.0(2026-11-16): 요구사항에 없는 화면 입력·표시의 보조 기준
-3. `docs/API_SPEC.md`: v4 설명 명세, 업무규칙, 추적성 및 프로젝트 제안값
+1. 요구사항정의서 v1.0(2026-11-17), 기능목록 수정본·기능 변경 내역: 기능 범위와 업무 흐름
+2. 화면설계서·공통동작 정의서·화면 HTML/PNG(2026-11-17): 입력·표시·고정 정렬 기준
+3. `docs/API_SPEC.md`: v6 설명 명세, 업무규칙, 추적성 및 프로젝트 제안값
 4. `docs/openapi.yaml`: API 주소, Method, DTO, Enum, 오류코드의 기계 판독 구현 계약
-5. Confluence API 명세서 v4: 팀 공유용 문서이며 로컬 v4와 같은 내용을 유지
+5. Confluence API 명세서 v6: 팀 공유용 문서이며 로컬 v6와 같은 내용을 유지
 
 화면의 숫자, 설비 코드, 사용자, 임계값은 예시이며 계약값으로 사용하지 않는다.
 
-문서끼리 충돌하면 요구사항정의서를 우선한다. 요구사항에 없는 구현 필수값은 v4의 프로젝트 제안값을 적용하고, 값이 없을 때만 사용자에게 확인한다.
+문서끼리 충돌하면 최신 요구사항을 우선한다. 누락된 구현 필수값은 v6의 프로젝트 제안값을 적용한다. 실제 PLC 항목과 초기 카운터 기준 등 현장 검증값은 문서에 기록하고 데이터 부족은 null/status로 표시한다.
 
-Confluence의 v3 이하 문서와 Git 이력의 이전 API 명세는 비교용이며 현재 구현 기준이 아니다.
+Confluence와 Git 이력의 v5 이하 문서는 비교·이행용이다. v4의 INT-002 생산 이벤트 합의는 2026-11-17 누적 카운터 요구사항으로 대체됐다.
