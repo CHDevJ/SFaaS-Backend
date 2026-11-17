@@ -1,3 +1,9 @@
+# 로컬 Swagger 수동 테스트 (2026-11-17)
+
+기존 로컬 프로젝트의 전용 테스트 DB·Redis·서버가 준비되어 있다. 접속: http://localhost:8081/swagger-ui.html. 토큰 발급·시작·종료·테스트 명령은 scripts/manual-test/README.md를 따른다. 공유 DB와 분리된 stf_b_manual(3308), Redis(6380)를 사용한다. A 인증 통합 전 B 단독 검증 환경이다.
+
+아래는 팀 통합 환경 안내다.
+
 # Back_B 실행 및 팀 연결 방법
 
 작업 위치: 기존 로컬 C:/Users/한국전파진흥협회/Desktop/스마트팩토리/SFaas/stf. 별도 복제본을 만들지 않았다.
