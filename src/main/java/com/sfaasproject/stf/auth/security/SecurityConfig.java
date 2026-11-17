@@ -26,7 +26,8 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     /** 토큰 없이 호출하는 POST API. 필터도 이 경로는 건너뛴다. */
-    static final Set<String> PUBLIC_POST_PATHS = Set.of("/api/v1/auth/login", "/api/v1/auth/signups");
+    static final Set<String> PUBLIC_POST_PATHS = Set.of("/api/v1/auth/login", "/api/v1/auth/signups",
+            "/api/v1/auth/refresh");
 
     /** /system 아래에 있지만 모든 직책이 조회할 수 있는 경로(DUT-001, DUT-003). GET 만 해당한다. */
     static final String[] SYSTEM_READ_FOR_ALL = {

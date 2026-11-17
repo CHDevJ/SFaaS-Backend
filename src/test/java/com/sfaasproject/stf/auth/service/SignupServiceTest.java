@@ -20,7 +20,7 @@ class SignupServiceTest {
 
     private SignupService service(String botUsername) {
         return new SignupService(accounts, new BCryptPasswordEncoder(), new AuthPolicyService(),
-                new TelegramLinkTokenService(), linkStore, new TelegramProperties(botUsername));
+                new TelegramLinkTokenService(), linkStore, new TelegramProperties(botUsername, null));
     }
 
     @Test
@@ -35,8 +35,8 @@ class SignupServiceTest {
 
     @Test
     void the_bot_name_is_normalised_without_an_at_sign() {
-        assertThat(new TelegramProperties("@stf_bot ").normalizedBotUsername()).isEqualTo("stf_bot");
-        assertThat(new TelegramProperties("stf_bot").normalizedBotUsername()).isEqualTo("stf_bot");
-        assertThat(new TelegramProperties(null).configured()).isFalse();
+        assertThat(new TelegramProperties("@stf_bot ", null).normalizedBotUsername()).isEqualTo("stf_bot");
+        assertThat(new TelegramProperties("stf_bot", null).normalizedBotUsername()).isEqualTo("stf_bot");
+        assertThat(new TelegramProperties(null, null).configured()).isFalse();
     }
 }
