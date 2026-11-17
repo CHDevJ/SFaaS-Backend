@@ -269,8 +269,9 @@ public class BackendBConfiguration {
             TelegramApplicationService telegram,
             Users users,
             Telegram connections,
-            SimpMessagingTemplate socket) {
+            SimpMessagingTemplate socket,
+            Settings settings) {
         return new BEventHandlers(
-                claims, tx, inventory, alarms, telegram, users, connections, socket);
+                claims, tx, inventory, alarms, telegram, users, connections, socket, settings);
     }
 }

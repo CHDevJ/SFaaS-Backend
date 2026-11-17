@@ -88,7 +88,7 @@ class BEventAndTelegramTest {
         var connections = mock(Telegram.class);
         var socket = mock(SimpMessagingTemplate.class);
         when(connections.connection(2)).thenReturn(new Connection("42", now));
-        when(telegram.send(2L, 1L, "ASSIGN", "message"))
+        when(telegram.send(2L, 1L, "CREATED", "message"))
                 .thenThrow(new IllegalStateException("failure"));
         var handler =
                 new BEventHandlers(
@@ -100,9 +100,11 @@ class BEventAndTelegramTest {
                         mock(Users.class),
                         connections,
                         socket);
-        var event = new BEvents.Notification("n1", 1, 2, "ASSIGN", 1L, "message", now);
+        var event = new BEvents.Notification("n1", 1, 2, "CREATED", 1L, "message", now);
         assertDoesNotThrow(() -> handler.notification(event));
-        verify(socket).convertAndSendToUser("2", "/queue/notifications", event);
+        verify(socket).convertAndSendToUser(
+                "2", "/queue/notifications", BStompMessages.notification(event));
+        verify(telegram).send(2L, 1L, "CREATED", "message");
     }
 
     @Test
