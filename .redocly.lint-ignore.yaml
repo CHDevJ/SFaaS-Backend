@@ -1,0 +1,13 @@
+# STOMP-only schemas are used by x-websocket.topics.schema.
+# Redocly counts only standard REST references; OpenApiStompContractTest verifies all seven references and fields.
+# This file instructs Redocly's linter to ignore the rules contained for specific parts of your API.
+# See https://redocly.com/docs/cli/ for more information.
+docs/openapi.yaml:
+  no-unused-components:
+    - '#/components/schemas/EquipmentStatusEvent'
+    - '#/components/schemas/MeasurementEvent'
+    - '#/components/schemas/AlarmChangedEvent'
+    - '#/components/schemas/AlarmCountEvent'
+    - '#/components/schemas/InventoryChangedEvent'
+    - '#/components/schemas/AlarmEffectEvent'
+    - '#/components/schemas/UserNotificationEvent'

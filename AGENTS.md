@@ -1,8 +1,12 @@
+## 2026-11-17 사용자 확정과 Back_B
+
+현재 API 계약은 docs/openapi.yaml v5가 최우선이다. 기존 v4 제안값은 v5와 최신 요구사항에 없는 값에만 사용한다. B 구현 상태는 docs/BACKEND_B_REMAINING.md, 실행·팀 연결은 docs/BACKEND_B_INTEGRATION.md를 확인한다. 아래의 과거 v4 설명보다 이 결정을 우선한다.
+
 ## 현재 문서 상태
 
-- 적용일: 2026-11-16
-- `docs/API_SPEC.md`는 요구사항정의서 v1.0(2026-11-16), 화면설계서, 기능 변경 내역을 통합한 **API 명세서 v4.0.0**이다.
-- `docs/openapi.yaml`은 `version: 4.0.0`, `x-specification-status: approved-project-proposal`인 구현 계약이다.
+- 적용일: 2026-11-17
+- `docs/API_SPEC.md`는 요구사항정의서 v1.0(2026-11-16), 화면설계서, 기능 변경 내역을 통합한 **API 명세서 v5.0.0**이다.
+- `docs/openapi.yaml`은 `version: 5.0.0`, `x-specification-status: approved-project-proposal`인 구현 계약이다.
 - 요구사항에 없던 구현 필수값은 사용자의 지시에 따라 v4의 **프로젝트 제안값**으로 확정했으며, 변경 승인 전까지 백엔드·프론트엔드·테스트가 함께 따라야 한다.
 - 프로젝트 제안값은 실제 공장 수치나 현대위아의 실제 운영 기준을 뜻하지 않는다.
 - REST 경로, DTO, Enum, 오류코드, JWT, WebSocket, MQTT와 내부 수집 계약은 `docs/openapi.yaml`을 기준으로 구현한다.
