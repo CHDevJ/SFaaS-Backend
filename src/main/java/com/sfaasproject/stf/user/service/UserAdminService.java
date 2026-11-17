@@ -12,6 +12,7 @@ import com.sfaasproject.stf.system.entity.AuditTargetType;
 import com.sfaasproject.stf.system.service.AuditRecorder;
 import com.sfaasproject.stf.user.entity.AccountEntity;
 import com.sfaasproject.stf.user.event.AccountDeletedEvent;
+import com.sfaasproject.stf.user.event.AccountPositionChangedEvent;
 import com.sfaasproject.stf.user.repository.AccountRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -106,6 +107,8 @@ public class UserAdminService {
             if (positionChanged) {
                 audit.record(actorId, AuditTargetType.ACCOUNT, account.getLoginId(), "직책",
                         PositionLabels.of(oldPosition), PositionLabels.of(position));
+                events.publishEvent(new AccountPositionChangedEvent(account.getId(),
+                        oldPosition.name(), position.name(), actorId));
             }
         }
         return UserView.from(account, policy);

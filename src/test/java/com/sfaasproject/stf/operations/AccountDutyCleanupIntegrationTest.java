@@ -202,4 +202,134 @@ class AccountDutyCleanupIntegrationTest {
                 new AccountDeletedEvent(target.getId(),target.getLoginId(),"MAINTENANCE",admin.getId())));
         assertFalse(accounts.findById(target.getId()).orElseThrow().isDeleted());
     }
+    void changePosition(Position role, String name) throws Exception {
+        mvc.perform(put(deletePath()).header("Authorization",bearer(admin))
+                .contentType("application/json").content("{\"name\":\""+name+"\",\"position\":\""+role+"\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test void soleCurrentOrFutureDutyBlocksBothKindsOfMaintenancePositionChange() throws Exception {
+        long current=period(today,today.plusDays(2),target,replacement);
+        long future=period(today.plusDays(3),today.plusDays(6),target);
+        for(Position role:new Position[]{Position.LINE_MANAGER,Position.SYSTEM_ADMIN}) {
+            mvc.perform(put(deletePath()).header("Authorization",bearer(admin))
+                    .contentType("application/json").content("{\"name\":\"변경 시도\",\"position\":\""+role+"\"}"))
+                    .andExpect(status().is(422)).andExpect(jsonPath("$.error.code").value("DUTY_REPLACEMENT_REQUIRED"));
+            var unchanged=accounts.findById(target.getId()).orElseThrow();
+            assertEquals("MAINTENANCE",unchanged.getRole()); assertEquals(target.getName(),unchanged.getName());
+            assertEquals(1,members(current,target.getId())); assertEquals(1,members(future,target.getId()));
+            assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM change_log",Integer.class));
+        }
+    }
+
+    @Test void positionChangeWithReplacementKeepsCompletedHistoryAndAuditsRemovedMemberships() throws Exception {
+        long past=period(today.minusDays(4),today.minusDays(1),target);
+        long current=period(today,today.plusDays(2),target,replacement);
+        long future=period(today.plusDays(3),today.plusDays(5),target,replacement);
+        changePosition(Position.LINE_MANAGER,target.getName());
+        assertEquals("LINE_MANAGER",accounts.findById(target.getId()).orElseThrow().getRole());
+        assertEquals(1,members(past,target.getId()));
+        for(long id:new long[]{current,future}) { assertEquals(0,members(id,target.getId())); assertEquals(1,members(id,replacement.getId())); }
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM duty",Integer.class));
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY' AND field_name='담당자 제외(보전 직책 변경)' AND changed_by=?",Integer.class,admin.getId()));
+        mvc.perform(get("/api/v1/alarm-duty-schedules/calendar").param("month",today.toString().substring(0,7))
+                .header("Authorization",bearer(admin))).andExpect(status().isOk());
+    }
+
+    @Test void reassignmentThroughDutyApiAllowsPositionChange() throws Exception {
+        long id=period(today,today.plusDays(3),target);
+        mvc.perform(put("/api/v1/system/alarm-duty-schedules/"+id).header("Authorization",bearer(admin))
+                .contentType("application/json").content("{\"startDate\":\""+today+"\",\"endDate\":\""+today.plusDays(3)
+                        +"\",\"dutyUserId\":"+replacement.getId()+"}")) .andExpect(status().isOk());
+        changePosition(Position.SYSTEM_ADMIN,target.getName());
+        assertEquals("SYSTEM_ADMIN",accounts.findById(target.getId()).orElseThrow().getRole());
+        assertEquals(1,members(id,replacement.getId()));
+    }
+
+    @Test void nameOnlyChangeAndPromotionIntoMaintenanceKeepMemberships() throws Exception {
+        long id=period(today,today.plusDays(3),target);
+        changePosition(Position.MAINTENANCE,"바뀐 이름");
+        assertEquals(1,members(id,target.getId()));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY'",Integer.class));
+        jdbc.update("UPDATE account SET role='LINE_MANAGER' WHERE account_id=?",target.getId());
+        changePosition(Position.MAINTENANCE,"바뀐 이름");
+        assertEquals(1,members(id,target.getId()));
+    }
+
+    @Test void deletedOrNonMaintenanceReplacementAlsoBlocksPositionChange() throws Exception {
+        long id=period(today,today.plusDays(3),target,replacement);
+        for(String state:new String[]{"role='LINE_MANAGER'","role='MAINTENANCE',deleted_at=CURRENT_TIMESTAMP"}) {
+            jdbc.update("UPDATE account SET "+state+" WHERE account_id=?",replacement.getId());
+            mvc.perform(put(deletePath()).header("Authorization",bearer(admin)).contentType("application/json")
+                    .content("{\"name\":\"변경\",\"position\":\"LINE_MANAGER\"}"))
+                    .andExpect(status().is(422)).andExpect(jsonPath("$.error.code").value("DUTY_REPLACEMENT_REQUIRED"));
+            assertEquals(1,members(id,target.getId()));
+        }
+    }
+
+    @Test void cleanupAuditFailureRollsBackPositionNameAndMembershipsTogether() throws Exception {
+        long id=period(today,today.plusDays(3),target,replacement);
+        AuditRecorder recorder=AopTestUtils.getUltimateTargetObject(audit);
+        doThrow(new IllegalStateException("audit unavailable")).when(recorder)
+                .record(anyLong(),eq(AuditTargetType.DUTY),anyString(),anyString(),any(),isNull());
+        mvc.perform(put(deletePath()).header("Authorization",bearer(admin)).contentType("application/json")
+                .content("{\"name\":\"바뀐 이름\",\"position\":\"LINE_MANAGER\"}"))
+                .andExpect(status().isInternalServerError());
+        var unchanged=accounts.findById(target.getId()).orElseThrow();
+        assertEquals("MAINTENANCE",unchanged.getRole()); assertEquals(target.getName(),unchanged.getName());
+        assertEquals(1,members(id,target.getId()));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM change_log",Integer.class));
+    }
+
+    String dutyBody(LocalDate from,LocalDate to,long user) {
+        return "{\"startDate\":\""+from+"\",\"endDate\":\""+to+"\",\"dutyUserId\":"+user+"}";
+    }
+    int dutyAudits() { return jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY'",Integer.class); }
+
+    @Test void dutyCreateUpdateNoopDeletePersistActorAndFieldSnapshots() throws Exception {
+        String path="/api/v1/system/alarm-duty-schedules";
+        mvc.perform(post(path).header("Authorization",bearer(admin)).contentType("application/json")
+                .content(dutyBody(today.plusDays(1),today.plusDays(3),target.getId()))).andExpect(status().isCreated());
+        long id=jdbc.queryForObject("SELECT duty_id FROM duty",Long.class);
+        assertEquals(3,dutyAudits());
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE changed_by=? AND target_name=? AND old_value IS NULL AND new_value IS NOT NULL",Integer.class,admin.getId(),"당번 "+id));
+        mvc.perform(put(path+"/"+id).header("Authorization",bearer(admin)).contentType("application/json")
+                .content(dutyBody(today.plusDays(1),today.plusDays(3),target.getId()))).andExpect(status().isOk());
+        assertEquals(3,dutyAudits());
+        mvc.perform(put(path+"/"+id).header("Authorization",bearer(admin)).contentType("application/json")
+                .content(dutyBody(today.plusDays(2),today.plusDays(4),replacement.getId()))).andExpect(status().isOk());
+        assertEquals(6,dutyAudits());
+        assertEquals(Long.toString(target.getId()),jdbc.queryForObject("SELECT old_value FROM change_log WHERE field_name='담당자' AND new_value=?",String.class,Long.toString(replacement.getId())));
+        mvc.perform(delete(path+"/"+id).header("Authorization",bearer(admin))).andExpect(status().isNoContent());
+        assertEquals(9,dutyAudits());
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE new_value IS NULL AND old_value IS NOT NULL",Integer.class));
+    }
+
+    void rejectDutyAudit() {
+        AuditRecorder recorder=AopTestUtils.getUltimateTargetObject(audit);
+        doThrow(new IllegalStateException("audit unavailable")).when(recorder)
+                .record(anyLong(),eq(AuditTargetType.DUTY),anyString(),anyString(),any(),any());
+    }
+    @Test void failedCreateAuditRollsBackDutyAndMembership() throws Exception {
+        rejectDutyAudit();
+        mvc.perform(post("/api/v1/system/alarm-duty-schedules").header("Authorization",bearer(admin))
+                .contentType("application/json").content(dutyBody(today.plusDays(1),today.plusDays(3),target.getId())))
+                .andExpect(status().isInternalServerError());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM duty",Integer.class)); assertEquals(0,dutyAudits());
+    }
+    @Test void failedUpdateAuditRollsBackDutyAndMembership() throws Exception {
+        long id=period(today.plusDays(1),today.plusDays(3),target); rejectDutyAudit();
+        mvc.perform(put("/api/v1/system/alarm-duty-schedules/"+id).header("Authorization",bearer(admin))
+                .contentType("application/json").content(dutyBody(today.plusDays(2),today.plusDays(4),replacement.getId())))
+                .andExpect(status().isInternalServerError());
+        assertEquals(today.plusDays(1),jdbc.queryForObject("SELECT start_date FROM duty WHERE duty_id=?",LocalDate.class,id));
+        assertEquals(1,members(id,target.getId())); assertEquals(0,dutyAudits());
+    }
+    @Test void failedDeleteAuditRollsBackDutyAndMembership() throws Exception {
+        long id=period(today.plusDays(1),today.plusDays(3),target); rejectDutyAudit();
+        mvc.perform(delete("/api/v1/system/alarm-duty-schedules/"+id).header("Authorization",bearer(admin)))
+                .andExpect(status().isInternalServerError());
+        assertEquals(1,members(id,target.getId())); assertEquals(0,dutyAudits());
+    }
+
 }
