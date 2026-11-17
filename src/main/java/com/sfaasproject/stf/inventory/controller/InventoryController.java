@@ -1,9 +1,11 @@
 package com.sfaasproject.stf.inventory.controller;
 
 import com.sfaasproject.stf.operations.dto.BContract.*;
+import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.port.BReadPort.*;
 import com.sfaasproject.stf.operations.service.*;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,8 +23,9 @@ public class InventoryController {
     }
 
     @GetMapping("/inventory")
-    public InventoryResponse getInventory() {
-        BAccess.current();
+    public InventoryResponse getInventory(
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getInventory(new GetInventoryQuery());
     }
 
@@ -30,14 +33,17 @@ public class InventoryController {
     public InventoryHistoryResponse getInventoryHistory(
             @RequestParam(name = "from", required = true) OffsetDateTime from,
             @RequestParam(name = "to", required = true) OffsetDateTime to,
-            @RequestParam(name = "lineIds", required = false) List<Long> lineIds) {
-        BAccess.current();
+            @RequestParam(name = "lineIds", required = false) List<Long> lineIds,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getInventoryHistory(new GetInventoryHistoryQuery(from, to, lineIds));
     }
 
     @GetMapping("/inventory/lines/{lineId}")
-    public InventoryDetailResponse getInventoryDetail(@PathVariable("lineId") Long lineId) {
-        BAccess.current();
+    public InventoryDetailResponse getInventoryDetail(
+            @PathVariable("lineId") Long lineId,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getInventoryDetail(new GetInventoryDetailQuery(lineId));
     }
 }

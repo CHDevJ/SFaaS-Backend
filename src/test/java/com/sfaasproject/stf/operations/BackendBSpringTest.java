@@ -22,7 +22,7 @@ import java.time.Clock;
             "stf.backend-b.enabled=true",
             "stf.backend-b.jobs-enabled=false",
             "stf.backend-b.ingestion-enabled=true",
-            "stf.auth.jwt-secret=0123456789abcdef0123456789abcdef",
+            "spring.jpa.hibernate.ddl-auto=none",
             "INTERNAL_API_KEY=0123456789abcdef0123456789abcdef",
             "spring.datasource.url=jdbc:h2:mem:b-spring;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
             "spring.sql.init.mode=always",
@@ -38,7 +38,7 @@ class BackendBSpringTest {
     com.sfaasproject.stf.measurement.service.IngestionMessageGuard guard;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
-    com.sfaasproject.stf.operations.service.BTokenGuard tokens;
+    com.sfaasproject.stf.auth.service.AuthFlowService.SessionStore sessions;
 
     MockMvc mvc;
 
@@ -120,7 +120,8 @@ class BackendBSpringTest {
 
     @Test
     void revokedJwtCannotUseHttpApi() throws Exception {
-        org.mockito.Mockito.when(tokens.revoked(org.mockito.ArgumentMatchers.any()))
+        org.mockito.Mockito.when(sessions.isAccessRevoked(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(true);
         mvc.perform(get("/api/v1/inventory").header("Authorization", "Bearer " + token()))
                 .andExpect(status().isUnauthorized());

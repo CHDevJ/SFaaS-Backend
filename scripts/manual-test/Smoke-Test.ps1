@@ -20,7 +20,7 @@ function Request([string]$Method,[string]$Path,[string]$Token,[object]$Body=$nul
 function Check([string]$Id,[string]$Title,[string]$Method,[string]$Path,[int]$Expected,[string]$Token,[object]$Body=$null) {
     $r=Request $Method $Path $Token $Body
     $passed=$r.Status -eq $Expected
-    $results.Add([pscustomobject]@{id=$Id;title=$Title;method=$Method;path=$Path;expected=$Expected;actual=$r.Status;result=$(if($passed){'PASS'}else{'FAIL'});seconds=[Math]::Round($r.Seconds,4);evidence=$r.Body.Substring(0,[Math]::Min(220,$r.Body.Length));executedAt=[DateTimeOffset]::Now.ToString('o')})
+    $results.Add([pscustomobject]@{id=$Id;title=$Title;method=$Method;path=$Path;expected=$Expected;actual=$r.Status;result=$(if($passed){'PASS'}else{'FAIL'});seconds=[Math]::Round($r.Seconds,4);evidence=$(if($Path -eq '/api/v1/auth/login') {"login response redacted"} else {$r.Body.Substring(0,[Math]::Min(220,$r.Body.Length))});executedAt=[DateTimeOffset]::Now.ToString('o')})
     if (-not $passed) { Write-Warning "$Id expected $Expected but got $($r.Status): $($r.Body)" }
     return $r
 }
@@ -30,7 +30,15 @@ $schema=Check 'ENV-003' 'OpenAPI JSON' GET '/v3/api-docs' 200 ''
 $doc=$schema.Body|ConvertFrom-Json
 $operationCount=0
 foreach($p in $doc.paths.PSObject.Properties){foreach($m in $p.Value.PSObject.Properties){if($m.Name -in 'get','post','put','patch','delete'){$operationCount++}}}
-if($operationCount -ne 40 -or $doc.components.securitySchemes.bearerAuth.scheme -ne 'bearer'){throw 'Expected 40 authenticated B API operations in Swagger.'}
+if($operationCount -ne 45 -or $doc.components.securitySchemes.bearerAuth.scheme -ne 'bearer'){throw 'Expected 40 B and 5 A authentication/signup operations in Swagger.'}
+$loginBody=& (Join-Path $PSScriptRoot 'Get-ManualTestLogin.ps1')|ConvertFrom-Json
+$loginResponse=Check 'AUTH-LIVE-001' '실제 로그인 성공' POST '/api/v1/auth/login' 200 '' $loginBody
+$loginJson=$loginResponse.Body|ConvertFrom-Json
+$loginJwt=$loginJson.data.accessToken
+# The login response contains credentials. Store only its non-sensitive status as evidence.
+$results[$results.Count-1].evidence='success=true; accessToken received (redacted); refresh cookie verified by automated integration test'
+Check 'AUTH-LIVE-002' '로그인 JWT로 B API 호출' GET '/api/v1/inventory' 200 $loginJwt|Out-Null
+Check 'AUTH-LIVE-003' '잘못된 비밀번호 거절' POST '/api/v1/auth/login' 401 '' @{loginId=$loginBody.loginId;password='WrongPassword999!'}|Out-Null
 Check 'SEC-001' '미인증 요청 거절' GET '/api/v1/inventory' 401 '' | Out-Null
 Check 'SEC-002' '잘못된 JWT 거절' GET '/api/v1/inventory' 401 'invalid-token' | Out-Null
 Check 'SEC-003' '보전 JWT 조회' GET '/api/v1/inventory' 200 $maintenance | Out-Null

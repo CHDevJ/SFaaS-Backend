@@ -1,3 +1,9 @@
+# 2026-11-17 진행 상태
+
+아래 합의에 따라 A의 68a71fd를 기존 로컬 Back_B에서 통합 검증했다. B 체인·별도 JWT/Clock·Redis 대체 경로를 제거했고 Claims principal·STOMP·가입 결과 Outbox를 연결했다. A의 ApiExceptionHandler는 원본 구조를 채택했다. Gradle 358개·실제 HTTP 48개 통과. 추가 사용자 지시에 따라 새 통합 코드도 Back_B에 커밋·공유한다. backend/main으로 자동 병합하지 않는다.
+
+아래는 통합 전에 정리한 전달문 원본이다.
+
 # A 개발자에게 전달할 답변
 
 다섯 가지 방향에 동의합니다. 아래 조건만 함께 맞추면 좋겠습니다.

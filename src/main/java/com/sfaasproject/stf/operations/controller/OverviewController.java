@@ -1,9 +1,11 @@
 package com.sfaasproject.stf.operations.controller;
 
 import com.sfaasproject.stf.operations.dto.BContract.*;
+import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.port.BReadPort.*;
 import com.sfaasproject.stf.operations.service.*;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,14 +23,16 @@ public class OverviewController {
 
     @GetMapping("/overview/equipment-layout")
     public EquipmentLayoutResponse getEquipmentLayout(
-            @RequestParam(name = "lineId", required = false) Long lineId) {
-        BAccess.current();
+            @RequestParam(name = "lineId", required = false) Long lineId,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getEquipmentLayout(new GetEquipmentLayoutQuery(lineId));
     }
 
     @GetMapping("/overview/assembly-stop-forecast")
-    public AssemblyStopForecastResponse getAssemblyStopForecast() {
-        BAccess.current();
+    public AssemblyStopForecastResponse getAssemblyStopForecast(
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getAssemblyStopForecast(new GetAssemblyStopForecastQuery());
     }
 }

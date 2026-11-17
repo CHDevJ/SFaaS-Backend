@@ -1,3 +1,9 @@
+# 최신 A/B 통합 검증 (2026-11-17)
+
+A 인증 브랜치 68a71fd를 기존 로컬 Back_B에서 통합했다. 단일 보안·Claims principal·STOMP·가입 결과 Outbox 연결을 구현했고 Gradle 358개(실패·오류·건너뜀 0), 실제 HTTP 48개를 통과했다. Swagger는 45개 operation을 제공한다. 상세는 BACKEND_B_GITHUB_RECHECK.md를 따른다.
+
+설정·문서 커밋 7dd7ce4 이후 A/B 통합 코드도 사용자 지시에 따라 Back_B에 커밋·공유한다. 공유 DB 적용과 frontend의 backend 계약 동기화는 별도다. 아래는 통합 전 B 담당 구현 기록이다.
+
 # Back_B 구현 및 연결 현황 (2026-11-17)
 
 기존 로컬 stf 저장소의 Back_B 브랜치에서 B 담당 40개 API의 Controller·DTO·응용 서비스, 이벤트·스케줄러와 JDBC 어댑터를 구현했다.

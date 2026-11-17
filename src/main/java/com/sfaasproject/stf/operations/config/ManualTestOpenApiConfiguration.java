@@ -20,7 +20,7 @@ public class ManualTestOpenApiConfiguration {
                 .info(new Info().title("STF Backend B - Local Manual Test").version("5.0.0")
                         .description("Isolated sample data. Use Get-ManualTestToken.ps1 and Authorize. "
                                 + "Tokens expire after 30 minutes and are held in browser memory only. "
-                                + "Login and real Telegram delivery are outside this local test."))
+                                + "Login is available with Get-ManualTestLogin.ps1. Real Telegram delivery is not enabled."))
                 .addServersItem(new Server().url("http://localhost:8081"))
                 .components(new Components().addSecuritySchemes("bearerAuth", new SecurityScheme()
                         .type(SecurityScheme.Type.HTTP).scheme("bearer").bearerFormat("JWT")))

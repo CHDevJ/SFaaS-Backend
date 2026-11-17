@@ -94,9 +94,9 @@ class MySqlBackendBTest {
 
     @Test
     @Order(1)
-    void realMySqlAppliesAllThreeMigrationsAndSeed() {
+    void realMySqlAppliesAllFourMigrationsAndSeed() {
         assertTrue(flyway.validateWithResult().validationSuccessful);
-        assertEquals(3, flyway.info().applied().length);
+        assertEquals(4, flyway.info().applied().length);
         assertEquals(27, jdbc.queryForObject("SELECT COUNT(*) FROM equipment", Integer.class));
         assertEquals(5, jdbc.queryForObject("SELECT COUNT(*) FROM line", Integer.class));
         assertEquals(

@@ -2,29 +2,17 @@ package com.sfaasproject.stf.operations.service;
 
 import com.sfaasproject.stf.auth.service.AuthFlowService.SessionStore;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService.Claims;
+import java.util.Objects;
 
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.data.redis.core.StringRedisTemplate;
-
-import java.time.Instant;
-
-/** Prefer A's session port; fallback uses the documented shared Redis revocation keys. */
+/** HTTP and STOMP share A's revocation policy; there is no second Redis key contract. */
 public class BTokenGuard {
-    private final StringRedisTemplate redis;
-    private final ObjectProvider<SessionStore> sessions;
+    private final SessionStore sessions;
 
-    public BTokenGuard(StringRedisTemplate redis, ObjectProvider<SessionStore> sessions) {
-        this.redis = redis;
-        this.sessions = sessions;
+    public BTokenGuard(SessionStore sessions) {
+        this.sessions = Objects.requireNonNull(sessions);
     }
 
     public boolean revoked(Claims claims) {
-        var store = sessions.getIfAvailable();
-        if (store != null)
-            return store.isAccessRevoked(claims.jti(), claims.userId(), claims.issuedAt());
-        if (Boolean.TRUE.equals(redis.hasKey("auth:access:revoked:" + claims.jti()))) return true;
-        String before = redis.opsForValue().get("auth:user:revoked-before:" + claims.userId());
-        return before != null
-                && !claims.issuedAt().isAfter(Instant.ofEpochMilli(Long.parseLong(before)));
+        return sessions.isAccessRevoked(claims.jti(), claims.userId(), claims.issuedAt());
     }
 }

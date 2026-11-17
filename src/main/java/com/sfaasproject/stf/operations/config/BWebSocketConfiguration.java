@@ -1,6 +1,7 @@
 package com.sfaasproject.stf.operations.config;
 
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
+import com.sfaasproject.stf.auth.security.AccessTokenAuthentication;
 import com.sfaasproject.stf.operations.port.BPorts.Users;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -12,12 +13,9 @@ import org.springframework.messaging.simp.stomp.*;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.socket.config.annotation.*;
 
 import java.time.Clock;
-import java.util.List;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -79,18 +77,29 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
                             String auth = headers.getFirstNativeHeader("Authorization");
                             if (auth == null || !auth.startsWith("Bearer "))
                                 throw new MessageDeliveryException("Authentication required");
-                            var claims = jwt.verify(auth.substring(7), clock.instant());
-                            var user = users.active(claims.userId());
-                            if (user == null || tokens.revoked(claims))
+                            try {
+                                var claims = jwt.verify(auth.substring(7), clock.instant());
+                                var user = users.active(claims.userId());
+                                if (user == null || tokens.revoked(claims))
+                                    throw new MessageDeliveryException("Authentication required");
+                                var current = new JwtAccessTokenService.Claims(claims.userId(),
+                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Position.valueOf(user.position().name()),
+                                        claims.jti(), claims.issuedAt(), claims.expiresAt());
+                                headers.setUser(new AccessTokenAuthentication(current));
+                            } catch (RuntimeException invalid) {
                                 throw new MessageDeliveryException("Authentication required");
-                            headers.setUser(
-                                    new UsernamePasswordAuthenticationToken(
-                                            Long.toString(user.userId()),
-                                            null,
-                                            List.of(
-                                                    new SimpleGrantedAuthority(
-                                                            "ROLE_" + user.position().name()))));
+                            }
                         } else if (headers.getCommand() == StompCommand.SUBSCRIBE) {
+                            if (!(headers.getUser() instanceof AccessTokenAuthentication session))
+                                throw new MessageDeliveryException("Subscription denied");
+                            try {
+                                var claims = session.getPrincipal();
+                                if (!claims.expiresAt().isAfter(clock.instant())
+                                        || users.active(claims.userId()) == null || tokens.revoked(claims))
+                                    throw new MessageDeliveryException("Subscription denied");
+                            } catch (RuntimeException invalid) {
+                                throw new MessageDeliveryException("Subscription denied");
+                            }
                             String destination = headers.getDestination();
                             if (headers.getUser() == null
                                     || destination == null
