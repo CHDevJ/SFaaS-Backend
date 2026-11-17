@@ -2,15 +2,39 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, backend]
   push:
-    branches: [main, develop]
+    branches: [main, develop, backend, Back_B]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      TZ: Asia/Seoul
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          # Disposable CI database only; no project credentials or GitHub secrets are used.
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: stf_b_test
+          TZ: Asia/Seoul
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+          --health-start-period=30s
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,5 +49,23 @@ jobs:
       - name: Grant execute permission
         run: chmod +x gradlew
 
-      - name: Run tests
-        run: ./gradlew clean test
+      - name: Run all tests including MySQL
+        env:
+          STF_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/stf_b_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul
+          STF_TEST_MYSQL_PASSWORD: ''
+        run: ./gradlew clean test --no-daemon
+
+      - name: Summarize and verify test results
+        if: always()
+        run: python3 scripts/ci/report-tests.py
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/TEST-*.xml
+          if-no-files-found: ignore
+          retention-days: 7
