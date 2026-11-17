@@ -2,7 +2,6 @@ package com.sfaasproject.stf.user.service;
 
 import com.sfaasproject.stf.auth.service.AuthPolicyService;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.common.DomainException;
 import com.sfaasproject.stf.common.paging.PageQuery;
@@ -34,10 +33,6 @@ public class SignupApprovalService {
     public record PendingSignup(long requestId, String loginId, String name, AccountStatus accountStatus,
             Instant requestedAt, boolean telegramConnected) { }
 
-    public record ApprovedUser(long userId, String loginId, String name, boolean telegramConnected,
-            Instant telegramLinkedAt, Position position, Permission permission, AccountStatus accountStatus,
-            Instant lastLoginAt, Instant createdAt, Instant updatedAt) { }
-
     private static final Sort OLDEST_FIRST = Sort.by("createdAt").ascending().and(Sort.by("id").ascending());
 
     private final AccountRepository accounts;
@@ -63,16 +58,16 @@ public class SignupApprovalService {
     }
 
     @Transactional
-    public ApprovedUser approve(long requestId, Position position, long approverId) {
+    public UserView approve(long requestId, Position position, long approverId) {
         Objects.requireNonNull(position);
         AccountEntity account = lockPending(requestId);
         LocalDateTime now = KstTime.toLocal(clock.instant());
         account.approve(position.name(), approverId, now);
         audit.record(approverId, AuditTargetType.ACCOUNT, account.getLoginId(), "가입 승인", "승인 대기",
-                "승인 (직책: " + label(position) + ")");
+                "승인 (직책: " + PositionLabels.of(position) + ")");
         events.publishEvent(new SignupDecidedEvent(SignupDecidedEvent.Outcome.APPROVED, account.getId(),
                 account.getLoginId(), account.getName(), position.name(), account.getTelegramChatId(), null));
-        return toApproved(account);
+        return UserView.from(account, policy);
     }
 
     /** 거절한 신청은 줄을 지운다. 같은 아이디로 다시 신청할 수 있어야 하고 참조하는 기록이 없기 때문이다. */
@@ -103,23 +98,5 @@ public class SignupApprovalService {
         return new PendingSignup(account.getId(), account.getLoginId(), account.getName(),
                 AccountStatus.PENDING_APPROVAL, KstTime.toInstant(account.getCreatedAt()),
                 account.isTelegramConnected());
-    }
-
-    private ApprovedUser toApproved(AccountEntity account) {
-        Position position = Position.valueOf(account.getRole());
-        AccountStatus status = account.isMustChangePassword()
-                ? AccountStatus.PASSWORD_CHANGE_REQUIRED : AccountStatus.ACTIVE;
-        return new ApprovedUser(account.getId(), account.getLoginId(), account.getName(),
-                account.isTelegramConnected(), KstTime.toInstant(account.getTelegramLinkedAt()), position,
-                policy.permission(position), status, KstTime.toInstant(account.getLastLoginAt()),
-                KstTime.toInstant(account.getCreatedAt()), KstTime.toInstant(account.getUpdatedAt()));
-    }
-
-    private static String label(Position position) {
-        return switch (position) {
-            case SYSTEM_ADMIN -> "시스템관리자";
-            case LINE_MANAGER -> "라인 관리자";
-            case MAINTENANCE -> "보전 담당자";
-        };
     }
 }
