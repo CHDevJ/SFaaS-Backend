@@ -20,20 +20,33 @@ import org.springframework.transaction.annotation.Transactional;
 public class DatabaseAccountStore implements AuthFlowService.AccountStore {
 
     private final AccountRepository accounts;
+    private final TemporaryPasswordStore temporaryPasswords;
     private final Clock clock;
 
-    public DatabaseAccountStore(AccountRepository accounts, Clock clock) {
+    public DatabaseAccountStore(AccountRepository accounts, TemporaryPasswordStore temporaryPasswords,
+            Clock clock) {
         this.accounts = accounts;
+        this.temporaryPasswords = temporaryPasswords;
         this.clock = clock;
     }
 
+    /**
+     * 로그인할 계정을 찾는다. 관리자가 발급한 임시 비밀번호가 30분을 넘겼으면 그 비밀번호를 DB 에서 지워
+     * 로그인이 실패하게 한다(관리자가 다시 초기화해야 한다).
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public Account findByLoginId(String loginId) {
-        return accounts.findByLoginId(loginId)
-                .filter(entity -> !entity.isDeleted())
-                .map(DatabaseAccountStore::toAccount)
-                .orElse(null);
+        AccountEntity entity = accounts.findByLoginId(loginId).filter(found -> !found.isDeleted()).orElse(null);
+        if (entity == null) {
+            return null;
+        }
+        if (entity.isMustChangePassword() && entity.getPasswordHash() != null
+                && temporaryPasswords.isExpired(entity.getId(), clock.instant())) {
+            entity.expireTemporaryPassword(KstTime.toLocal(clock.instant()));
+            temporaryPasswords.clear(entity.getId());
+        }
+        return toAccount(entity);
     }
 
     @Override
@@ -59,6 +72,7 @@ public class DatabaseAccountStore implements AuthFlowService.AccountStore {
         AccountEntity entity = accounts.findById(userId).orElseThrow(
                 () -> new IllegalStateException("Account not found"));
         entity.changePassword(passwordHash, KstTime.toLocal(clock.instant()));
+        temporaryPasswords.clear(userId);
     }
 
     static Account toAccount(AccountEntity entity) {

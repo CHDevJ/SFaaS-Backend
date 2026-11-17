@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     private static final String PROTECTED = "/api/v1/equipment/1";
-    private static final String SYSTEM_ONLY = "/api/v1/system/users";
+    private static final String SYSTEM_ONLY = "/api/v1/system/settings/judgement";
     private static final String DUTY_LIST = "/api/v1/system/alarm-duty-schedules";
     private static final String DUTY_CURRENT = "/api/v1/system/alarm-duty-schedules/current";
 
@@ -235,8 +235,16 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
     }
 
     @Test
-    void only_login_and_signup_are_public_auth_endpoints() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/logout")).andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/v1/auth/me")).andExpect(status().isUnauthorized());
+    void only_login_signup_and_refresh_are_public_auth_endpoints() throws Exception {
+        // 갱신은 토큰 없이 호출하는 API 라서 보안 필터가 아니라 갱신 자체의 오류 코드로 거절된다.
+        mockMvc.perform(post("/api/v1/auth/refresh"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_REFRESH_TOKEN_INVALID"));
+        for (var request : new MockHttpServletRequestBuilder[] {post("/api/v1/auth/logout"),
+                get("/api/v1/auth/me"), put("/api/v1/auth/me/password")}) {
+            mockMvc.perform(request)
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.error.code").value("AUTH_TOKEN_INVALID"));
+        }
     }
 }
