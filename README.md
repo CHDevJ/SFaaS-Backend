@@ -41,11 +41,27 @@ configuration without connecting to a Redis server, so Docker is not required.
 .\gradlew.bat clean test
 ```
 
+Prepare the local JWT signing key once. The script preserves an existing valid key and prints no secret value.
+
+```powershell
+.\scripts\Setup-LocalJwt.ps1
+```
+
+The application reads `secrets/jwt-local.properties` from the project working directory.
+This file is ignored by Git. `JWT_SECRET` in the process environment takes precedence;
+it must contain at least 32 UTF-8 bytes. A missing or short key still stops startup.
+Docker Compose's `.env` file is not automatically passed to an IDE Java process.
+
 Run the backend.
 
 ```powershell
 .\gradlew.bat bootRun
 ```
+
+IntelliJ or STS: set the run configuration working directory to this `stf` folder,
+then run `StfApplication` again. For B features, activate the `backend-b` profile and
+supply the database settings separately. The existing `backend-b,manual-test` setup
+uses its own secret file, dedicated database, and port 8081; it is unchanged.
 
 ## Local URLs
 
