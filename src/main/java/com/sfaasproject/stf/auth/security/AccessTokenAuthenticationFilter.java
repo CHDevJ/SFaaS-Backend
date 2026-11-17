@@ -60,7 +60,8 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return HttpMethod.POST.matches(request.getMethod())
-                && SecurityConfig.PUBLIC_POST_PATHS.contains(request.getRequestURI());
+                && (SecurityConfig.PUBLIC_POST_PATHS.contains(request.getRequestURI())
+                    || "/internal/v1/telegram/updates".equals(request.getRequestURI()));
     }
 
     @Override
@@ -85,7 +86,19 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
+        if (Boolean.TRUE.equals(authentication.getDetails()) && !passwordChangePath(request)) {
+            response.setStatus(HttpStatus.FORBIDDEN.value());
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"success\":false,\"error\":{\"code\":\"AUTH_PASSWORD_CHANGE_REQUIRED\",\"message\":\"비밀번호를 먼저 변경해 주세요.\"}}");
+            return;
+        }
         chain.doFilter(request, response);
+    }
+
+    private boolean passwordChangePath(HttpServletRequest request) {
+        return (HttpMethod.GET.matches(request.getMethod()) && "/api/v1/auth/me".equals(request.getRequestURI()))
+                || (HttpMethod.PUT.matches(request.getMethod()) && "/api/v1/auth/me/password".equals(request.getRequestURI()))
+                || (HttpMethod.POST.matches(request.getMethod()) && "/api/v1/auth/logout".equals(request.getRequestURI()));
     }
 
     private Authentication authenticate(String token) {
@@ -95,12 +108,14 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
         }
         AuthFlowService.Account account = accounts.findById(claims.userId());
         if (account == null || account.status() == AccountStatus.PENDING_APPROVAL
-                || account.status() == null || account.position() == null) {
+                || account.status() == null || account.permission() == null) {
             throw invalid();
         }
         JwtAccessTokenService.Claims current = new JwtAccessTokenService.Claims(claims.userId(),
-                account.position(), claims.jti(), claims.issuedAt(), claims.expiresAt());
-        return new AccessTokenAuthentication(current);
+                account.permission(), claims.jti(), claims.issuedAt(), claims.expiresAt());
+        var authentication = new AccessTokenAuthentication(current);
+        authentication.setDetails(account.status() == AccountStatus.PASSWORD_CHANGE_REQUIRED);
+        return authentication;
     }
 
     private static DomainException invalid() {

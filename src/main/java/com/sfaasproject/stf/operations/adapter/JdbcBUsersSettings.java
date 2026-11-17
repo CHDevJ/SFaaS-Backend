@@ -51,9 +51,15 @@ public class JdbcBUsersSettings implements Users, Settings {
     }
 
     @Override
+    public boolean passwordChangeRequired(long id) {
+        var r=db.one("SELECT must_change_password FROM account WHERE account_id=?",id);
+        return r!=null && Boolean.TRUE.equals(r.get("must_change_password"));
+    }
+
+    @Override
     public Set<Long> maintenanceIds() {
         return notificationUsers().stream()
-                .filter(u -> u.position() == Position.MAINTENANCE)
+                .filter(u -> u.position() == Position.USER)
                 .map(UserBrief::userId)
                 .collect(Collectors.toSet());
     }

@@ -221,12 +221,11 @@ public final class BContract {
     public record AlarmSummaryAssignee(
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Size(max = 100) String name,
-            @NotNull @Valid Position position) {}
+            @NotNull @Valid @com.fasterxml.jackson.annotation.JsonProperty("permission") @com.fasterxml.jackson.annotation.JsonAlias("position") Position position) {}
 
     public enum Position {
-        SYSTEM_ADMIN,
-        LINE_MANAGER,
-        MAINTENANCE
+        ADMIN,
+        USER
     }
 
     public record PageMeta(
@@ -255,7 +254,7 @@ public final class BContract {
     public record RecentClosedAlarmAcknowledger(
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Size(max = 100) String name,
-            @NotNull @Valid Position position) {}
+            @NotNull @Valid @com.fasterxml.jackson.annotation.JsonProperty("permission") @com.fasterxml.jackson.annotation.JsonAlias("position") Position position) {}
 
     public record AlarmDetailResponse(
             @NotNull Boolean success, @NotNull @Valid AlarmDetailData data) {}
@@ -292,7 +291,7 @@ public final class BContract {
     public record AlarmDetailDataAssignee(
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Size(max = 100) String name,
-            @NotNull @Valid Position position) {}
+            @NotNull @Valid @com.fasterxml.jackson.annotation.JsonProperty("permission") @com.fasterxml.jackson.annotation.JsonAlias("position") Position position) {}
 
     public enum AlarmDetailDataResult {
         EFFECTIVE,
@@ -310,7 +309,7 @@ public final class BContract {
     public record AlarmTimelineEntryActor(
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Size(max = 100) String name,
-            @NotNull @Valid Position position) {}
+            @NotNull @Valid @com.fasterxml.jackson.annotation.JsonProperty("permission") @com.fasterxml.jackson.annotation.JsonAlias("position") Position position) {}
 
     public record AlarmComparisonResponse(
             @NotNull Boolean success, @NotNull @Valid AlarmComparisonData data) {}
@@ -343,7 +342,7 @@ public final class BContract {
     public record UserBrief(
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Size(max = 100) String name,
-            @NotNull @Valid Position position) {}
+            @NotNull @Valid @com.fasterxml.jackson.annotation.JsonProperty("permission") @com.fasterxml.jackson.annotation.JsonAlias("position") Position position) {}
 
     public record AlarmAcknowledgementRequest(
             @NotNull @DecimalMin(value = "1", inclusive = true) Long assigneeUserId) {}
@@ -434,7 +433,7 @@ public final class BContract {
     public record AlarmHistoryItemAssignee(
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Size(max = 100) String name,
-            @NotNull @Valid Position position) {}
+            @NotNull @Valid @com.fasterxml.jackson.annotation.JsonProperty("permission") @com.fasterxml.jackson.annotation.JsonAlias("position") Position position) {}
 
     public record FaultHistoryResponse(
             @NotNull Boolean success, @NotNull @Valid FaultHistoryData data) {}

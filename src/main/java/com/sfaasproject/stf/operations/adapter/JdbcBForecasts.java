@@ -3,6 +3,7 @@ package com.sfaasproject.stf.operations.adapter;
 import static com.sfaasproject.stf.operations.adapter.JdbcBDatabase.*;
 
 import com.sfaasproject.stf.operations.dto.BContract.*;
+import com.sfaasproject.stf.alarm.service.RecoveryTimeEstimator;
 import com.sfaasproject.stf.operations.port.BPorts.*;
 
 import java.math.*;
@@ -54,7 +55,7 @@ public class JdbcBForecasts {
             Integer margin = null;
             var fault =
                     db.one(
-                            "SELECT a.alarm_id,a.equipment_id,a.occurred_at FROM alarm a JOIN"
+                            "SELECT a.alarm_id,a.equipment_id,a.data_item_id,a.occurred_at FROM alarm a JOIN"
                                 + " equipment e ON e.equipment_id=a.equipment_id JOIN process p ON"
                                 + " p.process_id=e.process_id WHERE p.line_id=? AND"
                                 + " a.grade='CRITICAL' AND a.value_state='ABNORMAL' AND"
@@ -64,40 +65,25 @@ public class JdbcBForecasts {
             if (fault != null) {
                 source = number(fault, "equipment_id");
                 alarmId = number(fault, "alarm_id");
-                var history =
-                        db.rows(
-                                "SELECT occurred_at,closed_at FROM alarm WHERE equipment_id=? AND"
-                                        + " grade='CRITICAL' AND closed_at IS NOT NULL AND"
-                                        + " process_result='EFFECTIVE'",
-                                source);
-                double average =
-                        history.stream()
-                                .mapToLong(
-                                        a ->
-                                                Math.max(
-                                                        0,
-                                                        Duration.between(
-                                                                        dateTime(
-                                                                                a.get(
-                                                                                        "occurred_at")),
-                                                                        dateTime(
-                                                                                a.get("closed_at")))
-                                                                .getSeconds()))
-                                .average()
-                                .orElse(-1);
-                if (average >= 0) {
-                    recovery = dateTime(fault.get("occurred_at")).plusSeconds((long) average);
-                    if (stop != null) {
-                        margin = Math.toIntExact(Duration.between(recovery, stop).toMinutes());
-                        long seconds = Math.max(0, Duration.between(stop, recovery).getSeconds());
-                        loss =
-                                BigDecimal.valueOf(seconds)
-                                        .multiply(hourly)
-                                        .multiply(price)
-                                        .divide(BigDecimal.valueOf(3600), 0, RoundingMode.HALF_UP);
-                    }
+                var faultAt = dateTime(fault.get("occurred_at"));
+                var history = db.rows(
+                        "SELECT equipment_id,data_item_id,grade,occurred_at,closed_at FROM alarm"
+                            + " WHERE equipment_id=? AND process_state='CLOSED'"
+                            + " AND closed_at<? AND closed_at>=occurred_at",
+                        source, time(faultAt));
+                var samples = history.stream().map(a -> new RecoveryTimeEstimator.ClosedAlarm(
+                        number(a, "equipment_id"), number(a, "data_item_id"), com.sfaasproject.stf.alarm.service.AlarmGrade.valueOf(string(a,"grade")),
+                        dateTime(a.get("occurred_at")), dateTime(a.get("closed_at")))).toList();
+                recovery = new RecoveryTimeEstimator().estimate(source, number(fault, "data_item_id"),
+                        faultAt, samples).recoveryExpectedAt();
+                if (stop != null && recovery != null) {
+                    margin = Math.toIntExact(Duration.between(recovery, stop).toMinutes());
+                    long seconds = Math.max(0, Duration.between(stop, recovery).getSeconds());
+                    loss = BigDecimal.valueOf(seconds).multiply(hourly).multiply(price)
+                            .divide(BigDecimal.valueOf(3600), 0, RoundingMode.HALF_UP);
                 }
             }
+
             String stage =
                     minutes == null
                             ? "MAINTAIN"

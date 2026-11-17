@@ -11,7 +11,12 @@ import org.springframework.stereotype.Component;
 public class RedisAccessRevocationStore implements AccessRevocationStore {
 
     static final String JTI_PREFIX = "auth:access:revoked:";
-    static final String USER_CUTOFF_PREFIX = "auth:user:revoked-until:";
+    static final String USER_CUTOFF_PREFIX = "auth:user:revoked-at:v7:";
+    static final String LEGACY_USER_CUTOFF_PREFIX = "auth:user:revoked-until:";
+    private static final java.time.format.DateTimeFormatter PRECISE = new java.time.format.DateTimeFormatterBuilder().appendInstant(9).toFormatter();
+    private static final org.springframework.data.redis.core.script.DefaultRedisScript<Long> MAX_CUTOFF =
+            new org.springframework.data.redis.core.script.DefaultRedisScript<>(
+                    "local old=redis.call('GET',KEYS[1]); if not old or old<ARGV[1] then redis.call('SET',KEYS[1],ARGV[1],'EX',ARGV[2]); end; return 1", Long.class);
     /** 컷오프는 Access Token 최대 수명 뒤에는 의미가 없으므로 여유를 두고 그만큼만 보관한다. */
     private static final Duration CUTOFF_TTL = JwtAccessTokenService.LIFETIME.plusMinutes(1);
 
@@ -45,17 +50,14 @@ public class RedisAccessRevocationStore implements AccessRevocationStore {
         if (cutoff == null) {
             throw new IllegalArgumentException("cutoff is required");
         }
-        redis.opsForValue().set(USER_CUTOFF_PREFIX + userId,
-                Long.toString(cutoff.getEpochSecond()), CUTOFF_TTL);
+        redis.execute(MAX_CUTOFF, java.util.List.of(USER_CUTOFF_PREFIX + userId), PRECISE.format(cutoff), Long.toString(CUTOFF_TTL.toSeconds()));
     }
 
     @Override
     public boolean isIssuedAtOrBeforeCutoff(long userId, Instant issuedAt) {
         String cutoff = redis.opsForValue().get(USER_CUTOFF_PREFIX + userId);
-        if (cutoff == null) {
-            return false;
-        }
-        // JWT 의 발급 시각은 초 단위이므로 초 단위로 비교한다.
-        return issuedAt.getEpochSecond() <= Long.parseLong(cutoff);
+        String legacy = redis.opsForValue().get(LEGACY_USER_CUTOFF_PREFIX + userId);
+        return (cutoff != null && !issuedAt.isAfter(Instant.parse(cutoff)))
+                || (legacy != null && issuedAt.getEpochSecond() <= Long.parseLong(legacy));
     }
 }

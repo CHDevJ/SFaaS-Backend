@@ -4,7 +4,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 
 import org.junit.jupiter.api.*;
@@ -19,7 +19,7 @@ import java.time.Clock;
 
 @SpringBootTest(
         properties = {
-            "stf.backend-b.enabled=true",
+            "stf.backend-b.enabled=true", "stf.backend-b.legacy-v5-enabled=true",
             "stf.backend-b.jobs-enabled=false",
             "stf.backend-b.ingestion-enabled=true",
             "spring.jpa.hibernate.ddl-auto=none",
@@ -52,11 +52,11 @@ class BackendBSpringTest {
         jdbc.update("DELETE FROM account");
         jdbc.update(
                 "INSERT INTO account(account_id,login_id,name,role,approval_status) VALUES"
-                        + " (1,'manager','라인','LINE_MANAGER','APPROVED')");
+                        + " (1,'manager','라인','USER','APPROVED')");
     }
 
     String token() {
-        return jwt.issue(1, Position.LINE_MANAGER, backendBClock.instant()).value();
+        return jwt.issue(1, Permission.USER, backendBClock.instant()).value();
     }
 
     @Test

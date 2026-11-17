@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InMemoryAccessRevocationStore implements AccessRevocationStore {
 
     private final Set<String> revokedJtis = ConcurrentHashMap.newKeySet();
-    private final Map<Long, Long> cutoffs = new ConcurrentHashMap<>();
+    private final Map<Long, Instant> cutoffs = new ConcurrentHashMap<>();
     private volatile boolean failing;
 
     @Override
@@ -27,14 +27,14 @@ public class InMemoryAccessRevocationStore implements AccessRevocationStore {
     @Override
     public void revokeUserTokensIssuedUntil(long userId, Instant cutoff) {
         failIfRequested();
-        cutoffs.put(userId, cutoff.getEpochSecond());
+        cutoffs.merge(userId, cutoff, (a,b)->a.isAfter(b)?a:b);
     }
 
     @Override
     public boolean isIssuedAtOrBeforeCutoff(long userId, Instant issuedAt) {
         failIfRequested();
-        Long cutoff = cutoffs.get(userId);
-        return cutoff != null && issuedAt.getEpochSecond() <= cutoff;
+        Instant cutoff = cutoffs.get(userId);
+        return cutoff != null && !issuedAt.isAfter(cutoff);
     }
 
     /** true 이면 모든 조회·기록이 예외를 던진다(Redis 장애 시뮬레이션). */

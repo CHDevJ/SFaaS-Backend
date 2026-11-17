@@ -23,7 +23,7 @@ public class AccessTokenAuthentication extends AbstractAuthenticationToken {
     private final JwtAccessTokenService.Claims claims;
 
     public AccessTokenAuthentication(JwtAccessTokenService.Claims claims) {
-        super(List.of(new SimpleGrantedAuthority("ROLE_" + claims.position().name())));
+        super(List.of(new SimpleGrantedAuthority("ROLE_" + claims.permission().name())));
         this.claims = claims;
         setAuthenticated(true);
     }

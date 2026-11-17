@@ -32,14 +32,6 @@ public class SecurityConfig {
     static final Set<String> PUBLIC_POST_PATHS = Set.of("/api/v1/auth/login", "/api/v1/auth/signups",
             "/api/v1/auth/refresh");
 
-    /** /system 아래에 있지만 모든 직책이 조회할 수 있는 경로(DUT-001, DUT-003). GET 만 해당한다. */
-    static final String[] SYSTEM_READ_FOR_ALL = {
-            "/api/v1/system/alarm-duty-schedules",
-            "/api/v1/system/alarm-duty-schedules/current"
-    };
-
-    private static final String ROLE_SYSTEM_ADMIN = "SYSTEM_ADMIN";
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAccessTokenService jwt,
             AuthFlowService.SessionStore sessions, AuthFlowService.AccountStore accounts, Clock clock,
@@ -57,9 +49,9 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         // HTTP handshake is public; STOMP CONNECT validates the JWT separately.
                         .requestMatchers(HttpMethod.GET, "/ws", "/ws/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/internal/v1/telegram/updates").permitAll()
                         .requestMatchers(HttpMethod.POST, "/internal/v1/measurements").hasRole("NODE_RED")
-                        .requestMatchers(HttpMethod.GET, SYSTEM_READ_FOR_ALL).authenticated()
-                        .requestMatchers("/api/v1/system/**").hasRole(ROLE_SYSTEM_ADMIN)
+                        .requestMatchers("/api/v1/system/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(entryPoint)

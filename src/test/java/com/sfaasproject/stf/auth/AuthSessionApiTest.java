@@ -36,7 +36,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void me_returns_the_logged_in_user_without_secrets() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         mockMvc.perform(get(ME).header("Authorization", session.bearer()))
@@ -45,7 +45,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
                 .andExpect(jsonPath("$.data.userId").value(admin.getId()))
                 .andExpect(jsonPath("$.data.loginId").value("admin001"))
                 .andExpect(jsonPath("$.data.name").value("테스터"))
-                .andExpect(jsonPath("$.data.position").value("SYSTEM_ADMIN"))
+                .andExpect(jsonPath("$.data.position").doesNotExist())
                 .andExpect(jsonPath("$.data.permission").value("ADMIN"))
                 .andExpect(jsonPath("$.data.accountStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.lastLoginAt").value(endsWith("+09:00")))
@@ -56,18 +56,18 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void me_shows_a_null_last_login_for_an_account_that_never_logged_in() throws Exception {
-        AccountEntity manager = approvedAccount("manager1", "LINE_MANAGER");
+        AccountEntity manager = approvedAccount("manager1", "USER");
 
         mockMvc.perform(get(ME).header("Authorization", bearerFor(manager)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data").value(hasKey("lastLoginAt")))
                 .andExpect(jsonPath("$.data.lastLoginAt").value(nullValue()))
-                .andExpect(jsonPath("$.data.permission").value("GENERAL"));
+                .andExpect(jsonPath("$.data.permission").value("USER"));
     }
 
     @Test
     void me_reports_the_password_change_required_status() throws Exception {
-        AccountEntity account = approvedAccount("worker01", "MAINTENANCE");
+        AccountEntity account = approvedAccount("worker01", "USER");
         account.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(account);
 
@@ -87,7 +87,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void logout_revokes_the_access_token_and_the_refresh_family_and_clears_the_cookie() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         MvcResult result = mockMvc.perform(withRefresh(post(LOGOUT), session.refresh())
@@ -108,7 +108,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void logout_without_the_refresh_cookie_still_revokes_the_access_token() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         mockMvc.perform(post(LOGOUT).header("Authorization", session.bearer()))
@@ -122,7 +122,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void logout_only_ends_the_current_session_not_other_logins_of_the_same_user() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session first = login("admin001");
         Session second = login("admin001");
 
@@ -135,7 +135,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void logout_needs_a_valid_token_and_a_second_logout_with_the_same_token_is_refused() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         mockMvc.perform(post(LOGOUT)).andExpect(status().isUnauthorized());
@@ -149,7 +149,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void changing_the_password_revokes_every_token_and_requires_logging_in_again() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
         Session otherDevice = login("admin001");
 
@@ -175,7 +175,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void a_wrong_current_password_returns_401_and_changes_nothing() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
         String hashBefore = accounts.findById(admin.getId()).orElseThrow().getPasswordHash();
 
@@ -190,7 +190,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void a_new_password_that_breaks_the_policy_returns_400_and_changes_nothing() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
         String hashBefore = accounts.findById(admin.getId()).orElseThrow().getPasswordHash();
 
@@ -206,7 +206,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void missing_or_blank_fields_return_400() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         for (String body : new String[] {"{}", passwordBody("", NEW_PASSWORD), passwordBody(PASSWORD, ""),
@@ -220,7 +220,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void changing_the_password_clears_the_password_change_required_state() throws Exception {
-        AccountEntity account = approvedAccount("worker01", "MAINTENANCE");
+        AccountEntity account = approvedAccount("worker01", "USER");
         account.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(account);
         Session session = login("worker01");
@@ -239,8 +239,8 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void other_users_are_not_affected_by_a_password_change() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
-        approvedAccount("admin002", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
+        approvedAccount("admin002", "ADMIN");
         Session changer = login("admin001");
         Session bystander = login("admin002");
 
@@ -261,7 +261,7 @@ class AuthSessionApiTest extends AbstractSessionApiTest {
 
     @Test
     void passwords_and_tokens_of_these_flows_never_appear_in_the_logs(CapturedOutput output) throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
         MvcResult refreshed = mockMvc.perform(withRefresh(post(REFRESH), session.refresh())).andReturn();
         String rotated = refreshCookieValue(refreshed);

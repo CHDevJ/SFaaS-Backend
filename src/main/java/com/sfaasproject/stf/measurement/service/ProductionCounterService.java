@@ -21,7 +21,7 @@ public class ProductionCounterService {
             throw new IllegalArgumentException("Invalid previous production sample");
         }
         if (resetTime != null && crossedReset(previousAt, currentAt, resetTime)) {
-            return current.intValueExact();
+            return 0; // A new epoch starts here; the next valid sample contributes its delta.
         }
         if (current.compareTo(previous) >= 0) {
             return current.subtract(previous).intValueExact();
