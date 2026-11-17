@@ -1148,11 +1148,17 @@ paths:
             schema: {$ref: '#/components/schemas/LineWriteRequest'}
       responses:
         '201':
-          description: 라인 등록 성공
+          description: 라인 등록 성공. 새 라인의 종류는 부품 라인이다(API_SPEC P-19)
           content:
             application/json:
               schema: {$ref: '#/components/schemas/MasterLineResponse'}
         '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409':
+          description: LINE_NAME_DUPLICATE. 삭제한 라인을 포함해 같은 이름이 있음
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /master/lines/{lineId}:
     put:
       tags: [MasterData]
@@ -1178,7 +1184,14 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/MasterLineResponse'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409':
+          description: LINE_NAME_DUPLICATE. 다른 라인(삭제한 라인 포함)이 같은 이름을 씀
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
     delete:
       tags: [MasterData]
       operationId: deleteMasterLine
@@ -1194,8 +1207,13 @@ paths:
         - {$ref: '#/components/parameters/LineIdPath'}
       responses:
         '204': {description: 라인 삭제 성공}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
-        '422': {$ref: '#/components/responses/BusinessRuleViolation'}
+        '422':
+          description: LINE_HAS_EQUIPMENT. 사용 중인 설비가 있는 라인
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /master/lines/{lineId}/layout:
     patch:
       tags: [MasterData]
@@ -1217,12 +1235,26 @@ paths:
             schema: {$ref: '#/components/schemas/LineLayoutUpdateRequest'}
       responses:
         '200':
-          description: 변경된 설비 배치
+          description: 변경된 설비 배치. 요청에 없는 설비는 그대로 둔다
           content:
             application/json:
               schema: {$ref: '#/components/schemas/MasterLineResponse'}
-        '400': {$ref: '#/components/responses/ValidationError'}
-        '404': {$ref: '#/components/responses/NotFound'}
+        '400':
+          description: VALIDATION_ERROR. 형식 오류, 같은 설비 중복, 다른 라인의 설비 포함(API_SPEC P-20)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: LINE_NOT_FOUND 또는 EQUIPMENT_NOT_FOUND(없거나 삭제된 설비)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+        '422':
+          description: PROCESS_NOT_FOUND. 라인에 없는 공정 순서
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /master/equipment/{equipmentId}/data-items:
     get:
       tags: [MasterData]
@@ -3278,7 +3310,7 @@ components:
       type: object
       required: [lineName, displayOrder]
       properties:
-        lineName: {type: string, minLength: 1, maxLength: 100}
+        lineName: {type: string, minLength: 1, maxLength: 50, description: 앞뒤 공백은 지우고 저장. ERD line.name 길이(API_SPEC C-13)}
         displayOrder: {type: integer, minimum: 1}
     LineLayoutEquipment:
       type: object
