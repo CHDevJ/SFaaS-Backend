@@ -29,6 +29,34 @@ class BEventAndTelegramTest {
             };
 
     @Test
+    void deliveryDefaultDateUsesKoreaEvenWhenTheSharedClockIsUtc() {
+        var store = mock(Telegram.class);
+        var service =
+                new TelegramApplicationService(
+                        store,
+                        mock(LinkTokens.class),
+                        mock(Users.class),
+                        mock(TelegramLinkTokenService.class),
+                        mock(TelegramDeliveryService.class),
+                        Clock.fixed(Instant.parse("2026-11-17T16:00:00Z"), ZoneOffset.UTC),
+                        "");
+        var holder = org.springframework.security.core.context.SecurityContextHolder.getContext();
+        holder.setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        "1",
+                        "",
+                        List.of(
+                                new org.springframework.security.core.authority
+                                        .SimpleGrantedAuthority("ROLE_ADMIN"))));
+        try {
+            service.getTelegramDeliveries(null, null, 0, 20);
+            verify(store).deliveries(LocalDate.of(2026, 11, 18), null, 0, 20);
+        } finally {
+            org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
     void eventsAreDeferredUntilCommitAndAbsentAfterRollback() {
         var publisher = mock(ApplicationEventPublisher.class);
         var events = new BEventPublisher(publisher);
@@ -102,8 +130,9 @@ class BEventAndTelegramTest {
                         socket);
         var event = new BEvents.Notification("n1", 1, 2, "CREATED", 1L, "message", now);
         assertDoesNotThrow(() -> handler.notification(event));
-        verify(socket).convertAndSendToUser(
-                "2", "/queue/notifications", BStompMessages.notification(event));
+        verify(socket)
+                .convertAndSendToUser(
+                        "2", "/queue/notifications", BStompMessages.notification(event));
         verify(telegram).send(2L, 1L, "CREATED", "message");
     }
 

@@ -1204,6 +1204,13 @@ paths:
         - Statistics
       operationId: getLossStatistics
       summary: 실제 손실액 집계
+      description: >-
+        ERD E2의 실제 재고0 또는 A가 제공한 조립 설비 FAULT를 B가 관찰해 assembly_stop에 기록한다.
+        예측만으로 실제 정지를 만들지 않는다. 연속 정지는 한 건이며 가장 이른 원인과 ID로 안정 선택한다.
+        재고 부족과 조립 고장이 모두 해소된 것을 확인하면 종료하며 불명확한 통신 상태로 복구를 추정하지 않는다.
+        관찰 시각부터 시작하고 미기록 과거 구간을 소급하지 않는다. 시작 때 HOURLY_OUTPUT과 UNIT_PRICE를 복사한다.
+        [from,to) 및 현재 시각으로 자르고 중복 구간을 제거한 후 각 집계 합계를 원 단위에서 최종 반올림한다.
+        원인 설비가 없는 재고 부족은 null을 유지하고 shortage_line_id로 라인 집계에 포함한다.
       x-api-id: STA-007
       x-requirement-ids:
         - FR1209

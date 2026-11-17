@@ -12,7 +12,7 @@ import java.math.*;
 import java.time.*;
 import java.util.*;
 
-public class V7InventoryService {
+public class V7InventoryService implements com.sfaasproject.stf.inventory.port.ForecastQuery {
     private final JdbcBDatabase db;
     private final V7Context context;
     private final AssemblyForecastService forecast;

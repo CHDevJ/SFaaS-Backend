@@ -98,7 +98,7 @@ class V7MySqlMigrationTest {
                 "10",
                 jdbc.queryForObject(
                         "SELECT setting_value FROM system_setting WHERE"
-                            + " setting_key='STOCK_DANGER_MIN'",
+                                + " setting_key='STOCK_DANGER_MIN'",
                         String.class));
     }
 
@@ -108,7 +108,7 @@ class V7MySqlMigrationTest {
                 0,
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM account WHERE role IS NOT NULL AND role NOT IN"
-                            + " ('ADMIN','USER')",
+                                + " ('ADMIN','USER')",
                         Integer.class));
         assertEquals("ACTIVE", alarms.find(historicalAlarm).get("process_state"));
         for (String table :
@@ -118,8 +118,8 @@ class V7MySqlMigrationTest {
                 100,
                 jdbc.queryForObject(
                         "SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns WHERE"
-                            + " table_schema=DATABASE() AND table_name='account' AND"
-                            + " column_name='name'",
+                                + " table_schema=DATABASE() AND table_name='account' AND"
+                                + " column_name='name'",
                         Integer.class));
     }
 
@@ -138,7 +138,7 @@ class V7MySqlMigrationTest {
                 1,
                 jdbc.queryForObject(
                         "SELECT COUNT(*) FROM alarm WHERE data_item_id=? AND"
-                            + " process_state='ACTIVE'",
+                                + " process_state='ACTIVE'",
                         Integer.class,
                         dataItem));
     }
@@ -191,6 +191,117 @@ class V7MySqlMigrationTest {
         assertTrue(result.inventory().stream().allMatch(x -> x.quantity() == 300));
         assertTrue(result.lines().stream().allMatch(x -> x.expectedLossAmount() == null));
         assertEquals("INSUFFICIENT_DATA", context.counterQuality(1, now, 10));
+    }
+
+    @Test
+    void actualStopIsSerializedAndItsSnapshotSurvivesRecoveryOnRealMySql() throws Exception {
+        jdbc.update("DELETE FROM assembly_stop");
+        long partLine =
+                jdbc.queryForObject(
+                        "SELECT MIN(line_id) FROM line WHERE line_type='PART'", Long.class);
+        long assemblyEquipment =
+                jdbc.queryForObject(
+                        "SELECT e.equipment_id FROM equipment e JOIN process p ON"
+                            + " p.process_id=e.process_id JOIN line l ON l.line_id=p.line_id WHERE"
+                            + " l.line_type='ASSEMBLY' ORDER BY p.process_seq DESC LIMIT 1",
+                        Long.class);
+        var original =
+                jdbc.queryForList(
+                        "SELECT s.equipment_id,s.status,s.status_since FROM equipment_state s JOIN"
+                            + " equipment e ON e.equipment_id=s.equipment_id JOIN process p ON"
+                            + " p.process_id=e.process_id JOIN line l ON l.line_id=p.line_id WHERE"
+                            + " l.line_type='ASSEMBLY'");
+        String price =
+                jdbc.queryForObject(
+                        "SELECT setting_value FROM system_setting WHERE setting_key='UNIT_PRICE'",
+                        String.class);
+        var current =
+                new java.util.concurrent.atomic.AtomicReference<>(now.plusMinutes(1).toInstant());
+        Clock testClock =
+                new Clock() {
+                    public ZoneId getZone() {
+                        return ZoneId.of("Asia/Seoul");
+                    }
+
+                    public Clock withZone(ZoneId zone) {
+                        return Clock.fixed(current.get(), zone);
+                    }
+
+                    public Instant instant() {
+                        return current.get();
+                    }
+                };
+        var database = new JdbcBDatabase(jdbc, tx, testClock);
+        var recorder =
+                new com.sfaasproject.stf.statistics.service.AssemblyStopRecorder(
+                        new com.sfaasproject.stf.statistics.repository
+                                .JdbcAssemblyStopObservationQuery(
+                                database,
+                                new JdbcV7Context(database),
+                                new V7AlarmRepository(database)),
+                        new com.sfaasproject.stf.statistics.repository.AssemblyStopRepository(
+                                database),
+                        new com.sfaasproject.stf.statistics.service.ActualLossCalculator(),
+                        new com.sfaasproject.stf.operations.port.BPorts.UnitOfWork() {
+                            public <T> T execute(java.util.function.Supplier<T> task) {
+                                return tx.execute(status -> task.get());
+                            }
+                        });
+        var threads = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            jdbc.update(
+                    "UPDATE system_setting SET setting_value='50000' WHERE"
+                        + " setting_key='UNIT_PRICE'");
+            jdbc.update("UPDATE stock_history SET qty=0 WHERE line_id=?", partLine);
+            assertThrows(
+                    IllegalStateException.class,
+                    () ->
+                            tx.execute(
+                                    status -> {
+                                        recorder.refresh();
+                                        throw new IllegalStateException("rollback");
+                                    }));
+            assertEquals(
+                    0, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+            var first = threads.submit(() -> recorder.refresh());
+            var second = threads.submit(() -> recorder.refresh());
+            first.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            second.get(15, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(
+                    1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+            jdbc.update("UPDATE stock_history SET qty=300 WHERE line_id=?", partLine);
+            for (var state : original)
+                jdbc.update(
+                        "UPDATE equipment_state SET status='RUNNING',status_since=? WHERE"
+                            + " equipment_id=?",
+                        time(now.plusMinutes(21)),
+                        state.get("equipment_id"));
+            jdbc.update(
+                    "UPDATE system_setting SET setting_value='1' WHERE setting_key='UNIT_PRICE'");
+            current.set(now.plusMinutes(21).toInstant());
+            recorder.refresh();
+            recorder.refresh();
+            assertEquals(
+                    6000000,
+                    jdbc.queryForObject("SELECT loss_amount FROM assembly_stop", Long.class));
+            assertEquals(
+                    50000, jdbc.queryForObject("SELECT unit_price FROM assembly_stop", Long.class));
+            assertEquals(
+                    1, jdbc.queryForObject("SELECT COUNT(*) FROM assembly_stop", Integer.class));
+        } finally {
+            threads.shutdownNow();
+            jdbc.update("DELETE FROM assembly_stop");
+            jdbc.update("UPDATE stock_history SET qty=300 WHERE line_id=?", partLine);
+            jdbc.update(
+                    "UPDATE system_setting SET setting_value=? WHERE setting_key='UNIT_PRICE'",
+                    price);
+            for (var state : original)
+                jdbc.update(
+                        "UPDATE equipment_state SET status=?,status_since=? WHERE equipment_id=?",
+                        state.get("status"),
+                        state.get("status_since"),
+                        state.get("equipment_id"));
+        }
     }
 
     long newItem(String suffix) {

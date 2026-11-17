@@ -20,18 +20,21 @@ public class V7StatisticsService {
     private final V7AlarmService alarms;
     private final ClosedAlarmStatisticsService metrics;
     private final StopCauseStatisticsService causes;
+    private final ActualLossCalculator actualLoss;
 
     public V7StatisticsService(
             V7Context context,
             JdbcBDatabase db,
             V7AlarmService alarms,
             ClosedAlarmStatisticsService metrics,
-            StopCauseStatisticsService causes) {
+            StopCauseStatisticsService causes,
+            ActualLossCalculator actualLoss) {
         this.context = context;
         this.db = db;
         this.alarms = alarms;
         this.metrics = metrics;
         this.causes = causes;
+        this.actualLoss = actualLoss;
     }
 
     private List<Map<String, Object>> selected(OffsetDateTime from, OffsetDateTime to, Long line) {
@@ -402,24 +405,28 @@ public class V7StatisticsService {
 
     private record LossPiece(
             long equipment,
+            long shortageLine,
             OffsetDateTime from,
             OffsetDateTime to,
             BigDecimal hourly,
             BigDecimal price) {}
 
     private List<LossPiece> lossPieces(Period p, Long line) {
-        var ids = equipment(line).stream().map(V7Context.Equipment::id).toList();
+        var ids =
+                context.equipment().stream()
+                        .filter(e -> line == null || e.lineId() == line)
+                        .map(V7Context.Equipment::id)
+                        .toList();
         var rows =
                 db.rows(
                         "SELECT * FROM assembly_stop WHERE started_at<? AND (ended_at IS NULL OR"
-                            + " ended_at>?) ORDER BY started_at,stop_id",
+                                + " ended_at>?) ORDER BY started_at,stop_id",
                         time(p.to()),
                         time(p.from()));
         var accepted = new ArrayList<LossPiece>();
         var coveredUntil = p.from();
         for (var r : rows) {
             long eid = number(r, "cause_equipment_id");
-            if (line != null && !ids.contains(eid)) continue;
             var start = dateTime(r.get("started_at"));
             if (start.isBefore(p.from())) start = p.from();
             if (start.isBefore(coveredUntil)) start = coveredUntil;
@@ -430,26 +437,37 @@ public class V7StatisticsService {
             accepted.add(
                     new LossPiece(
                             eid,
+                            number(r, "shortage_line_id"),
                             start,
                             end,
                             dec(r.get("hourly_output")),
                             dec(r.get("unit_price"))));
             coveredUntil = end;
         }
-        return accepted;
+        return accepted.stream()
+                .filter(
+                        piece ->
+                                line == null
+                                        || ids.contains(piece.equipment())
+                                        || piece.shortageLine() == line)
+                .toList();
     }
 
-    private BigDecimal amount(LossPiece piece) {
-        return BigDecimal.valueOf(Duration.between(piece.from(), piece.to()).toNanos())
-                .multiply(piece.hourly())
-                .multiply(piece.price())
-                .divide(BigDecimal.valueOf(3_600_000_000_000L), 0, RoundingMode.HALF_UP);
+    private BigDecimal amount(List<LossPiece> pieces) {
+        return actualLoss.calculate(
+                pieces.stream()
+                        .map(
+                                piece ->
+                                        new ActualLossCalculator.Interval(
+                                                piece.from(),
+                                                piece.to(),
+                                                piece.hourly(),
+                                                piece.price()))
+                        .toList());
     }
 
     private BigDecimal amount(Period p, Long line) {
-        return lossPieces(p, line).stream()
-                .map(this::amount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return amount(lossPieces(p, line));
     }
 
     public LossStatisticsResponse losses(OffsetDateTime from, OffsetDateTime to, Long line) {
@@ -475,9 +493,7 @@ public class V7StatisticsService {
                             "date",
                             date,
                             "lossAmount",
-                            pieces.stream()
-                                    .map(this::amount)
-                                    .reduce(BigDecimal.ZERO, BigDecimal::add),
+                            amount(pieces),
                             "assemblyStopMinutes",
                             pieces.stream()
                                     .map(x -> minutes(x.from(), x.to()))
@@ -537,10 +553,10 @@ public class V7StatisticsService {
                                             RoundingMode.HALF_UP);
             var d = durations(e.id(), p, intervals);
             var loss =
-                    lossPieces(p, line).stream()
-                            .filter(x -> x.equipment() == e.id())
-                            .map(this::amount)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    amount(
+                            lossPieces(p, line).stream()
+                                    .filter(x -> x.equipment() == e.id())
+                                    .toList());
             values.add(
                     com.sfaasproject.stf.operations.service.V7Support.map(
                             "rank",
