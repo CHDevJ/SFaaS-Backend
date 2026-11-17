@@ -207,6 +207,14 @@ public class JdbcBAlarms implements Alarms {
                 Integer.class);
     }
 
+    @Override
+    public int activeCount() {
+        return db.jdbc.queryForObject(
+                "SELECT COUNT(*) FROM alarm a JOIN equipment e ON e.equipment_id=a.equipment_id"
+                        + " WHERE a.process_state <> 'CLOSED' AND e.deleted_at IS NULL",
+                Integer.class);
+    }
+
     private static LocalDateTime local(Object v) {
         var d = dateTime(v);
         return d == null ? null : d.toLocalDateTime();

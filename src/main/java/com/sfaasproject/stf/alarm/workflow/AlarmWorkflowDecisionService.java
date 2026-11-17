@@ -25,8 +25,8 @@ public class AlarmWorkflowDecisionService {
             throw error(HttpStatus.CONFLICT, "ALARM_ALREADY_ACKNOWLEDGED", "이미 확인된 알람입니다.");
         }
         if (actorId <= 0 || assigneeId <= 0 || !assigneeActive
-                || !"MAINTENANCE".equals(assigneeRole)) {
-            throw error(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_MAINTENANCE",
+                || !"USER".equals(assigneeRole)) {
+            throw error(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_USER",
                     "사용 중인 보전 담당자를 선택해 주세요.");
         }
         return new Decision(copy(before, ProcessStatus.ACKNOWLEDGED, before.valueRecovered(),

@@ -23,7 +23,7 @@ class ApiExceptionHandlerTest extends AbstractAuthIntegrationTest {
 
     @BeforeEach
     void admin() {
-        admin = bearerFor(approvedAccount("admin001", "SYSTEM_ADMIN"));
+        admin = bearerFor(approvedAccount("admin001", "ADMIN"));
     }
 
     @Test

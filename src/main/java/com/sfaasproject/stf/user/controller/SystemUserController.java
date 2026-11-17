@@ -2,7 +2,6 @@ package com.sfaasproject.stf.user.controller;
 
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.common.ApiResponse;
 import com.sfaasproject.stf.common.PageMeta;
@@ -47,15 +46,13 @@ public class SystemUserController {
     @GetMapping
     public PagedApiResponse<List<UserResponse>> list(
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Position position,
             @RequestParam(required = false) Permission permission,
             @RequestParam(required = false) AccountStatus accountStatus,
             @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort) {
+            @RequestParam(required = false) Integer size) {
         Page<UserView> result = users.list(
-                new UserAdminService.UserFilter(keyword, position, permission, accountStatus),
-                PageQuery.of(page, size), sort);
+                new UserAdminService.UserFilter(keyword, permission, accountStatus),
+                PageQuery.of(page, size), null);
         return PagedApiResponse.ok(result.map(UserResponse::forList).getContent(), PageMeta.from(result));
     }
 
@@ -69,7 +66,7 @@ public class SystemUserController {
             @Valid @RequestBody UserUpdateRequest request,
             @AuthenticationPrincipal JwtAccessTokenService.Claims actor) {
         return ApiResponse.ok(UserResponse.from(
-                users.update(userId, request.name(), request.position(), actor.userId())));
+                users.update(userId, request.name(), request.permission(), actor.userId())));
     }
 
     @PostMapping("/{userId}/password-reset")

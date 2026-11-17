@@ -9,7 +9,6 @@ import com.sfaasproject.stf.auth.service.AuthFlowService.AccountStore;
 import com.sfaasproject.stf.auth.service.AuthFlowService.SessionStore;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.common.DomainException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -30,7 +29,7 @@ class AuthFlowServiceTest {
 
     @BeforeEach
     void accountExists() {
-        active = new Account(12, "parkjh", "박지훈", Position.LINE_MANAGER,
+        active = new Account(12, "parkjh", "박지훈", Permission.USER,
                 AccountStatus.ACTIVE, passwords.encode("Password1!"), null);
         when(accounts.findByLoginId("parkjh")).thenReturn(active);
         when(accounts.findById(12)).thenReturn(active);
@@ -40,7 +39,7 @@ class AuthFlowServiceTest {
     void successfulLoginStoresLastLoginAndRefreshFamily() {
         var result = service.login("parkjh", "Password1!", now);
         assertEquals(12, result.user().userId());
-        assertEquals(Permission.GENERAL, result.user().permission());
+        assertEquals(Permission.USER, result.user().permission());
         assertEquals(now, result.user().lastLoginAt());
         assertEquals(now.plusSeconds(1800), result.accessExpiresAt());
         assertEquals(now.plusSeconds(604800), result.refreshExpiresAt());
@@ -62,7 +61,7 @@ class AuthFlowServiceTest {
     @Test
     void pendingAccountIsForbiddenAfterPasswordCheck() {
         when(accounts.findByLoginId("parkjh")).thenReturn(new Account(12, "parkjh",
-                "박지훈", Position.LINE_MANAGER, AccountStatus.PENDING_APPROVAL,
+                "박지훈", Permission.USER, AccountStatus.PENDING_APPROVAL,
                 active.passwordHash(), null));
         var error = assertThrows(DomainException.class,
                 () -> service.login("parkjh", "Password1!", now));
@@ -95,7 +94,7 @@ class AuthFlowServiceTest {
 
     @Test
     void currentUserRequeriesAccountAndLogoutRevokesAccessAndFamily() {
-        var jwt = access.issue(12, Position.LINE_MANAGER, now);
+        var jwt = access.issue(12, Permission.USER, now);
         assertEquals(12, service.currentUser(jwt.value(), now).userId());
         service.logout(jwt.value(), "refresh-value", now);
         verify(sessions).revokeAccess(jwt.jti(), jwt.expiresAt());
@@ -106,7 +105,7 @@ class AuthFlowServiceTest {
     }
     @Test
     void passwordChangeValidatesCurrentAndNewThenRevokesEveryToken() {
-        var jwt = access.issue(12, Position.LINE_MANAGER, now);
+        var jwt = access.issue(12, Permission.USER, now);
         service.changePassword(jwt.value(), "Password1!", "NewPassword2!", now);
         verify(accounts).changePassword(eq(12L), argThat(hash ->
                 passwords.matches("NewPassword2!", hash)));
@@ -132,7 +131,7 @@ class AuthFlowServiceTest {
 
     @Test
     void failedTokenRevocationPreventsPasswordUpdate() {
-        var jwt = access.issue(12, Position.LINE_MANAGER, now);
+        var jwt = access.issue(12, Permission.USER, now);
         doThrow(new IllegalStateException("Redis unavailable"))
                 .when(sessions).revokeAllForUser(12, now);
         assertThrows(IllegalStateException.class,

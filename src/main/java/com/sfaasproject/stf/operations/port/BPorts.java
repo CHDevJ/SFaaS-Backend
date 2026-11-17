@@ -28,6 +28,8 @@ public final class BPorts {
             return active(id) != null;
         }
 
+        default boolean passwordChangeRequired(long id) { return false; }
+
         Set<Long> maintenanceIds();
 
         List<UserBrief> notificationUsers();
@@ -64,6 +66,8 @@ public final class BPorts {
         List<Long> verifyingInLine(long lineId);
 
         int unacknowledgedCount();
+
+        int activeCount();
     }
 
     public record Part(long id, long equipmentId, String name) {}

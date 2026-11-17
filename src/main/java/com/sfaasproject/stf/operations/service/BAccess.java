@@ -34,7 +34,7 @@ public final class BAccess {
         if (principal == null) throw unauthorized();
         var actor = current();
         if (actor.userId() != principal.userId()
-                || !actor.position().name().equals(principal.position().name())) throw unauthorized();
+                || !actor.position().name().equals(principal.permission().name())) throw unauthorized();
         return actor;
     }
 
@@ -45,7 +45,7 @@ public final class BAccess {
 
     public static Actor admin() {
         Actor actor = current();
-        if (actor.position() != Position.SYSTEM_ADMIN)
+        if (actor.position() != Position.ADMIN)
             throw new DomainException(HttpStatus.FORBIDDEN, "AUTH_PERMISSION_DENIED", "관리자만 처리할 수 있습니다.");
         return actor;
     }
