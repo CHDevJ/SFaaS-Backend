@@ -1,0 +1,795 @@
+[
+  {
+    "id": "OVW-001",
+    "method": "GET",
+    "path": "/api/v1/overview/equipment-layout",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getEquipmentLayout",
+    "responseType": "EquipmentLayoutResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "statusCounts": [],
+        "equipment": []
+      }
+    }
+  },
+  {
+    "id": "OVW-002",
+    "method": "GET",
+    "path": "/api/v1/overview/assembly-stop-forecast",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getAssemblyStopForecast",
+    "responseType": "AssemblyStopForecastResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "lines": []
+      }
+    }
+  },
+  {
+    "id": "INV-001",
+    "method": "GET",
+    "path": "/api/v1/inventory",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getInventory",
+    "responseType": "InventoryResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "INV-002",
+    "method": "GET",
+    "path": "/api/v1/inventory/history",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getInventoryHistory",
+    "responseType": "InventoryHistoryResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "INV-003",
+    "method": "GET",
+    "path": "/api/v1/inventory/lines/{lineId}",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getInventoryDetail",
+    "responseType": "InventoryDetailResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "lineId": 1,
+        "lineName": "fixture",
+        "quantity": 1,
+        "consumptionPerMinute": 1,
+        "productionPerMinute": 1,
+        "stage": "MAINTAIN",
+        "remainingMinutes": 1
+      }
+    }
+  },
+  {
+    "id": "ALM-001",
+    "method": "GET",
+    "path": "/api/v1/alarms",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getActiveAlarms",
+    "responseType": "AlarmPageResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "activeCount": 1,
+        "unacknowledgedCount": 1,
+        "items": []
+      },
+      "meta": {
+        "page": 1,
+        "size": 1,
+        "totalElements": 1,
+        "totalPages": 1
+      }
+    }
+  },
+  {
+    "id": "ALM-002",
+    "method": "GET",
+    "path": "/api/v1/alarms/recent-closed",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getRecentClosedAlarms",
+    "responseType": "RecentClosedAlarmResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "ALM-003",
+    "method": "GET",
+    "path": "/api/v1/alarms/{alarmId}",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmDetail",
+    "responseType": "AlarmDetailResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "alarmId": 1,
+        "equipmentId": 1,
+        "equipmentName": "fixture",
+        "alarmMessage": "fixture",
+        "grade": "CAUTION",
+        "valueStatus": "ABNORMAL",
+        "processStatus": "UNACKNOWLEDGED",
+        "occurredAt": "2026-11-17T09:00:00+09:00",
+        "recurrenceCount": 1,
+        "trendBeforeAndAfter": [],
+        "timeline": []
+      }
+    }
+  },
+  {
+    "id": "MEAS-002",
+    "method": "GET",
+    "path": "/api/v1/alarms/{alarmId}/comparisons",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmComparison",
+    "responseType": "AlarmComparisonResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "alarmId": 1,
+        "equipmentId": 1,
+        "dataItemId": 1,
+        "occurredAt": "2026-11-17T09:00:00+09:00",
+        "before": [],
+        "after": []
+      }
+    }
+  },
+  {
+    "id": "ALM-004",
+    "method": "PATCH",
+    "path": "/api/v1/alarms/{alarmId}/acknowledgement",
+    "params": {},
+    "body": {
+      "assigneeUserId": 1
+    },
+    "status": 200,
+    "operation": "acknowledgeAlarm",
+    "responseType": "AlarmAcknowledgementResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "alarmId": 1,
+        "processStatus": "UNACKNOWLEDGED",
+        "acknowledgedBy": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        },
+        "acknowledgedAt": "2026-11-17T09:00:00+09:00",
+        "assignee": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        }
+      }
+    }
+  },
+  {
+    "id": "ALM-005",
+    "method": "GET",
+    "path": "/api/v1/alarms/{alarmId}/recommended-actions",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getRecommendedActions",
+    "responseType": "RecommendedActionResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "ALM-006",
+    "method": "POST",
+    "path": "/api/v1/alarms/{alarmId}/actions",
+    "params": {},
+    "body": {
+      "cause": "fixture",
+      "actionContent": "fixture"
+    },
+    "status": 201,
+    "operation": "createAlarmAction",
+    "responseType": "AlarmActionResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "alarmId": 1,
+        "processStatus": "UNACKNOWLEDGED",
+        "actionedAt": "2026-11-17T09:00:00+09:00",
+        "actionedBy": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        }
+      }
+    }
+  },
+  {
+    "id": "ALM-007",
+    "method": "POST",
+    "path": "/api/v1/alarms/{alarmId}/false-positive",
+    "params": {},
+    "body": {
+      "reason": "SENSOR_MALFUNCTION"
+    },
+    "status": 200,
+    "operation": "reportFalsePositive",
+    "responseType": "AlarmClosureResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "alarmId": 1,
+        "processStatus": "UNACKNOWLEDGED",
+        "result": "EFFECTIVE",
+        "closedAt": "2026-11-17T09:00:00+09:00"
+      }
+    }
+  },
+  {
+    "id": "ALM-008",
+    "method": "GET",
+    "path": "/api/v1/alarms/{alarmId}/effect",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmEffect",
+    "responseType": "AlarmEffectResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "alarmId": 1,
+        "processStatus": "UNACKNOWLEDGED",
+        "effectStatus": "WAITING_FOR_RECOVERY",
+        "currentProductionCount": 1,
+        "targetProductionCount": 1,
+        "recurrenceCount": 1
+      }
+    }
+  },
+  {
+    "id": "HST-001",
+    "method": "GET",
+    "path": "/api/v1/alarm-histories",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmHistories",
+    "responseType": "AlarmHistoryPageResponse",
+    "response": {
+      "success": true,
+      "data": [],
+      "meta": {
+        "page": 1,
+        "size": 1,
+        "totalElements": 1,
+        "totalPages": 1
+      }
+    }
+  },
+  {
+    "id": "HST-002",
+    "method": "GET",
+    "path": "/api/v1/equipment/{equipmentId}/fault-histories",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getEquipmentFaultHistories",
+    "responseType": "FaultHistoryResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "monthlyFaultCount": 1,
+        "averageRepairMinutes": 1,
+        "averageFailureIntervalMinutes": 1,
+        "items": []
+      }
+    }
+  },
+  {
+    "id": "PRT-002",
+    "method": "GET",
+    "path": "/api/v1/equipment/{equipmentId}/parts",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getEquipmentParts",
+    "responseType": "InstalledPartListResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "PRT-001",
+    "method": "GET",
+    "path": "/api/v1/parts/usage",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getPartUsage",
+    "responseType": "PartUsagePageResponse",
+    "response": {
+      "success": true,
+      "data": [],
+      "meta": {
+        "page": 1,
+        "size": 1,
+        "totalElements": 1,
+        "totalPages": 1
+      }
+    }
+  },
+  {
+    "id": "PRT-004",
+    "method": "GET",
+    "path": "/api/v1/equipment/{equipmentId}/parts/{partId}/replacements",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getPartReplacementHistories",
+    "responseType": "PartReplacementHistoryResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "items": []
+      }
+    }
+  },
+  {
+    "id": "PRT-003",
+    "method": "POST",
+    "path": "/api/v1/equipment/{equipmentId}/parts/{partId}/replacements",
+    "params": {},
+    "body": {
+      "replacedAt": "2026-11-17T09:00:00+09:00",
+      "reason": "fixture",
+      "workContent": "fixture"
+    },
+    "status": 201,
+    "operation": "createPartReplacement",
+    "responseType": "PartReplacementResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "replacementId": 1,
+        "replacedAt": "2026-11-17T09:00:00+09:00",
+        "partId": 1,
+        "partName": "fixture",
+        "reason": "fixture",
+        "workContent": "fixture",
+        "worker": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        }
+      }
+    }
+  },
+  {
+    "id": "STA-001",
+    "method": "GET",
+    "path": "/api/v1/statistics/alarm-response",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmResponseStatistics",
+    "responseType": "AlarmResponseStatisticsResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "averageAcknowledgementMinutes": 1,
+        "averageRepairMinutes": 1,
+        "delayedAlarmCount": 1,
+        "delayedAlarmRate": 1
+      }
+    }
+  },
+  {
+    "id": "STA-002",
+    "method": "GET",
+    "path": "/api/v1/statistics/false-positives",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getFalsePositiveStatistics",
+    "responseType": "FalsePositiveStatisticsResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "count": 1,
+        "rate": 1,
+        "responseMinutes": 1,
+        "equipmentRanking": [],
+        "dataItemRates": []
+      }
+    }
+  },
+  {
+    "id": "STA-003",
+    "method": "GET",
+    "path": "/api/v1/statistics/daily-alarms",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getDailyAlarmStatistics",
+    "responseType": "DailyAlarmStatisticsResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "STA-004",
+    "method": "GET",
+    "path": "/api/v1/statistics/availability",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getAvailabilityStatistics",
+    "responseType": "AvailabilityStatisticsResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "STA-005",
+    "method": "GET",
+    "path": "/api/v1/statistics/downtime",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getDowntimeStatistics",
+    "responseType": "DowntimeStatisticsResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "STA-006",
+    "method": "GET",
+    "path": "/api/v1/statistics/equipment-rankings",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00",
+      "sortBy": "faultCount"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getEquipmentRankings",
+    "responseType": "EquipmentRankingResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "STA-007",
+    "method": "GET",
+    "path": "/api/v1/statistics/losses",
+    "params": {
+      "from": "2026-11-17T00:00:00+09:00",
+      "to": "2026-11-17T23:59:59+09:00"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getLossStatistics",
+    "responseType": "LossStatisticsResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "todayLossAmount": 1,
+        "weeklyLossAmount": 1,
+        "daily": []
+      }
+    }
+  },
+  {
+    "id": "STA-008",
+    "method": "GET",
+    "path": "/api/v1/statistics/loss-avoidance",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getLossAvoidanceStatistics",
+    "responseType": "LossAvoidanceResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "todayAvoidedAmount": 1,
+        "previousDayDifference": 1,
+        "monthlyAvoidedAmount": 1,
+        "todayFaultCount": 1,
+        "recoveredBeforeStopCount": 1,
+        "recoveryRate": 1
+      }
+    }
+  },
+  {
+    "id": "TLG-001",
+    "method": "POST",
+    "path": "/api/v1/telegram/link-tokens",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "createMyTelegramLinkToken",
+    "responseType": "TelegramLinkResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "linkUrl": "https://example.test/link",
+        "qrPayload": "https://example.test/link",
+        "expiresAt": "2026-11-17T09:00:00+09:00"
+      }
+    }
+  },
+  {
+    "id": "TLG-002",
+    "method": "GET",
+    "path": "/api/v1/telegram/me/connection",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getMyTelegramConnection",
+    "responseType": "TelegramConnectionResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "connected": true
+      }
+    }
+  },
+  {
+    "id": "TLG-003",
+    "method": "DELETE",
+    "path": "/api/v1/telegram/me/connection",
+    "params": {},
+    "body": null,
+    "status": 204,
+    "operation": "unlinkMyTelegram",
+    "responseType": null,
+    "response": null
+  },
+  {
+    "id": "TLG-004",
+    "method": "POST",
+    "path": "/api/v1/telegram/me/test-messages",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "sendMyTelegramTestMessage",
+    "responseType": "TelegramTestMessageResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "userId": 1,
+        "result": "SUCCESS",
+        "sentAt": "2026-11-17T09:00:00+09:00"
+      }
+    }
+  },
+  {
+    "id": "TLG-005",
+    "method": "POST",
+    "path": "/api/v1/system/telegram/test-messages",
+    "params": {},
+    "body": {
+      "userId": 1
+    },
+    "status": 200,
+    "operation": "sendTelegramTestMessage",
+    "responseType": "TelegramTestMessageResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "userId": 1,
+        "result": "SUCCESS",
+        "sentAt": "2026-11-17T09:00:00+09:00"
+      }
+    }
+  },
+  {
+    "id": "TLG-006",
+    "method": "GET",
+    "path": "/api/v1/system/telegram/deliveries",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getTelegramDeliveries",
+    "responseType": "TelegramDeliveryPageResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "summary": {
+          "totalCount": 1,
+          "successCount": 1,
+          "failureCount": 1
+        },
+        "items": [],
+        "recipientCounts": []
+      },
+      "meta": {
+        "page": 1,
+        "size": 1,
+        "totalElements": 1,
+        "totalPages": 1
+      }
+    }
+  },
+  {
+    "id": "DUT-001",
+    "method": "GET",
+    "path": "/api/v1/system/alarm-duty-schedules",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmDutySchedules",
+    "responseType": "DutyScheduleListResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "DUT-002",
+    "method": "POST",
+    "path": "/api/v1/system/alarm-duty-schedules",
+    "params": {},
+    "body": {
+      "startDate": "2026-11-17",
+      "endDate": "2026-11-17",
+      "dutyUserId": 1
+    },
+    "status": 201,
+    "operation": "createAlarmDutySchedule",
+    "responseType": "DutyScheduleResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "scheduleId": 1,
+        "startDate": "2026-11-17",
+        "endDate": "2026-11-17",
+        "dutyUser": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        },
+        "status": "CURRENT"
+      }
+    }
+  },
+  {
+    "id": "DUT-003",
+    "method": "GET",
+    "path": "/api/v1/system/alarm-duty-schedules/current",
+    "params": {},
+    "body": null,
+    "status": 200,
+    "operation": "getCurrentAlarmDutySchedule",
+    "responseType": "DutyScheduleResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "scheduleId": 1,
+        "startDate": "2026-11-17",
+        "endDate": "2026-11-17",
+        "dutyUser": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        },
+        "status": "CURRENT"
+      }
+    }
+  },
+  {
+    "id": "DUT-006",
+    "method": "GET",
+    "path": "/api/v1/alarm-duty-schedules/calendar",
+    "params": {
+      "month": "2026-11"
+    },
+    "body": null,
+    "status": 200,
+    "operation": "getAlarmDutyCalendar",
+    "responseType": "DutyCalendarResponse",
+    "response": {
+      "success": true,
+      "data": []
+    }
+  },
+  {
+    "id": "DUT-004",
+    "method": "PUT",
+    "path": "/api/v1/system/alarm-duty-schedules/{scheduleId}",
+    "params": {},
+    "body": {
+      "startDate": "2026-11-17",
+      "endDate": "2026-11-17",
+      "dutyUserId": 1
+    },
+    "status": 200,
+    "operation": "updateAlarmDutySchedule",
+    "responseType": "DutyScheduleResponse",
+    "response": {
+      "success": true,
+      "data": {
+        "scheduleId": 1,
+        "startDate": "2026-11-17",
+        "endDate": "2026-11-17",
+        "dutyUser": {
+          "userId": 1,
+          "name": "fixture",
+          "position": "SYSTEM_ADMIN"
+        },
+        "status": "CURRENT"
+      }
+    }
+  },
+  {
+    "id": "DUT-005",
+    "method": "DELETE",
+    "path": "/api/v1/system/alarm-duty-schedules/{scheduleId}",
+    "params": {},
+    "body": null,
+    "status": 204,
+    "operation": "deleteAlarmDutySchedule",
+    "responseType": null,
+    "response": null
+  }
+]

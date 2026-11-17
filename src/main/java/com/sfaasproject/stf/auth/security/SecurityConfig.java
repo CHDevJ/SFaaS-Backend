@@ -3,6 +3,9 @@ package com.sfaasproject.stf.auth.security;
 import com.sfaasproject.stf.auth.service.AuthFlowService;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import java.time.Clock;
+import com.sfaasproject.stf.measurement.security.InternalApiKeyAuthenticationFilter;
+import com.sfaasproject.stf.measurement.security.InternalApiKeyVerifier;
+import org.springframework.beans.factory.ObjectProvider;
 import java.util.Set;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -40,7 +43,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAccessTokenService jwt,
             AuthFlowService.SessionStore sessions, AuthFlowService.AccountStore accounts, Clock clock,
-            RestAuthenticationEntryPoint entryPoint, RestAccessDeniedHandler accessDeniedHandler) {
+            RestAuthenticationEntryPoint entryPoint, RestAccessDeniedHandler accessDeniedHandler,
+            ObjectProvider<InternalApiKeyVerifier> internalKeys) {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -51,12 +55,17 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, PUBLIC_POST_PATHS.toArray(String[]::new)).permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        // HTTP handshake is public; STOMP CONNECT validates the JWT separately.
+                        .requestMatchers(HttpMethod.GET, "/ws", "/ws/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/internal/v1/measurements").hasRole("NODE_RED")
                         .requestMatchers(HttpMethod.GET, SYSTEM_READ_FOR_ALL).authenticated()
                         .requestMatchers("/api/v1/system/**").hasRole(ROLE_SYSTEM_ADMIN)
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint(entryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
+                .addFilterBefore(new InternalApiKeyAuthenticationFilter(internalKeys, entryPoint),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new AccessTokenAuthenticationFilter(jwt, sessions, accounts, clock, entryPoint),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();
