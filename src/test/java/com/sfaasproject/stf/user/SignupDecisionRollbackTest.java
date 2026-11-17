@@ -30,12 +30,12 @@ class SignupDecisionRollbackTest extends AbstractAuthIntegrationTest {
     @Test
     void a_failed_audit_write_cancels_the_approval() throws Exception {
         auditFails();
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         AccountEntity request = pendingAccount("newuser1");
 
         mockMvc.perform(post("/api/v1/system/signup-requests/" + request.getId() + "/approval")
                         .header("Authorization", bearerFor(admin)).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"position\":\"MAINTENANCE\"}"))
+                        .content("{\"permission\":\"USER\"}"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"));
 
@@ -48,7 +48,7 @@ class SignupDecisionRollbackTest extends AbstractAuthIntegrationTest {
     @Test
     void a_failed_audit_write_cancels_the_rejection() throws Exception {
         auditFails();
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         AccountEntity request = pendingAccount("newuser1");
 
         mockMvc.perform(post("/api/v1/system/signup-requests/" + request.getId() + "/rejection")

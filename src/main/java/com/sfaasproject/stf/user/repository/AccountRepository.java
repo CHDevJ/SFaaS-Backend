@@ -49,7 +49,7 @@ public interface AccountRepository extends JpaRepository<AccountEntity, Long> {
             select a from AccountEntity a
             where a.deletedAt is null
               and a.approvalStatus = com.sfaasproject.stf.user.entity.ApprovalStatus.APPROVED
-              and a.role = 'SYSTEM_ADMIN'
+              and a.role = 'ADMIN'
             order by a.id
             """)
     List<AccountEntity> lockActiveSystemAdmins();

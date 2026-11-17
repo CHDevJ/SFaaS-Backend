@@ -127,10 +127,10 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
                             try {
                                 var claims = jwt.verify(auth.substring(7), clock.instant());
                                 var user = users.active(claims.userId());
-                                if (user == null || tokens.revoked(claims))
+                                if (user == null || users.passwordChangeRequired(claims.userId()) || tokens.revoked(claims))
                                     throw new MessageDeliveryException("Authentication required");
                                 var current = new JwtAccessTokenService.Claims(claims.userId(),
-                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Position.valueOf(user.position().name()),
+                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Permission.valueOf(user.position().name()),
                                         claims.jti(), claims.issuedAt(), claims.expiresAt());
                                 headers.setUser(new AccessTokenAuthentication(current));
                                 sessions.authenticated(headers.getSessionId(), current);
@@ -143,7 +143,7 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
                             try {
                                 var claims = session.getPrincipal();
                                 if (!claims.expiresAt().isAfter(clock.instant())
-                                        || users.active(claims.userId()) == null || tokens.revoked(claims))
+                                        || users.active(claims.userId()) == null || users.passwordChangeRequired(claims.userId()) || tokens.revoked(claims))
                                     throw new MessageDeliveryException("Subscription denied");
                             } catch (RuntimeException invalid) {
                                 throw new MessageDeliveryException("Subscription denied");
@@ -152,7 +152,7 @@ public class BWebSocketConfiguration implements WebSocketMessageBrokerConfigurer
                             if (headers.getUser() == null
                                     || destination == null
                                     || !(destination.matches(
-                                                    "/topic/(alarms|alarm-counts|inventory|equipment-status|measurements/[1-9][0-9]*|alarm-effects/[1-9][0-9]*)")
+                                                    "/topic/(alarms|alarm-counts|inventory|equipment-status|measurements/[1-9][0-9]*)")
                                             || destination.equals("/user/queue/notifications")))
                                 throw new MessageDeliveryException("Subscription denied");
                         } else if (headers.getCommand() == StompCommand.SEND)

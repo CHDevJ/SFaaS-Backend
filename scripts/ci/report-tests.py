@@ -11,7 +11,8 @@ def main():
     counts = {key: sum(int(suite.get(key, "0")) for suite in suites)
               for key in ("tests", "failures", "errors", "skipped")}
     mysql = [suite for suite in suites
-             if suite.get("name", "").endswith(".MySqlBackendBTest")]
+             if suite.get("name", "").endswith((".MySqlBackendBTest", ".V7MySqlMigrationTest"))]
+    mysql_classes = {suite.get("name", "").split(".")[-1] for suite in mysql}
     mysql_tests = sum(int(suite.get("tests", "0")) for suite in mysql)
     mysql_skipped = sum(int(suite.get("skipped", "0")) for suite in mysql)
     passed = counts["tests"] - counts["failures"] - counts["errors"] - counts["skipped"]
@@ -28,7 +29,8 @@ def main():
         with open(destination, "a", encoding="utf-8") as output:
             output.write(summary)
     if (not reports or counts["tests"] == 0 or counts["failures"] or counts["errors"]
-            or counts["skipped"] or mysql_tests == 0 or mysql_skipped):
+            or counts["skipped"] or mysql_tests == 0 or mysql_skipped
+            or mysql_classes != {"MySqlBackendBTest", "V7MySqlMigrationTest"}):
         print("::error::All tests, including MySQL integration tests, must execute without failures or skips.")
         return 1
     return 0

@@ -11,7 +11,7 @@ import com.sfaasproject.stf.operations.service.BWebSocketSessions;
 import jakarta.servlet.http.Cookie;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.CloseStatus;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.event.JdbcBEventOutbox;
 import com.sfaasproject.stf.operations.event.SignupNotificationRequested;
@@ -39,7 +39,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(properties = {
-    "stf.backend-b.enabled=true", "stf.backend-b.jobs-enabled=false",
+    "stf.backend-b.enabled=true", "stf.backend-b.legacy-v5-enabled=true", "stf.backend-b.jobs-enabled=false",
     "spring.datasource.url=jdbc:h2:mem:b-auth-integration;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
     "spring.jpa.hibernate.ddl-auto=none", "spring.sql.init.mode=always",
     "spring.sql.init.schema-locations=classpath:backend-b-schema.sql"
@@ -71,11 +71,11 @@ class BackendAuthIntegrationTest {
         jdbc.update("DELETE FROM duty_member");
         jdbc.update("DELETE FROM duty");
         jdbc.update("DELETE FROM account");
-        admin = approved("adminauth", Position.SYSTEM_ADMIN);
+        admin = approved("adminauth", Permission.ADMIN);
         when(delivery.sendWithOneRetry(anyString(),anyString())).thenReturn(new DeliveryResult(true,0,null));
     }
 
-    AccountEntity approved(String login, Position role) {
+    AccountEntity approved(String login, Permission role) {
         var entity=AccountEntity.signup(login,passwords.encode(password),"통합 검증",LocalDateTime.now(clock));
         entity.approve(role.name(),null,LocalDateTime.now(clock));
         return accounts.save(entity);
@@ -86,7 +86,7 @@ class BackendAuthIntegrationTest {
         return accounts.save(entity);
     }
     String bearer(AccountEntity user) {
-        return "Bearer "+jwt.issue(user.getId(),Position.valueOf(user.getRole()),clock.instant()).value();
+        return "Bearer "+jwt.issue(user.getId(),Permission.valueOf(user.getRole()),clock.instant()).value();
     }
     String decisionPath(AccountEntity user,String action) {
         return "/api/v1/system/signup-requests/"+user.getId()+"/"+action;
@@ -108,17 +108,17 @@ class BackendAuthIntegrationTest {
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM auth_token",Integer.class));
         assertNotNull(accounts.findById(admin.getId()).orElseThrow().getLastLoginAt());
     }
-    @Test void everyRoleMayReadDutyButMaintenanceCannotWriteIt() throws Exception {
-        var maint=approved("maintauth",Position.MAINTENANCE);
+    @Test void legacySystemDutyHasNoV7UserExemption() throws Exception {
+        var maint=approved("maintauth",Permission.USER);
         mvc.perform(get("/api/v1/system/alarm-duty-schedules").header("Authorization",bearer(maint)))
-                .andExpect(status().isOk());
+                .andExpect(status().isForbidden());
         mvc.perform(post("/api/v1/system/alarm-duty-schedules").header("Authorization",bearer(maint))
                 .contentType("application/json").content("{}"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("AUTH_PERMISSION_DENIED"));
     }
     @Test void latestDatabaseRoleOverridesOldAdminClaims() throws Exception {
         String token=bearer(admin);
-        jdbc.update("UPDATE account SET role='MAINTENANCE' WHERE account_id=?",admin.getId());
+        jdbc.update("UPDATE account SET role='USER' WHERE account_id=?",admin.getId());
         mvc.perform(get("/api/v1/system/telegram/deliveries").header("Authorization",token))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/inventory").header("Authorization",token)).andExpect(status().isOk());
@@ -130,7 +130,7 @@ class BackendAuthIntegrationTest {
             return new DeliveryResult(true,0,null);
         });
         mvc.perform(post(decisionPath(applicant,"approval")).header("Authorization",bearer(admin))
-                .contentType("application/json").content("{\"position\":\"MAINTENANCE\"}"))
+                .contentType("application/json").content("{\"permission\":\"USER\"}"))
                 .andExpect(status().isOk());
         verify(delivery).sendWithOneRetry(eq("test-private-chat"),contains("승인"));
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM notification_log WHERE notify_type='SIGNUP_RESULT'",Integer.class));
@@ -150,7 +150,7 @@ class BackendAuthIntegrationTest {
         var applicant=pending(true);
         assertThrows(IllegalStateException.class,()-> new TransactionTemplate(transactions).execute(status->{
             events.publishEvent(new SignupDecidedEvent(SignupDecidedEvent.Outcome.APPROVED,
-                    applicant.getId(),applicant.getLoginId(),applicant.getName(),"MAINTENANCE","test-private-chat",null));
+                    applicant.getId(),applicant.getLoginId(),applicant.getName(),"USER","test-private-chat",null));
             throw new IllegalStateException("rollback");
         }));
         verifyNoInteractions(delivery);
@@ -160,7 +160,7 @@ class BackendAuthIntegrationTest {
     @Test void retryOfPublishedDecisionDoesNotSendTwice() throws Exception {
         var applicant=pending(true);
         mvc.perform(post(decisionPath(applicant,"approval")).header("Authorization",bearer(admin))
-                .contentType("application/json").content("{\"position\":\"MAINTENANCE\"}"))
+                .contentType("application/json").content("{\"permission\":\"USER\"}"))
                 .andExpect(status().isOk());
         long id=jdbc.queryForObject("SELECT outbox_id FROM backend_event_outbox",Long.class);
         jdbc.update("UPDATE backend_event_outbox SET published_at=NULL WHERE outbox_id=?",id);
@@ -172,7 +172,7 @@ class BackendAuthIntegrationTest {
         var applicant=pending(true);
         when(delivery.sendWithOneRetry(anyString(),anyString())).thenReturn(new DeliveryResult(false,1,"연결 확인 필요"));
         mvc.perform(post(decisionPath(applicant,"approval")).header("Authorization",bearer(admin))
-                .contentType("application/json").content("{\"position\":\"MAINTENANCE\"}"))
+                .contentType("application/json").content("{\"permission\":\"USER\"}"))
                 .andExpect(status().isOk());
         assertEquals(ApprovalStatus.APPROVED,accounts.findById(applicant.getId()).orElseThrow().getApprovalStatus());
         assertEquals("FAILURE",jdbc.queryForObject("SELECT send_result FROM notification_log",String.class));
@@ -180,7 +180,7 @@ class BackendAuthIntegrationTest {
     @Test void unconnectedApplicantNeedsNoDeliveryOrOutbox() throws Exception {
         var applicant=pending(false);
         mvc.perform(post(decisionPath(applicant,"approval")).header("Authorization",bearer(admin))
-                .contentType("application/json").content("{\"position\":\"MAINTENANCE\"}"))
+                .contentType("application/json").content("{\"permission\":\"USER\"}"))
                 .andExpect(status().isOk());
         verifyNoInteractions(delivery);
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM backend_event_outbox",Integer.class));
@@ -197,13 +197,13 @@ class BackendAuthIntegrationTest {
         var login = mvc.perform(post("/api/v1/auth/login").contentType("application/json")
                 .content("{\"loginId\":\"adminauth\",\"password\":\""+password+"\"}"))
                 .andExpect(status().isOk()).andReturn().getResponse();
-        String cookie = login.getHeader("Set-Cookie").split(";", 2)[0].substring("refreshToken=".length());
-        var refresh = mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("refreshToken", cookie)))
+        String cookie = login.getHeader("Set-Cookie").split(";", 2)[0].substring("stfRefreshToken=".length());
+        var refresh = mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("stfRefreshToken", cookie)))
                 .andExpect(status().isOk()).andReturn().getResponse();
         var body = JsonMapper.builder().build().readValue(refresh.getContentAsString(), java.util.Map.class);
         String token = ((java.util.Map<?,?>)body.get("data")).get("accessToken").toString();
         var claims = jwt.verify(token, clock.instant());
-        String nextCookie = refresh.getHeader("Set-Cookie").split(";", 2)[0].substring("refreshToken=".length());
+        String nextCookie = refresh.getHeader("Set-Cookie").split(";", 2)[0].substring("stfRefreshToken=".length());
         mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer "+token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.userId").value(admin.getId()));
         mvc.perform(get("/api/v1/inventory").header("Authorization", "Bearer "+token)).andExpect(status().isOk());
@@ -218,12 +218,12 @@ class BackendAuthIntegrationTest {
             return null;
         }).when(revocations).revokeAccess(eq(claims.jti()), any());
         mvc.perform(post("/api/v1/auth/logout").header("Authorization", "Bearer "+token)
-                .cookie(new Cookie("refreshToken", nextCookie))).andExpect(status().isNoContent());
+                .cookie(new Cookie("stfRefreshToken", nextCookie))).andExpect(status().isNoContent());
         mvc.perform(get("/api/v1/inventory").header("Authorization", "Bearer "+token))
                 .andExpect(status().isUnauthorized());
         assertFalse(webSockets.permitDelivery(socket.getId()));
         verify(socket).close(CloseStatus.POLICY_VIOLATION);
-        mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("refreshToken", nextCookie)))
+        mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("stfRefreshToken", nextCookie)))
                 .andExpect(status().isUnauthorized());
     }
     @Test void notificationEnvelopeDoesNotPrintChatOrMessage() {

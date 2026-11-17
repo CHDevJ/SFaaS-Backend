@@ -14,7 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1")
-@ConditionalOnProperty(name = "stf.backend-b.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "stf.backend-b.legacy-v5-enabled", havingValue = "true")
 public class InventoryController {
     private final BReadService reads;
 

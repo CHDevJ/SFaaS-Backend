@@ -31,13 +31,13 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     private String cookieValue(MvcResult result) {
         String header = result.getResponse().getHeader(HttpHeaders.SET_COOKIE);
-        assertThat(header).isNotNull().startsWith("refreshToken=");
-        return header.substring("refreshToken=".length(), header.indexOf(';'));
+        assertThat(header).isNotNull().startsWith("stfRefreshToken=");
+        return header.substring("stfRefreshToken=".length(), header.indexOf(';'));
     }
 
     @Test
     void login_succeeds_and_returns_the_user_an_access_token_and_a_refresh_cookie() throws Exception {
-        AccountEntity admin = approvedAccount("admin01", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin01", "ADMIN");
 
         MvcResult result = mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody("admin01", PASSWORD)))
@@ -46,7 +46,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
                 .andExpect(jsonPath("$.data.userId").value(admin.getId()))
                 .andExpect(jsonPath("$.data.loginId").value("admin01"))
                 .andExpect(jsonPath("$.data.name").value("테스터"))
-                .andExpect(jsonPath("$.data.position").value("SYSTEM_ADMIN"))
+                .andExpect(jsonPath("$.data.position").doesNotExist())
                 .andExpect(jsonPath("$.data.permission").value("ADMIN"))
                 .andExpect(jsonPath("$.data.accountStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.tokenType").value("Bearer"))
@@ -66,7 +66,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void the_refresh_token_is_sent_only_as_a_hardened_cookie_and_stored_only_as_a_hash() throws Exception {
-        AccountEntity admin = approvedAccount("admin01", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin01", "ADMIN");
 
         MvcResult result = login("admin01", PASSWORD);
 
@@ -91,7 +91,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_successful_login_records_the_last_login_time() throws Exception {
-        AccountEntity admin = approvedAccount("admin01", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin01", "ADMIN");
         assertThat(admin.getLastLoginAt()).isNull();
 
         login("admin01", PASSWORD);
@@ -101,7 +101,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void every_login_starts_its_own_token_family() throws Exception {
-        approvedAccount("admin01", "SYSTEM_ADMIN");
+        approvedAccount("admin01", "ADMIN");
 
         login("admin01", PASSWORD);
         login("admin01", PASSWORD);
@@ -112,18 +112,18 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_line_manager_gets_the_general_permission() throws Exception {
-        approvedAccount("manager1", "LINE_MANAGER");
+        approvedAccount("manager1", "USER");
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody("manager1", PASSWORD)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.position").value("LINE_MANAGER"))
-                .andExpect(jsonPath("$.data.permission").value("GENERAL"));
+                .andExpect(jsonPath("$.data.position").doesNotExist())
+                .andExpect(jsonPath("$.data.permission").value("USER"));
     }
 
     @Test
     void an_account_that_must_change_its_password_can_still_log_in() throws Exception {
-        AccountEntity account = approvedAccount("worker01", "MAINTENANCE");
+        AccountEntity account = approvedAccount("worker01", "USER");
         account.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(account);
 
@@ -135,7 +135,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_wrong_password_returns_401_and_changes_nothing() throws Exception {
-        AccountEntity admin = approvedAccount("admin01", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin01", "ADMIN");
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody("admin01", "Wrong0ne!x")))
@@ -173,7 +173,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_deleted_account_cannot_log_in() throws Exception {
-        AccountEntity account = approvedAccount("gone0001", "MAINTENANCE");
+        AccountEntity account = approvedAccount("gone0001", "USER");
         account.markDeleted(LocalDateTime.now(clock));
         accounts.save(account);
 
@@ -185,7 +185,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void malformed_input_returns_400() throws Exception {
-        approvedAccount("admin01", "SYSTEM_ADMIN");
+        approvedAccount("admin01", "ADMIN");
         String[] invalidBodies = {
                 loginBody("ADMIN01", PASSWORD),   // 대문자 아이디
                 loginBody("ad", PASSWORD),        // 너무 짧은 아이디
@@ -204,7 +204,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_stale_authorization_header_does_not_block_logging_in_again() throws Exception {
-        approvedAccount("admin01", "SYSTEM_ADMIN");
+        approvedAccount("admin01", "ADMIN");
 
         mockMvc.perform(post(URL).header("Authorization", "Bearer expired.or.garbage")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -214,7 +214,7 @@ class AuthLoginApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void passwords_and_tokens_never_appear_in_the_logs(CapturedOutput output) throws Exception {
-        approvedAccount("admin01", "SYSTEM_ADMIN");
+        approvedAccount("admin01", "ADMIN");
 
         MvcResult ok = login("admin01", PASSWORD);
         login("admin01", "Wrong0ne!x");

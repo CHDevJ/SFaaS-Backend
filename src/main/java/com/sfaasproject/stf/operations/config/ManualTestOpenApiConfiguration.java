@@ -17,7 +17,7 @@ public class ManualTestOpenApiConfiguration {
     @Bean
     public OpenAPI manualTestOpenApi() {
         return new OpenAPI()
-                .info(new Info().title("STF Backend B - Local Manual Test").version("5.0.0")
+                .info(new Info().title("STF Backend B - Local Manual Test").version("7.0.0")
                         .description("Isolated sample data. Use Get-ManualTestToken.ps1 and Authorize. "
                                 + "Tokens expire after 30 minutes and are held in browser memory only. "
                                 + "Login is available with Get-ManualTestLogin.ps1. Real Telegram delivery is not enabled."))

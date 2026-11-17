@@ -22,7 +22,7 @@ function Receive-Stomp {
     return [pscustomobject]@{closed=$false;frame=$text.ToString()}
 }
 try {
-    $loginJson=& (Join-Path $PSScriptRoot 'Get-ManualTestLogin.ps1') -Role MAINTENANCE
+    $loginJson=& (Join-Path $PSScriptRoot 'Get-ManualTestLogin.ps1') -Role USER
     $content=[Net.Http.StringContent]::new($loginJson,[Text.Encoding]::UTF8,'application/json')
     $login=$http.PostAsync('http://127.0.0.1:8081/api/v1/auth/login',$content).GetAwaiter().GetResult()
     if([int]$login.StatusCode -ne 200){throw 'WebSocket test login failed; response redacted.'}

@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sfaasproject.stf.auth.service.AccessRevocationStore;
 import com.sfaasproject.stf.auth.service.TemporaryPasswordStore;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.event.*;
 import com.sfaasproject.stf.system.entity.AuditTargetType;
@@ -37,7 +37,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @SpringBootTest(properties = {
-    "stf.backend-b.enabled=true", "stf.backend-b.jobs-enabled=false",
+    "stf.backend-b.enabled=true", "stf.backend-b.legacy-v5-enabled=true", "stf.backend-b.jobs-enabled=false",
     "spring.datasource.url=jdbc:h2:mem:b-password-delivery;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
     "spring.jpa.hibernate.ddl-auto=none", "spring.sql.init.mode=always",
     "spring.sql.init.schema-locations=classpath:backend-b-schema.sql"
@@ -66,13 +66,13 @@ class PasswordResetDeliveryIntegrationTest {
     @BeforeEach void setup() {
         for(String table:new String[]{"backend_event_outbox","backend_event_claim","notification_log",
                 "change_log","auth_token","duty_member","duty","account"}) jdbc.update("DELETE FROM "+table);
-        admin=approved("deliveryadmin",Position.SYSTEM_ADMIN);
-        target=approved("deliverytarget",Position.MAINTENANCE);
+        admin=approved("deliveryadmin",Permission.ADMIN);
+        target=approved("deliverytarget",Permission.USER);
         target.connectTelegram("test-delivery-private-chat",LocalDateTime.now(clock)); accounts.save(target);
         transmitted.set(null);
         provider(new DeliveryResult(true,0,null));
     }
-    AccountEntity approved(String login, Position role) {
+    AccountEntity approved(String login, Permission role) {
         var account=AccountEntity.signup(login,passwords.encode("DeliveryTest123!"),login,LocalDateTime.now(clock));
         account.approve(role.name(),null,LocalDateTime.now(clock)); return accounts.save(account);
     }
@@ -82,7 +82,7 @@ class PasswordResetDeliveryIntegrationTest {
         });
     }
     String bearer(AccountEntity user) {
-        return "Bearer "+jwt.issue(user.getId(),Position.valueOf(user.getRole()),clock.instant()).value();
+        return "Bearer "+jwt.issue(user.getId(),Permission.valueOf(user.getRole()),clock.instant()).value();
     }
     String path() { return "/api/v1/system/users/"+target.getId()+"/password-reset"; }
     int logs() { return jdbc.queryForObject("SELECT COUNT(*) FROM notification_log",Integer.class); }
@@ -111,6 +111,15 @@ class PasswordResetDeliveryIntegrationTest {
                 .param("date",LocalDate.now(clock).toString())).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.summary.totalCount").value(1));
     }
+    @Test void utcSerializedDeliveryIsStoredAndQueriedOnTheKoreanCalendarDate() throws Exception {
+        var at=OffsetDateTime.parse("2026-11-17T16:00:00Z");
+        var event=new PasswordResetDeliveryRecorded("kst-date-regression",target.getId(),target.getName(),true,0,at);
+        new TransactionTemplate(transactions).executeWithoutResult(status->events.publishEvent(event));
+        assertEquals(LocalDateTime.of(2026,11,18,1,0),jdbc.queryForObject("SELECT sent_at FROM notification_log",java.sql.Timestamp.class).toLocalDateTime());
+        mvc.perform(get("/api/v1/system/telegram/deliveries").header("Authorization",bearer(admin)).param("date","2026-11-18"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.summary.totalCount").value(1));
+    }
+
     @Test void failedDeliveryRemainsInHistoryDespitePasswordRollback(CapturedOutput output) throws Exception {
         provider(new DeliveryResult(false,1,"untrusted provider detail"));
         mvc.perform(post(path()).header("Authorization",bearer(admin))).andExpect(status().is(422))

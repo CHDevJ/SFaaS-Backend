@@ -2,7 +2,7 @@ package com.sfaasproject.stf.auth.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService.Claims;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
@@ -10,7 +10,7 @@ import org.springframework.security.core.GrantedAuthority;
 
 class AccessTokenAuthenticationTest {
 
-    private static final Claims CLAIMS = new Claims(42L, Position.LINE_MANAGER,
+    private static final Claims CLAIMS = new Claims(42L, Permission.USER,
             "jti-secret-looking-value", Instant.parse("2026-11-17T01:00:00Z"),
             Instant.parse("2026-11-17T01:30:00Z"));
 
@@ -31,7 +31,7 @@ class AccessTokenAuthenticationTest {
     @Test
     void the_only_authority_is_the_role_of_the_position() {
         assertThat(authentication.getAuthorities()).extracting(GrantedAuthority::getAuthority)
-                .containsExactly("ROLE_LINE_MANAGER");
+                .containsExactly("ROLE_USER");
     }
 
     @Test

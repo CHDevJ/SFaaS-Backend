@@ -20,14 +20,14 @@ class ProductionCounterServiceTest {
     }
 
     @Test
-    void decreaseAfterConfiguredResetUsesNewCounterValue() {
-        assertEquals(2, service.quantity(new BigDecimal("500"), start,
+    void decreaseAtResetEstablishesNewEpochWithoutAddingAbsoluteValue() {
+        assertEquals(0, service.quantity(new BigDecimal("500"), start,
                 new BigDecimal("2"), start.plusMinutes(2), LocalTime.MIDNIGHT));
     }
 
     @Test
-    void resetUsesNewCounterEvenWhenItAlreadyExceedsPreviousValue() {
-        assertEquals(10, service.quantity(new BigDecimal("2"), start,
+    void resetEstablishesBaselineEvenIfNewAbsoluteValueIsLarger() {
+        assertEquals(0, service.quantity(new BigDecimal("2"), start,
                 new BigDecimal("10"), start.plusMinutes(2), LocalTime.MIDNIGHT));
     }
 

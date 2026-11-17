@@ -52,9 +52,11 @@ class MySqlBackendBTest {
                         baseUrl.replace("/stf_b_test?", "/" + database + "?"),
                         "root",
                         System.getenv("STF_TEST_MYSQL_PASSWORD"));
-        flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").load();
+        flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").target("4").load();
         flyway.migrate();
         jdbc = new JdbcTemplate(source);
+        // Explicit v5 workflow regression fixture. Current v7 migrations are verified separately.
+        jdbc.update("UPDATE account SET role=CASE WHEN role='SYSTEM_ADMIN' THEN 'ADMIN' ELSE 'USER' END WHERE role IS NOT NULL");
         var template = new TransactionTemplate(new DataSourceTransactionManager(source));
         tx =
                 new UnitOfWork() {
@@ -161,7 +163,7 @@ class MySqlBackendBTest {
                         new UsernamePasswordAuthenticationToken(
                                 "1",
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))));
+                                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         long maint = users.maintenanceIds().iterator().next();
         var parts = new PartApplicationService(new JdbcBParts(db), users, tx);
         var commands =
@@ -205,7 +207,7 @@ class MySqlBackendBTest {
                         new UsernamePasswordAuthenticationToken(
                                 "1",
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))));
+                                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         var duty =
                 new DutyApplicationService(
                         new JdbcBDuties(db, new JdbcBClaims(db)),
@@ -228,8 +230,8 @@ class MySqlBackendBTest {
     @Order(5)
     void accountDutyCleanupRequiresReplacementsAndPreservesPastRowsOnRealMySql() {
         jdbc.update("INSERT INTO account(login_id,name,role,approval_status) VALUES"
-                + " ('cleanupmysql','삭제 검증','MAINTENANCE','APPROVED'),"
-                + " ('replacemysql','대체 검증','MAINTENANCE','APPROVED')");
+                + " ('cleanupmysql','삭제 검증','USER','APPROVED'),"
+                + " ('replacemysql','대체 검증','USER','APPROVED')");
         long target=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='cleanupmysql'",Long.class);
         long other=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='replacemysql'",Long.class);
         var adapter=new JdbcBDuties(db,new JdbcBClaims(db));
@@ -266,7 +268,7 @@ class MySqlBackendBTest {
                 new BEventPublisher(publisher,outbox),new JdbcBClaims(db),manager);
         handler.set(history);
         jdbc.update("INSERT INTO account(login_id,name,role,approval_status,telegram_chat_id) VALUES"
-                + " ('resetmysql','발송 검증','MAINTENANCE','APPROVED','test-mysql-reset-chat')");
+                + " ('resetmysql','발송 검증','USER','APPROVED','test-mysql-reset-chat')");
         long id=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='resetmysql'",Long.class);
         var failed=new com.sfaasproject.stf.telegram.service.TelegramDeliveryService(
                 (chat,message)->{throw new IllegalStateException(message);},duration->{});

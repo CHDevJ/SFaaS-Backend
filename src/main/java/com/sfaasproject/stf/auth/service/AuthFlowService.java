@@ -2,7 +2,6 @@ package com.sfaasproject.stf.auth.service;
 
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.common.DomainException;
 import java.time.Instant;
 import java.util.Objects;
@@ -15,10 +14,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * with transactional persistence and atomic refresh rotation before HTTP wiring.
  */
 public class AuthFlowService {
-    public record Account(long userId, String loginId, String name, Position position,
+    public record Account(long userId, String loginId, String name, Permission permission,
             AccountStatus status, String passwordHash, Instant lastLoginAt) { }
-    public record User(long userId, String loginId, String name, Position position,
-            Permission permission, AccountStatus status, Instant lastLoginAt) { }
+    public record User(long userId, String loginId, String name, Permission permission, AccountStatus status, Instant lastLoginAt) { }
     public record Login(User user, String accessToken, Instant accessExpiresAt,
             String refreshToken, Instant refreshExpiresAt) {
         @Override public String toString() { return "Login[redacted]"; }
@@ -86,9 +84,9 @@ public class AuthFlowService {
         if (account.status() == AccountStatus.PENDING_APPROVAL) {
             throw error(HttpStatus.FORBIDDEN, "AUTH_APPROVAL_PENDING", "가입 승인 대기 중입니다.");
         }
-        if (account.status() == null || account.position() == null) throw invalidCredentials();
+        if (account.status() == null || account.permission() == null) throw invalidCredentials();
 
-        var accessToken = access.issue(account.userId(), account.position(), now);
+        var accessToken = access.issue(account.userId(), account.permission(), now);
         var refreshToken = refresh.issue(now);
         String familyId = UUID.randomUUID().toString();
         sessions.create(account.userId(), familyId, refreshToken.hash(),
@@ -124,11 +122,11 @@ public class AuthFlowService {
         if (rotation.userId() == null || rotation.familyId() == null) throw invalidRefresh();
         Account account = accounts.findById(rotation.userId());
         if (account == null || account.status() == AccountStatus.PENDING_APPROVAL
-                || account.status() == null || account.position() == null) {
+                || account.status() == null || account.permission() == null) {
             sessions.revokeFamily(rotation.familyId());
             throw invalidRefresh();
         }
-        var accessToken = access.issue(account.userId(), account.position(), now);
+        var accessToken = access.issue(account.userId(), account.permission(), now);
         return new Refreshed(accessToken.value(), accessToken.expiresAt(),
                 next.value(), next.expiresAt());
     }
@@ -140,7 +138,7 @@ public class AuthFlowService {
         }
         Account account = accounts.findById(claims.userId());
         if (account == null || account.status() == AccountStatus.PENDING_APPROVAL
-                || account.status() == null || account.position() == null) {
+                || account.status() == null || account.permission() == null) {
             throw invalidAccess();
         }
         return user(account, account.lastLoginAt());
@@ -180,8 +178,7 @@ public class AuthFlowService {
         accounts.changePassword(account.userId(), passwords.encode(newPassword));
     }
     private User user(Account account, Instant lastLoginAt) {
-        return new User(account.userId(), account.loginId(), account.name(), account.position(),
-                policy.permission(account.position()), account.status(), lastLoginAt);
+        return new User(account.userId(), account.loginId(), account.name(), account.permission(), account.status(), lastLoginAt);
     }
 
     private DomainException invalidCredentials() {

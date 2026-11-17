@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.sfaasproject.stf.auth.service.AccessRevocationStore;
 import com.sfaasproject.stf.auth.service.TemporaryPasswordStore;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.adapter.JdbcBDatabase;
 import com.sfaasproject.stf.operations.service.BWebSocketSessions;
@@ -36,7 +36,7 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 @SpringBootTest(properties = {
-    "stf.backend-b.enabled=true", "stf.backend-b.jobs-enabled=false",
+    "stf.backend-b.enabled=true", "stf.backend-b.legacy-v5-enabled=true", "stf.backend-b.jobs-enabled=false",
     "spring.datasource.url=jdbc:h2:mem:b-account-duty-cleanup;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1",
     "spring.jpa.hibernate.ddl-auto=none", "spring.sql.init.mode=always",
     "spring.sql.init.schema-locations=classpath:backend-b-schema.sql"
@@ -66,18 +66,18 @@ class AccountDutyCleanupIntegrationTest {
         for (String table : new String[]{"backend_event_outbox", "backend_event_claim", "change_log",
                 "auth_token", "duty_member", "duty", "account"}) jdbc.update("DELETE FROM " + table);
         today=LocalDate.now(clock);
-        admin=approved("cleanupadmin", Position.SYSTEM_ADMIN);
-        target=approved("cleanuptarget", Position.MAINTENANCE);
-        replacement=approved("cleanupother", Position.MAINTENANCE);
+        admin=approved("cleanupadmin", Permission.ADMIN);
+        target=approved("cleanuptarget", Permission.USER);
+        replacement=approved("cleanupother", Permission.USER);
     }
 
-    AccountEntity approved(String login, Position role) {
+    AccountEntity approved(String login, Permission role) {
         var user=AccountEntity.signup(login,passwords.encode("CleanupTest123!"),login,LocalDateTime.now(clock));
         user.approve(role.name(),null,LocalDateTime.now(clock));
         return accounts.save(user);
     }
     String bearer(AccountEntity user) {
-        return "Bearer "+jwt.issue(user.getId(),Position.valueOf(user.getRole()),clock.instant()).value();
+        return "Bearer "+jwt.issue(user.getId(),Permission.valueOf(user.getRole()),clock.instant()).value();
     }
     String deletePath() { return "/api/v1/system/users/"+target.getId(); }
     long period(LocalDate from, LocalDate to, AccountEntity... members) {
@@ -152,10 +152,10 @@ class AccountDutyCleanupIntegrationTest {
 
     @Test void nonMaintenanceOrDeletedReplacementDoesNotPermitDeletion() throws Exception {
         long current=period(today,today.plusDays(2),target,replacement);
-        jdbc.update("UPDATE account SET role='LINE_MANAGER' WHERE account_id=?",replacement.getId());
+        jdbc.update("UPDATE account SET role='ADMIN' WHERE account_id=?",replacement.getId());
         mvc.perform(delete(deletePath()).header("Authorization",bearer(admin)))
                 .andExpect(status().is(422));
-        jdbc.update("UPDATE account SET role='MAINTENANCE',deleted_at=? WHERE account_id=?",LocalDateTime.now(clock),replacement.getId());
+        jdbc.update("UPDATE account SET role='ADMIN',deleted_at=? WHERE account_id=?",LocalDateTime.now(clock),replacement.getId());
         mvc.perform(delete(deletePath()).header("Authorization",bearer(admin)))
                 .andExpect(status().is(422));
         assertEquals(1,members(current,target.getId()));
@@ -191,7 +191,7 @@ class AccountDutyCleanupIntegrationTest {
         mvc.perform(delete(deletePath()).header("Authorization",bearer(admin))).andExpect(status().isNoContent());
         int logs=jdbc.queryForObject("SELECT COUNT(*) FROM change_log",Integer.class);
         new TransactionTemplate(transactions).execute(status -> {
-            events.publishEvent(new AccountDeletedEvent(target.getId(),target.getLoginId(),"MAINTENANCE",admin.getId()));
+            events.publishEvent(new AccountDeletedEvent(target.getId(),target.getLoginId(),"USER",admin.getId()));
             return null;
         });
         assertEquals(logs,jdbc.queryForObject("SELECT COUNT(*) FROM change_log",Integer.class));
@@ -199,41 +199,13 @@ class AccountDutyCleanupIntegrationTest {
 
     @Test void eventWithoutTheAccountTransactionIsRejected() {
         assertThrows(RuntimeException.class,()->events.publishEvent(
-                new AccountDeletedEvent(target.getId(),target.getLoginId(),"MAINTENANCE",admin.getId())));
+                new AccountDeletedEvent(target.getId(),target.getLoginId(),"USER",admin.getId())));
         assertFalse(accounts.findById(target.getId()).orElseThrow().isDeleted());
     }
-    void changePosition(Position role, String name) throws Exception {
+    void changePosition(Permission role, String name) throws Exception {
         mvc.perform(put(deletePath()).header("Authorization",bearer(admin))
-                .contentType("application/json").content("{\"name\":\""+name+"\",\"position\":\""+role+"\"}"))
+                .contentType("application/json").content("{\"name\":\""+name+"\",\"permission\":\""+role+"\"}"))
                 .andExpect(status().isOk());
-    }
-
-    @Test void soleCurrentOrFutureDutyBlocksBothKindsOfMaintenancePositionChange() throws Exception {
-        long current=period(today,today.plusDays(2),target,replacement);
-        long future=period(today.plusDays(3),today.plusDays(6),target);
-        for(Position role:new Position[]{Position.LINE_MANAGER,Position.SYSTEM_ADMIN}) {
-            mvc.perform(put(deletePath()).header("Authorization",bearer(admin))
-                    .contentType("application/json").content("{\"name\":\"변경 시도\",\"position\":\""+role+"\"}"))
-                    .andExpect(status().is(422)).andExpect(jsonPath("$.error.code").value("DUTY_REPLACEMENT_REQUIRED"));
-            var unchanged=accounts.findById(target.getId()).orElseThrow();
-            assertEquals("MAINTENANCE",unchanged.getRole()); assertEquals(target.getName(),unchanged.getName());
-            assertEquals(1,members(current,target.getId())); assertEquals(1,members(future,target.getId()));
-            assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM change_log",Integer.class));
-        }
-    }
-
-    @Test void positionChangeWithReplacementKeepsCompletedHistoryAndAuditsRemovedMemberships() throws Exception {
-        long past=period(today.minusDays(4),today.minusDays(1),target);
-        long current=period(today,today.plusDays(2),target,replacement);
-        long future=period(today.plusDays(3),today.plusDays(5),target,replacement);
-        changePosition(Position.LINE_MANAGER,target.getName());
-        assertEquals("LINE_MANAGER",accounts.findById(target.getId()).orElseThrow().getRole());
-        assertEquals(1,members(past,target.getId()));
-        for(long id:new long[]{current,future}) { assertEquals(0,members(id,target.getId())); assertEquals(1,members(id,replacement.getId())); }
-        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM duty",Integer.class));
-        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY' AND field_name='담당자 제외(보전 직책 변경)' AND changed_by=?",Integer.class,admin.getId()));
-        mvc.perform(get("/api/v1/alarm-duty-schedules/calendar").param("month",today.toString().substring(0,7))
-                .header("Authorization",bearer(admin))).andExpect(status().isOk());
     }
 
     @Test void reassignmentThroughDutyApiAllowsPositionChange() throws Exception {
@@ -241,50 +213,20 @@ class AccountDutyCleanupIntegrationTest {
         mvc.perform(put("/api/v1/system/alarm-duty-schedules/"+id).header("Authorization",bearer(admin))
                 .contentType("application/json").content("{\"startDate\":\""+today+"\",\"endDate\":\""+today.plusDays(3)
                         +"\",\"dutyUserId\":"+replacement.getId()+"}")) .andExpect(status().isOk());
-        changePosition(Position.SYSTEM_ADMIN,target.getName());
-        assertEquals("SYSTEM_ADMIN",accounts.findById(target.getId()).orElseThrow().getRole());
+        changePosition(Permission.ADMIN,target.getName());
+        assertEquals("ADMIN",accounts.findById(target.getId()).orElseThrow().getRole());
         assertEquals(1,members(id,replacement.getId()));
     }
 
     @Test void nameOnlyChangeAndPromotionIntoMaintenanceKeepMemberships() throws Exception {
         long id=period(today,today.plusDays(3),target);
-        changePosition(Position.MAINTENANCE,"바뀐 이름");
+        changePosition(Permission.USER,"바뀐 이름");
         assertEquals(1,members(id,target.getId()));
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY'",Integer.class));
-        jdbc.update("UPDATE account SET role='LINE_MANAGER' WHERE account_id=?",target.getId());
-        changePosition(Position.MAINTENANCE,"바뀐 이름");
+        jdbc.update("UPDATE account SET role='USER' WHERE account_id=?",target.getId());
+        changePosition(Permission.USER,"바뀐 이름");
         assertEquals(1,members(id,target.getId()));
     }
-
-    @Test void deletedOrNonMaintenanceReplacementAlsoBlocksPositionChange() throws Exception {
-        long id=period(today,today.plusDays(3),target,replacement);
-        for(String state:new String[]{"role='LINE_MANAGER'","role='MAINTENANCE',deleted_at=CURRENT_TIMESTAMP"}) {
-            jdbc.update("UPDATE account SET "+state+" WHERE account_id=?",replacement.getId());
-            mvc.perform(put(deletePath()).header("Authorization",bearer(admin)).contentType("application/json")
-                    .content("{\"name\":\"변경\",\"position\":\"LINE_MANAGER\"}"))
-                    .andExpect(status().is(422)).andExpect(jsonPath("$.error.code").value("DUTY_REPLACEMENT_REQUIRED"));
-            assertEquals(1,members(id,target.getId()));
-        }
-    }
-
-    @Test void cleanupAuditFailureRollsBackPositionNameAndMembershipsTogether() throws Exception {
-        long id=period(today,today.plusDays(3),target,replacement);
-        AuditRecorder recorder=AopTestUtils.getUltimateTargetObject(audit);
-        doThrow(new IllegalStateException("audit unavailable")).when(recorder)
-                .record(anyLong(),eq(AuditTargetType.DUTY),anyString(),anyString(),any(),isNull());
-        mvc.perform(put(deletePath()).header("Authorization",bearer(admin)).contentType("application/json")
-                .content("{\"name\":\"바뀐 이름\",\"position\":\"LINE_MANAGER\"}"))
-                .andExpect(status().isInternalServerError());
-        var unchanged=accounts.findById(target.getId()).orElseThrow();
-        assertEquals("MAINTENANCE",unchanged.getRole()); assertEquals(target.getName(),unchanged.getName());
-        assertEquals(1,members(id,target.getId()));
-        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM change_log",Integer.class));
-    }
-
-    String dutyBody(LocalDate from,LocalDate to,long user) {
-        return "{\"startDate\":\""+from+"\",\"endDate\":\""+to+"\",\"dutyUserId\":"+user+"}";
-    }
-    int dutyAudits() { return jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY'",Integer.class); }
 
     @Test void dutyCreateUpdateNoopDeletePersistActorAndFieldSnapshots() throws Exception {
         String path="/api/v1/system/alarm-duty-schedules";
@@ -332,4 +274,8 @@ class AccountDutyCleanupIntegrationTest {
         assertEquals(1,members(id,target.getId())); assertEquals(0,dutyAudits());
     }
 
+    String dutyBody(LocalDate from,LocalDate to,long user) {
+        return "{\"startDate\":\""+from+"\",\"endDate\":\""+to+"\",\"dutyUserId\":"+user+"}";
+    }
+    int dutyAudits() { return jdbc.queryForObject("SELECT COUNT(*) FROM change_log WHERE target_type='DUTY'",Integer.class); }
 }

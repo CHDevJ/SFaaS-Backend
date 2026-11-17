@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Synchronous listener: account deletion, membership cleanup and audit either all commit or all roll back. */
 @Component
-@ConditionalOnProperty(name = "stf.backend-b.enabled", havingValue = "true")
+@ConditionalOnProperty(name = "stf.backend-b.legacy-v5-enabled", havingValue = "true")
 public class AccountDutyCleanup {
     private final Duties duties;
     private final AuditRecorder audit;
@@ -30,7 +30,7 @@ public class AccountDutyCleanup {
     @EventListener
     @Transactional(propagation = Propagation.MANDATORY)
     public void reclassify(AccountPositionChangedEvent event) {
-        if ("MAINTENANCE".equals(event.previousPosition()) && !"MAINTENANCE".equals(event.position()))
+        if ("USER".equals(event.previousPosition()) && !"USER".equals(event.position()))
             remove(event.accountId(), event.changedBy(), "담당자 제외(보전 직책 변경)");
     }
 
