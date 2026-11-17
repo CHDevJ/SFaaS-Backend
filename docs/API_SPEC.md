@@ -1884,7 +1884,7 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | monthlyFaultCount | integer | Y | N | 값≥0 | - |
-| averageRepairMinutes | number(double) | Y | N | 값≥0 | - |
+| averageRepairMinutes | number(double) | Y | Y | 값≥0 | - |
 | averageFailureIntervalMinutes | number(double) | Y | Y | 값≥0 | - |
 | items | array<FaultHistoryItem> | Y | N | - | - |
 
@@ -1972,7 +1972,7 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 | equipmentName | string | Y | N | - | - |
 | faultCount | integer | Y | N | 값≥0 | - |
 | downtimeMinutes | number(double) | Y | N | 값≥0 | - |
-| averageRepairMinutes | number(double) | Y | N | 값≥0 | - |
+| averageRepairMinutes | number(double) | Y | Y | 값≥0 | - |
 | lossAmount | number | Y | N | 값≥0 | 원 |
 
 ### EquipmentRankingResponse

@@ -50,7 +50,7 @@ public class SignupRequestController {
             @Valid @RequestBody SignupApprovalRequest request,
             @AuthenticationPrincipal JwtAccessTokenService.Claims approver) {
         return ApiResponse.ok(UserResponse.from(
-                approvals.approve(requestId, request.position(), approver.userId())));
+                approvals.approve(requestId, request.permission(), approver.userId())));
     }
 
     @PostMapping("/{requestId}/rejection")

@@ -91,9 +91,9 @@ public class BEventHandlers {
                 || event.eventType().equals("GRADE_UP")
                 || event.eventType().equals("RENOTIFY")) {
             for (var user : users.notificationUsers()) {
-                if (user.position().name().equals("LINE_MANAGER")
+                if (user.position().name().equals("USER")
                         || event.eventType().equals("RENOTIFY")
-                                && user.position().name().equals("SYSTEM_ADMIN"))
+                                && user.position().name().equals("ADMIN"))
                     notifySafely(
                             event.eventId(),
                             user.userId(),

@@ -28,6 +28,8 @@ public final class BPorts {
             return active(id) != null;
         }
 
+        default boolean passwordChangeRequired(long id) { return false; }
+
         Set<Long> maintenanceIds();
 
         List<UserBrief> notificationUsers();

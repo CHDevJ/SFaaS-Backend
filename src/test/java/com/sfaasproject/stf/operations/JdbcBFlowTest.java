@@ -145,7 +145,7 @@ class JdbcBFlowTest {
                         duties, users, tx, new DutyScheduleDecisionService(), clock, this::recordAudit);
         jdbc.update(
                 "INSERT INTO account(account_id,login_id,name,role,approval_status) VALUES"
-                    + " (1,'admin','관리자','SYSTEM_ADMIN','APPROVED'),(2,'maint','보전','MAINTENANCE','APPROVED'),(3,'manager','라인','LINE_MANAGER','APPROVED')");
+                    + " (1,'admin','관리자','ADMIN','APPROVED'),(2,'maint','보전','USER','APPROVED'),(3,'manager','라인','USER','APPROVED')");
         jdbc.update(
                 "INSERT INTO line(line_id,name,line_type,sort_order) VALUES"
                         + " (1,'부품','PART',1),(2,'조립','ASSEMBLY',2)");
@@ -178,7 +178,7 @@ class JdbcBFlowTest {
                 "INSERT INTO alarm_log(alarm_id,event_type,content,created_at) VALUES"
                         + " (1,'OCCUR','온도 경보',?)",
                 java.sql.Timestamp.valueOf(now.minusMinutes(20).toLocalDateTime()));
-        login("SYSTEM_ADMIN");
+        login("ADMIN");
     }
 
     @AfterEach
@@ -617,7 +617,7 @@ class JdbcBFlowTest {
         var result = telegram.deliveries(now.toLocalDate(), null, 0, 20);
         assertEquals(2, result.data().summary().totalCount());
         assertEquals(1, result.data().summary().successCount());
-        assertEquals(Position.LINE_MANAGER, result.data().items().get(0).recipient().position());
+        assertEquals(Position.USER, result.data().items().get(0).recipient().position());
         telegram.unlink(3);
         assertNull(telegram.connection(3));
     }

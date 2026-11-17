@@ -56,6 +56,7 @@ public class BackendBConfiguration {
 
     @Bean
     @ConditionalOnProperty(name = "stf.backend-b.ingestion-enabled", havingValue = "true")
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnExpression("${stf.backend-b.legacy-v5-enabled:false}")
     public BIngestionApplicationService bIngestion(
             JdbcBDatabase db,
             BEventPublisher events,
@@ -249,6 +250,7 @@ public class BackendBConfiguration {
             name = "stf.backend-b.jobs-enabled",
             havingValue = "true",
             matchIfMissing = true)
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnExpression("${stf.backend-b.legacy-v5-enabled:false}")
     public BJobs bJobs(
             Alarms alarms,
             Settings settings,
@@ -261,6 +263,7 @@ public class BackendBConfiguration {
     }
 
     @Bean
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnExpression("${stf.backend-b.legacy-v5-enabled:false}")
     public BEventHandlers bHandlers(
             EventClaims claims,
             UnitOfWork tx,

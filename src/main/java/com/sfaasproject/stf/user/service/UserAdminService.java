@@ -3,7 +3,6 @@ package com.sfaasproject.stf.user.service;
 import com.sfaasproject.stf.auth.service.AuthPolicyService;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.common.DomainException;
 import com.sfaasproject.stf.common.paging.PageQuery;
 import com.sfaasproject.stf.common.paging.SortQuery;
@@ -36,31 +35,33 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UserAdminService {
 
-    public record UserFilter(String keyword, Position position, Permission permission, AccountStatus status) { }
+    public record UserFilter(String keyword, Permission permission, AccountStatus status) { }
 
     static final int KEYWORD_MAX = 100;
     /** ERD account.name 은 varchar(50) 이다. */
-    static final int NAME_MAX = 50;
+    static final int NAME_MAX = 100;
 
     /** API 의 sort 필드 이름 -> 엔티티 속성. */
     private static final Map<String, String> SORT_FIELDS = Map.of(
             "name", "name", "loginId", "loginId", "position", "role",
             "createdAt", "createdAt", "updatedAt", "updatedAt", "lastLoginAt", "lastLoginAt");
-    private static final Sort DEFAULT_SORT = Sort.by("name").ascending();
+    private static final Sort DEFAULT_SORT = Sort.by("createdAt").descending().and(Sort.by("id").descending());
 
     private final AccountRepository accounts;
     private final AuthPolicyService policy;
     private final AuditRecorder audit;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final com.sfaasproject.stf.auth.service.AuthFlowService.SessionStore sessions;
 
     public UserAdminService(AccountRepository accounts, AuthPolicyService policy, AuditRecorder audit,
-            ApplicationEventPublisher events, Clock clock) {
+            ApplicationEventPublisher events, Clock clock, com.sfaasproject.stf.auth.service.AuthFlowService.SessionStore sessions) {
         this.accounts = accounts;
         this.policy = policy;
         this.audit = audit;
         this.events = events;
         this.clock = clock;
+        this.sessions = sessions;
     }
 
     @Transactional(readOnly = true)
@@ -70,7 +71,7 @@ public class UserAdminService {
             throw validationError();
         }
         Pageable pageable = page.toPageable(SortQuery.parse(sort, SORT_FIELDS, DEFAULT_SORT, "id"));
-        List<String> roles = roles(filter.position(), filter.permission());
+        List<String> roles = roles(filter.permission());
         List<Boolean> passwordFlags = passwordFlags(filter.status());
         if (roles.isEmpty() || passwordFlags.isEmpty()) {
             return Page.empty(pageable);
@@ -86,26 +87,28 @@ public class UserAdminService {
     }
 
     @Transactional
-    public UserView update(long userId, String name, Position position, long actorId) {
+    public UserView update(long userId, String name, Permission position, long actorId) {
         String cleanName = name == null ? "" : name.strip();
         if (cleanName.isEmpty() || cleanName.length() > NAME_MAX || position == null) {
             throw validationError();
         }
-        if (position != Position.SYSTEM_ADMIN) {
+        if (position != Permission.ADMIN) {
             guardLastSystemAdmin(userId);
         }
         AccountEntity account = lock(userId);
         String oldName = account.getName();
-        Position oldPosition = Position.valueOf(account.getRole());
+        Permission oldPosition = Permission.valueOf(account.getRole());
         boolean nameChanged = !oldName.equals(cleanName);
         boolean positionChanged = oldPosition != position;
         if (nameChanged || positionChanged) {
+            if(positionChanged)sessions.revokeAllForUser(userId,clock.instant());
             account.updateProfile(cleanName, position.name(), now());
+            account=accounts.save(account);
             if (nameChanged) {
                 audit.record(actorId, AuditTargetType.ACCOUNT, account.getLoginId(), "이름", oldName, cleanName);
             }
             if (positionChanged) {
-                audit.record(actorId, AuditTargetType.ACCOUNT, account.getLoginId(), "직책",
+                audit.record(actorId, AuditTargetType.ACCOUNT, account.getLoginId(), "권한",
                         PositionLabels.of(oldPosition), PositionLabels.of(position));
                 events.publishEvent(new AccountPositionChangedEvent(account.getId(),
                         oldPosition.name(), position.name(), actorId));
@@ -127,7 +130,9 @@ public class UserAdminService {
         guardLastSystemAdmin(userId);
         AccountEntity account = lock(userId);
         String role = account.getRole();
-        account.markDeleted(now());
+        sessions.revokeAllForUser(userId,clock.instant());
+        account.markDeletedBy(actorId,now());
+        account=accounts.save(account);
         audit.record(actorId, AuditTargetType.ACCOUNT, account.getLoginId(), "계정 삭제", "사용", "삭제");
         events.publishEvent(new AccountDeletedEvent(account.getId(), account.getLoginId(), role, actorId));
     }
@@ -141,7 +146,7 @@ public class UserAdminService {
         List<AccountEntity> admins = accounts.lockActiveSystemAdmins();
         boolean targetIsAdmin = admins.stream().anyMatch(admin -> admin.getId() == userId);
         if (targetIsAdmin && admins.size() <= 1) {
-            throw new DomainException(HttpStatus.UNPROCESSABLE_ENTITY, "LAST_SYSTEM_ADMIN_REQUIRED",
+            throw new DomainException(HttpStatus.UNPROCESSABLE_ENTITY, "LAST_ADMIN_REQUIRED",
                     "시스템관리자는 최소 한 명 있어야 합니다. 다른 사람을 먼저 시스템관리자로 지정해 주세요.");
         }
     }
@@ -155,12 +160,11 @@ public class UserAdminService {
         return !account.isDeleted() && !account.isPending();
     }
 
-    /** 직책과 권한 조건을 함께 만족하는 직책 목록. 권한은 직책에서 파생된다(SYSTEM_ADMIN 만 ADMIN). */
-    private List<String> roles(Position position, Permission permission) {
+    /** 직책과 권한 조건을 함께 만족하는 직책 목록. 권한은 직책에서 파생된다(ADMIN 만 ADMIN). */
+    private List<String> roles(Permission permission) {
         List<String> roles = new ArrayList<>();
-        for (Position candidate : Position.values()) {
-            if ((position == null || position == candidate)
-                    && (permission == null || policy.permission(candidate) == permission)) {
+        for (Permission candidate : Permission.values()) {
+            if ((permission == null || candidate == permission)) {
                 roles.add(candidate.name());
             }
         }

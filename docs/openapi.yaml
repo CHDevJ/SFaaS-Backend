@@ -4645,6 +4645,7 @@ components:
           type: number
           format: double
           minimum: 0
+          nullable: true
         averageFailureIntervalMinutes:
           type: number
           format: double
@@ -4852,6 +4853,7 @@ components:
           type: number
           format: double
           minimum: 0
+          nullable: true
         lossAmount:
           type: number
           minimum: 0

@@ -189,13 +189,13 @@
         "acknowledgedBy": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         },
         "acknowledgedAt": "2026-11-17T09:00:00+09:00",
         "assignee": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         }
       }
     }
@@ -235,7 +235,7 @@
         "actionedBy": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         }
       }
     }
@@ -399,7 +399,7 @@
         "worker": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         }
       }
     }
@@ -707,7 +707,7 @@
         "dutyUser": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         },
         "status": "CURRENT"
       }
@@ -731,7 +731,7 @@
         "dutyUser": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         },
         "status": "CURRENT"
       }
@@ -775,7 +775,7 @@
         "dutyUser": {
           "userId": 1,
           "name": "fixture",
-          "position": "SYSTEM_ADMIN"
+          "permission": "ADMIN"
         },
         "status": "CURRENT"
       }

@@ -2,7 +2,7 @@ package com.sfaasproject.stf.auth.service;
 
 import com.sfaasproject.stf.auth.service.AuthFlowService.Account;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.common.time.KstTime;
 import com.sfaasproject.stf.user.entity.AccountEntity;
 import com.sfaasproject.stf.user.entity.ApprovalStatus;
@@ -90,12 +90,12 @@ public class DatabaseAccountStore implements AuthFlowService.AccountStore {
                 ? AccountStatus.PASSWORD_CHANGE_REQUIRED : AccountStatus.ACTIVE;
     }
 
-    private static Position position(String role) {
+    private static Permission position(String role) {
         if (role == null) {
             return null;
         }
         try {
-            return Position.valueOf(role);
+            return Permission.valueOf(role);
         } catch (IllegalArgumentException ex) {
             return null; // 알 수 없는 직책은 로그인과 토큰 사용을 거부한다.
         }

@@ -11,12 +11,7 @@ public class TelegramRecipientDecisionService {
 
     public List<Long> recipients(Trigger trigger, Long assigneeId, List<Account> accounts) {
         if (trigger == null || accounts == null) throw new IllegalArgumentException("Trigger and accounts are required");
-        return accounts.stream().filter(Account::connected).filter(account -> switch (trigger) {
-            case OCCUR, GRADE_UP -> "LINE_MANAGER".equals(account.role());
-            case RENOTIFY -> "LINE_MANAGER".equals(account.role())
-                    || "SYSTEM_ADMIN".equals(account.role());
-            case RECUR, ASSIGN -> assigneeId != null && account.id() == assigneeId;
-            case RECOVER -> false;
-        }).map(Account::id).distinct().toList();
+        if(trigger!=Trigger.OCCUR && trigger!=Trigger.GRADE_UP)return List.of();
+        return accounts.stream().filter(Account::connected).map(Account::id).distinct().toList();
     }
 }

@@ -169,7 +169,7 @@ public class DutyApplicationService {
 
     private void requireMaintenance(long userId) {
         if (!users.maintenanceIds().contains(userId))
-            throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_MAINTENANCE",
+            throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_USER",
                     "사용 중인 보전 담당자를 선택해 주세요.");
     }
 
@@ -177,7 +177,7 @@ public class DutyApplicationService {
         var today = LocalDate.now(clock);
         var active = users.maintenanceIds();
         if (values.stream().anyMatch(d -> !d.to().isBefore(today) && !active.contains(d.userId())))
-            throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_MAINTENANCE",
+            throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "ASSIGNEE_NOT_USER",
                     "사용 중인 보전 담당자를 선택해 주세요.");
         var from = values.stream().map(Duty::from).min(LocalDate::compareTo).orElseThrow();
         var to = values.stream().map(Duty::to).max(LocalDate::compareTo).orElseThrow();

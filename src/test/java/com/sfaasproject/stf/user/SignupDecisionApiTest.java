@@ -39,7 +39,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
 
     @BeforeEach
     void admin() {
-        admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        admin = approvedAccount("admin001", "ADMIN");
         adminBearer = bearerFor(admin);
     }
 
@@ -52,7 +52,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
     }
 
     private static String position(String position) {
-        return "{\"position\":\"" + position + "\"}";
+        return "{\"permission\":\"" + position + "\"}";
     }
 
     private static String reason(String reason) {
@@ -70,13 +70,13 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
         AccountEntity request = pendingAccount("newuser1");
 
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                        .contentType(MediaType.APPLICATION_JSON).content(position("LINE_MANAGER")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.userId").value(request.getId()))
                 .andExpect(jsonPath("$.data.loginId").value("newuser1"))
-                .andExpect(jsonPath("$.data.position").value("LINE_MANAGER"))
-                .andExpect(jsonPath("$.data.permission").value("GENERAL"))
+                .andExpect(jsonPath("$.data.position").doesNotExist())
+                .andExpect(jsonPath("$.data.permission").value("USER"))
                 .andExpect(jsonPath("$.data.accountStatus").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.telegramConnected").value(false))
                 .andExpect(jsonPath("$.data.lastLoginAt").doesNotExist())
@@ -86,7 +86,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
                 .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
 
         AccountEntity saved = accounts.findById(request.getId()).orElseThrow();
-        assertThat(saved.getRole()).isEqualTo("LINE_MANAGER");
+        assertThat(saved.getRole()).isEqualTo("USER");
         assertThat(saved.getApprovalStatus()).isEqualTo(ApprovalStatus.APPROVED);
         assertThat(saved.getApprovedBy()).isEqualTo(admin.getId());
         assertThat(saved.getApprovedAt()).isNotNull();
@@ -97,9 +97,9 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
         AccountEntity request = pendingAccount("newadmin");
 
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                        .contentType(MediaType.APPLICATION_JSON).content(position("SYSTEM_ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("ADMIN")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.position").value("SYSTEM_ADMIN"))
+                .andExpect(jsonPath("$.data.position").doesNotExist())
                 .andExpect(jsonPath("$.data.permission").value("ADMIN"));
     }
 
@@ -112,13 +112,13 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("AUTH_APPROVAL_PENDING"));
 
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                        .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/auth/login").contentType(MediaType.APPLICATION_JSON)
                         .content(loginBody("newuser1", PASSWORD)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.position").value("MAINTENANCE"));
+                .andExpect(jsonPath("$.data.position").doesNotExist());
     }
 
     @Test
@@ -126,7 +126,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
         AccountEntity request = pendingAccount("newuser1");
 
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")));
+                .contentType(MediaType.APPLICATION_JSON).content(position("USER")));
 
         List<ChangeLogEntity> logs = changeLogs.findAll();
         assertThat(logs).hasSize(1);
@@ -136,7 +136,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
         assertThat(log.getTargetName()).isEqualTo("newuser1");
         assertThat(log.getFieldName()).isEqualTo("가입 승인");
         assertThat(log.getOldValue()).isEqualTo("승인 대기");
-        assertThat(log.getNewValue()).contains("보전 담당자");
+        assertThat(log.getNewValue()).contains("사용자");
         assertThat(String.join(" ", log.getTargetName(), log.getFieldName(), log.getOldValue(),
                 log.getNewValue())).doesNotContain(PASSWORD).doesNotContain("$2");
     }
@@ -149,15 +149,15 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
         AccountEntity unlinked = pendingAccount("unlinked1");
 
         mockMvc.perform(post(approvalUrl(connected.getId())).header("Authorization", adminBearer)
-                .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")));
+                .contentType(MediaType.APPLICATION_JSON).content(position("USER")));
         mockMvc.perform(post(approvalUrl(unlinked.getId())).header("Authorization", adminBearer)
-                .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")));
+                .contentType(MediaType.APPLICATION_JSON).content(position("USER")));
 
         assertThat(decisions()).hasSize(2);
         SignupDecidedEvent first = decisions().get(0);
         assertThat(first.outcome()).isEqualTo(SignupDecidedEvent.Outcome.APPROVED);
         assertThat(first.accountId()).isEqualTo(connected.getId());
-        assertThat(first.position()).isEqualTo("MAINTENANCE");
+        assertThat(first.position()).isEqualTo("USER");
         assertThat(first.telegramChatId()).isEqualTo("123456789");
         assertThat(first.reason()).isNull();
         assertThat(decisions().get(1).telegramChatId()).isNull();
@@ -168,14 +168,14 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
     void approving_twice_returns_409_and_changes_nothing_more() throws Exception {
         AccountEntity request = pendingAccount("newuser1");
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")));
+                .contentType(MediaType.APPLICATION_JSON).content(position("USER")));
 
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                        .contentType(MediaType.APPLICATION_JSON).content(position("SYSTEM_ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("ADMIN")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("SIGNUP_REQUEST_STATE_CONFLICT"));
 
-        assertThat(accounts.findById(request.getId()).orElseThrow().getRole()).isEqualTo("MAINTENANCE");
+        assertThat(accounts.findById(request.getId()).orElseThrow().getRole()).isEqualTo("USER");
         assertThat(changeLogs.count()).isEqualTo(1);
         assertThat(decisions()).hasSize(1);
     }
@@ -188,7 +188,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
 
         for (long id : new long[] {987654321L, deleted.getId()}) {
             mockMvc.perform(post(approvalUrl(id)).header("Authorization", adminBearer)
-                            .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")))
+                            .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
         }
@@ -198,7 +198,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
     @Test
     void an_invalid_approval_body_returns_400() throws Exception {
         AccountEntity request = pendingAccount("newuser1");
-        String[] invalid = {"{}", position("BOSS"), position("ADMIN"), "{\"position\":null}", "{not-json"};
+        String[] invalid = {"{}", position("BOSS"), position("SYSTEM_ADMIN"), "{\"permission\":null}", "{not-json"};
 
         for (String body : invalid) {
             mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
@@ -207,7 +207,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
                     .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
         }
         mockMvc.perform(post(BASE + "abc/approval").header("Authorization", adminBearer)
-                        .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                 .andExpect(status().isBadRequest());
         assertThat(accounts.findById(request.getId()).orElseThrow().isPending()).isTrue();
     }
@@ -215,14 +215,14 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
     @Test
     void only_the_system_admin_can_approve() throws Exception {
         AccountEntity request = pendingAccount("newuser1");
-        String manager = bearerFor(approvedAccount("manager1", "LINE_MANAGER"));
+        String manager = bearerFor(approvedAccount("manager1", "USER"));
 
         mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", manager)
-                        .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("AUTH_PERMISSION_DENIED"));
         mockMvc.perform(post(approvalUrl(request.getId()))
-                        .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")))
+                        .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                 .andExpect(status().isUnauthorized());
 
         assertThat(accounts.findById(request.getId()).orElseThrow().isPending()).isTrue();
@@ -285,7 +285,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
         mockMvc.perform(post(rejectionUrl(rejected.getId())).header("Authorization", adminBearer)
                 .contentType(MediaType.APPLICATION_JSON).content(reason("no")));
         mockMvc.perform(post(approvalUrl(approved.getId())).header("Authorization", adminBearer)
-                .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")));
+                .contentType(MediaType.APPLICATION_JSON).content(position("USER")));
 
         mockMvc.perform(post(rejectionUrl(rejected.getId())).header("Authorization", adminBearer)
                         .contentType(MediaType.APPLICATION_JSON).content(reason("again")))
@@ -316,7 +316,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
     @Test
     void only_the_system_admin_can_reject() throws Exception {
         AccountEntity request = pendingAccount("newuser1");
-        String maintainer = bearerFor(approvedAccount("maint001", "MAINTENANCE"));
+        String maintainer = bearerFor(approvedAccount("maint001", "USER"));
 
         mockMvc.perform(post(rejectionUrl(request.getId())).header("Authorization", maintainer)
                         .contentType(MediaType.APPLICATION_JSON).content(reason("no")))
@@ -336,7 +336,7 @@ class SignupDecisionApiTest extends AbstractAuthIntegrationTest {
             Future<Integer> approval = pool.submit(() -> {
                 start.await();
                 return mockMvc.perform(post(approvalUrl(request.getId())).header("Authorization", adminBearer)
-                                .contentType(MediaType.APPLICATION_JSON).content(position("MAINTENANCE")))
+                                .contentType(MediaType.APPLICATION_JSON).content(position("USER")))
                         .andReturn().getResponse().getStatus();
             });
             Future<Integer> rejection = pool.submit(() -> {
