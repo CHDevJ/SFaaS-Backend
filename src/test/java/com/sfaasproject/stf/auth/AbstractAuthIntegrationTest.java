@@ -6,6 +6,7 @@ import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.system.repository.ChangeLogRepository;
 import com.sfaasproject.stf.telegram.service.RedisTelegramLinkTokenStore;
 import com.sfaasproject.stf.user.entity.AccountEntity;
+import com.sfaasproject.stf.user.service.TemporaryPasswordSender;
 import com.sfaasproject.stf.user.repository.AccountRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -32,6 +33,12 @@ public abstract class AbstractAuthIntegrationTest {
     @MockitoBean
     protected RedisTelegramLinkTokenStore telegramLinkTokenStore;
 
+    /** 실제 텔레그램으로 보내지 않는다. 기본값은 발송 실패(false). */
+    @MockitoBean
+    protected TemporaryPasswordSender temporaryPasswordSender;
+
+    @Autowired
+    protected InMemoryTemporaryPasswordStore temporaryPasswords;
     @Autowired
     protected MockMvc mockMvc;
     @Autowired
@@ -55,6 +62,7 @@ public abstract class AbstractAuthIntegrationTest {
         tokens.deleteAll();
         accounts.deleteAll();
         revocations.reset();
+        temporaryPasswords.reset();
     }
 
     /** 승인된 계정을 만든다. role 은 SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE 중 하나. */

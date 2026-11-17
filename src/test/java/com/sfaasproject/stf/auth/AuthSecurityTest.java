@@ -24,7 +24,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     private static final String PROTECTED = "/api/v1/equipment/1";
-    private static final String SYSTEM_ONLY = "/api/v1/system/users";
+    private static final String SYSTEM_ONLY = "/api/v1/system/settings/judgement";
     private static final String DUTY_LIST = "/api/v1/system/alarm-duty-schedules";
     private static final String DUTY_CURRENT = "/api/v1/system/alarm-duty-schedules/current";
 

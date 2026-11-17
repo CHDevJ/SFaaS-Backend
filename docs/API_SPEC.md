@@ -247,7 +247,7 @@
 | MST-009~011 | 값 종류별 항목/임계값 | 항목과 통계 참고값 | 측정/상태/누적 조건 검증, 주의가 경보보다 먼저 | INVALID_THRESHOLD_ORDER | 임계값 저장 후 다음 판정부터 적용 |
 | MST-014~017 | 부품명·규격·관리번호·수명기준·교체기준 | 장착부품 기준정보 | 삭제 시 과거 교체 기록 유지 | PART_NOT_FOUND | 논리 삭제, 단위는 수명 기준과 일치 |
 | SYS-001~004 | 판정 5개 설정/개당 금액 | 현재 설정 | 허용범위 검증, 변경 이력 자동 기록 | SETTING_OUT_OF_RANGE | 화면 예시 범위는 요구사항 기반이나 운영값은 DB 설정 |
-| USR-001~005 | 이름/아이디/직책 | 계정 목록/상세 | SYSTEM_ADMIN 전용, 삭제는 논리 삭제 | USER_NOT_FOUND, USER_SELF_DELETE_FORBIDDEN | 텔레그램 연결 여부·시각 표시 |
+| USR-001~005 | 이름/아이디/직책 | 계정 목록/상세 | SYSTEM_ADMIN 전용, 삭제는 논리 삭제, 시스템관리자는 최소 1명 유지(마지막 시스템관리자의 직책 변경·삭제 거부, 다른 사람을 먼저 시스템관리자로 지정) | USER_NOT_FOUND, USER_SELF_DELETE_FORBIDDEN, LAST_SYSTEM_ADMIN_REQUIRED, TELEGRAM_NOT_CONNECTED, TELEGRAM_DELIVERY_FAILED | 텔레그램 연결 여부·시각 표시. 삭제한 사람은 change_log 에 기록(ERD 에 deleted_by 없음) |
 | APR-001~003 | 신청 ID, 승인 직책 | 승인대기 목록/승인 계정/204 | 승인대기에서만 처리, 거절은 신청 삭제 | SIGNUP_REQUEST_STATE_CONFLICT | 승인 결과 텔레그램 실패는 승인 롤백 안 함. 목록 항목은 `telegramLink` 없이 `telegramConnected`를 반환(연결 토큰은 해시만 저장하고 10분 뒤 만료). 승인·거절은 변경 이력(ACCOUNT)에 같은 트랜잭션으로 기록. 이미 거절되어 삭제된 신청은 404, 이미 승인된 신청은 409 |
 | TLG-001~004 | 본인 | 연결 URL·연결 상태·해제·시험 발송 | 봇 `/start <token>`으로 연결, 토큰 10분·1회용 | TELEGRAM_NOT_CONNECTED | 본인만 연결·해제 |
 | TLG-005~006 | 사용자/날짜/전송결과 | 시험 발송·당일 집계·수신자별 건수·발송 목록 | 연결된 계정만 발송, 실패 1초 후 1회 재시도 | TELEGRAM_DELIVERY_FAILED | 실패 사유 기록, 알람 처리와 트랜잭션 분리 |
@@ -280,6 +280,7 @@
 | USER | USER_NOT_FOUND | 404 | 사용자를 찾을 수 없습니다. | ID 없음 | 제안 코드 |
 | USER | SIGNUP_REQUEST_STATE_CONFLICT | 409 | 이미 처리된 가입 신청입니다. | 승인·거절 동시 처리 | FR0107, 제안 코드 |
 | USER | USER_SELF_DELETE_FORBIDDEN | 422 | 자신의 계정은 삭제할 수 없습니다. | 관리자 자기 삭제 | FR1403, 제안 코드 |
+| USER | LAST_SYSTEM_ADMIN_REQUIRED | 422 | 시스템관리자는 최소 한 명 있어야 합니다. 다른 사람을 먼저 시스템관리자로 지정해 주세요. | 마지막 시스템관리자의 직책 변경·삭제 | FR1403, 제안 코드(2026-11-17 사용자 결정) |
 | PART | PART_NOT_FOUND | 404 | 부품을 찾을 수 없습니다. | ID 없음 | 제안 코드 |
 | SETTING | SETTING_OUT_OF_RANGE | 422 | 허용 범위 안의 값을 입력해 주세요. | 설정 범위 위반 | FR1401, 제안 코드 |
 | DUTY | DUTY_GAP_NOT_ALLOWED | 422 | 당번이 없는 기간을 만들 수 없습니다. | 저장/삭제 후 공백 | FR1408, 제안 코드 |
