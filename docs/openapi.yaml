@@ -1,35 +1,36 @@
 openapi: 3.0.3
 info:
   title: STF Save The Factory API
-  version: 6.0.0
+  version: 7.0.0
   license:
     name: Internal Project Use Only
     url: https://sfaas5-team.atlassian.net/wiki/spaces/SF5
-  description: 2026-11-17 요구사항정의서·기능목록·기능 변경 내역·화면설계서·공통동작 정의서·HTML/PNG를 통합한 개발
-    계약. 기능 요구사항 75건, NFR 13건, IFR 4건. 미확정 운영값은 프로젝트 제안값이며 실제 공장 기준이 아니다. 기존 구현은
-    v5이므로 v6 전환 작업이 필요하다.
+  description: 2026-11-17 최종 재수정 자료 5개(요구사항75·NFR13·IFR4, 화면설계76쪽, HTML/PNG 각72개)와
+    Confluence 조립 정지 예측 결정 2판을 반영한 구현 계약. 문서 개정이며 실행 코드의 구현 완료를 뜻하지 않는다.
   x-specification-status: approved-project-proposal
 x-recovery-estimation:
   requirementId: FR0905
   ruleId: BR-RECOVERY-001
-  source: 사용자 제공 4.2 예상 조치 시간을 정하는 순서
+  source: 조립 정지 예측 결정 2판
   duration: closedAt - occurredAt
-  eligibleHistory: 현재 고장 발생 이전에 종료된 알람 중 유효한 비음수 조치시간 기록
-  priority:
-    - order: 1
-      groupBy: [equipmentId, dataItemId]
-      minimumRecords: 3
-      value: 해당 종료 알람 조치시간 평균
-    - order: 2
-      groupBy: [equipmentId]
-      minimumRecords: 1
-      condition: 1번 표본이 3건 미만
-      value: 같은 설비 전체 종료 알람 조치시간 평균
-    - order: 3
-      condition: 같은 설비 종료 기록이 없음
-      settingField: defaultRecoveryMinutes
-      initialDefaultMinutes: 30
-  recoveryExpectedAt: 고장 발생 시각 + 선택한 예상 조치시간
+  groupBy:
+    - equipmentId
+    - dataItemId
+  eligibleHistory: 현재 고장 발생 전 종료된 CRITICAL 알람 중 유효한 비음수 조치시간
+  minimumRecords: 1
+  returnFields:
+    - repairHistoryCount
+    - averageRepairMinutes
+  zeroHistory:
+    repairHistoryCount: 0
+    averageRepairMinutes: null
+    recoveryExpectedAt: null
+    marginMinutes: null
+    marginStatus: null
+    shortageMinutes: null
+    expectedLossAmount: null
+  fallbackAllowed: false
+  recoveryExpectedAt: 고장 발생 시각 + 같은 설비·항목 종료 경보 조치시간 평균
 servers:
   - url: /api/v1
     description: 사용자 REST API
@@ -60,8 +61,6 @@ tags:
     description: 변경 이력
   - name: Internal
     description: Node-RED 내부 수집
-  - name: Notification
-    description: 개인 알림 읽음 상태
 security:
   - bearerAuth: []
 paths:
@@ -393,6 +392,7 @@ paths:
         - IFR04
       x-business-rule-ids:
         - BR-OVW-002
+        - BR-RECOVERY-001
       x-test-ids:
         - TC-OVW-002-01
         - TC-OVW-002-02
@@ -406,10 +406,77 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AssemblyStopForecastResponse"
+              examples:
+                noRecoveryHistory:
+                  summary: 과거 이력0건, 정지예상은 유지
+                  value:
+                    success: true
+                    data:
+                      representativeLineId: 1
+                      earliestAssemblyStopExpectedAt: 2026-11-17T10:50:00+09:00
+                      calculatedAt: 2026-11-17T10:00:00+09:00
+                      lines:
+                        - lineId: 1
+                          lineName: 외륜 라인
+                          lineType: PART
+                          currentInventory: 300
+                          netConsumptionPerMinute: 6
+                          remainingMinutes: 50
+                          stage: MAINTAIN
+                          assemblyStopExpectedAt: 2026-11-17T10:50:00+09:00
+                          sourceEquipmentId: 4
+                          activeAlarmId: 1
+                          recoveryExpectedAt: null
+                          marginMinutes: null
+                          marginStatus: null
+                          hourlyProduction: 360
+                          unitPrice: 50000
+                          expectedLossAmount: null
+                          repairHistoryCount: 0
+                          averageRepairMinutes: null
+                          shortageMinutes: null
+                          unitPriceConfigured: true
+                          forecastStatus: NO_RECOVERY_HISTORY
+                          stageThresholds:
+                            &a1
+                            inventoryWarningMinutes: 30
+                            inventoryDangerMinutes: 10
+                fiveRecoveryRecords:
+                  summary: 5건 평균70분, 부족20분, 손실600만원(예시)
+                  value:
+                    success: true
+                    data:
+                      representativeLineId: 1
+                      earliestAssemblyStopExpectedAt: 2026-11-17T10:50:00+09:00
+                      calculatedAt: 2026-11-17T10:00:00+09:00
+                      lines:
+                        - lineId: 1
+                          lineName: 외륜 라인
+                          lineType: PART
+                          currentInventory: 300
+                          netConsumptionPerMinute: 6
+                          remainingMinutes: 50
+                          stage: MAINTAIN
+                          assemblyStopExpectedAt: 2026-11-17T10:50:00+09:00
+                          sourceEquipmentId: 4
+                          activeAlarmId: 1
+                          recoveryExpectedAt: 2026-11-17T11:10:00+09:00
+                          marginMinutes: -20
+                          marginStatus: SHORTAGE
+                          hourlyProduction: 360
+                          unitPrice: 50000
+                          expectedLossAmount: 6000000
+                          repairHistoryCount: 5
+                          averageRepairMinutes: 70
+                          shortageMinutes: 20
+                          unitPriceConfigured: true
+                          forecastStatus: READY
+                          stageThresholds: *a1
         "401":
           $ref: "#/components/responses/Unauthorized"
-      description: 1분마다 및 설비 상태 변경 시 재계산. 누적 카운터의 기초값이 검증되지 않았으면 quantity/예측은 null과
-        calculationStatus를 반환한다. 고장 라인 공급 속도는 0, 소비<=공급이면 소진 예상 없음.
+      description: FR0903~0907 조립 정지 예측. 같은 설비·항목 종료 CRITICAL 평균과 표본 수 제공. 0건이면
+        복구·여유·부족·손실 null, 소진·정지 예상 유지. 생산량은 HOURLY_OUTPUT, 단가는 UNIT_PRICE. 60초 및
+        설비 상태변경 재계산.
   /inventory:
     get:
       tags:
@@ -440,8 +507,8 @@ paths:
                 $ref: "#/components/schemas/InventoryResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
-      description: 1분마다 및 설비 상태 변경 시 재계산. 누적 카운터의 기초값이 검증되지 않았으면 quantity/예측은 null과
-        calculationStatus를 반환한다. 고장 라인 공급 속도는 0, 소비<=공급이면 소진 예상 없음.
+      description: PART 라인의 최신 stock_history 수량과 속도·소진·정지 예상·단계·현재 설정 기준. AS-04-1 완성
+        수를 소비량으로 사용. 데이터 부족은 calculationStatus와 null로 구분.
   /inventory/history:
     get:
       tags:
@@ -518,8 +585,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-      description: 1분마다 및 설비 상태 변경 시 재계산. 누적 카운터의 기초값이 검증되지 않았으면 quantity/예측은 null과
-        calculationStatus를 반환한다. 고장 라인 공급 속도는 0, 소비<=공급이면 소진 예상 없음.
+      description: 재고 시스템/시연용 최신 stock_history와 입고·소비·소진·정지 예상. 적정재고·사이클타임·구매품·비율막대 필드 제거.
   /lines:
     get:
       tags:
@@ -792,7 +858,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
       description: 발생 중 우선, 각 상태 안에서 occurredAt DESC, alarmId DESC로 고정 정렬.
         기간·등급·설비·상태로 조회. 요약은 동일 조회 조건 기준이며 today 집계는 Asia/Seoul 오늘과 조회 범위의
-        교집합이다.
+        교집합이다. 주의·경보 기준, 기준 방향, 소수 자릿수는 서버 항목 설정값을 제공한다. thresholdValue는 발생 당시
+        기준이다.
   "/alarms/{alarmId}":
     get:
       tags:
@@ -978,11 +1045,11 @@ paths:
         - ADMIN
         - USER
       parameters:
-        - &a1
-          $ref: "#/components/parameters/From"
         - &a2
-          $ref: "#/components/parameters/To"
+          $ref: "#/components/parameters/From"
         - &a3
+          $ref: "#/components/parameters/To"
+        - &a4
           $ref: "#/components/parameters/LineId"
       responses:
         "200":
@@ -1013,9 +1080,9 @@ paths:
         - ADMIN
         - USER
       parameters:
-        - *a1
         - *a2
         - *a3
+        - *a4
       responses:
         "200":
           description: 날짜별 경보·주의 건수
@@ -1045,9 +1112,9 @@ paths:
         - ADMIN
         - USER
       parameters:
-        - *a1
         - *a2
         - *a3
+        - *a4
       responses:
         "200":
           description: 가동률, 가동시간, 계획시간
@@ -1077,9 +1144,9 @@ paths:
         - ADMIN
         - USER
       parameters:
-        - *a1
         - *a2
         - *a3
+        - *a4
       responses:
         "200":
           description: 고장·대기·통신 끊김 시간
@@ -1151,9 +1218,9 @@ paths:
         - ADMIN
         - USER
       parameters:
-        - *a1
         - *a2
         - *a3
+        - *a4
       responses:
         "200":
           description: 오늘/주간/일별 손실과 정지시간·원인 설비
@@ -1715,6 +1782,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/BusinessRuleViolation"
+      description: 판정 설정의 주의5~120분·위험1~60분, 위험<주의 관계를 서버 검증. 위반422
+        SETTING_OUT_OF_RANGE. 정상 복귀에는 alarmConsecutiveCount 사용.
   /system/settings/calculation:
     get:
       tags:
@@ -1784,6 +1853,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/BusinessRuleViolation"
+      description: UNIT_PRICE, RATE_WINDOW_MIN, HOURLY_OUTPUT 저장. 복구 기본값 필드 없음. 모든 필드는
+        PUT 시 필수. 현재 값 조회 후 한 카드만 바뀌어도 나머지를 함께 송신.
   /system/users:
     get:
       tags:
@@ -2361,9 +2432,10 @@ paths:
         - Internal
       operationId: ingestMeasurements
       summary: Node-RED 설비 데이터 수집
-      description: 등록 설비/항목의 묶음 값 수집. 3초 주기, messageId 24시간 중복 제거. STATE 0/1,
-        CUMULATIVE 비음수 정수. 한 항목이라도 잘못되면 전체 거절. prod_count와 input_count 누적값을 재고
-        입력으로 사용. INT-002 생산 이벤트는 제공하지 않는다.
+      description: 등록 설비/항목 CUMULATIVE(prod_count)와 MEASUREMENT/STATE 묶음 수집. 누적 차분을
+        equipment별 production_log 1분 수량으로 집계. 재고에는
+        OR-06-1/IR-06-1/CG-06-1/SH-05-1와 AS-04-1만 사용. 메시지 중복·카운터 리셋은 중복 생산으로
+        합산하지 않음.
       servers:
         - url: /internal/v1
           description: Node-RED 내부 API
@@ -2513,88 +2585,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
       description: 조회 구간과 겹치는 정지시간을 분으로 집계. 통신 끊김을 별도 요인으로 포함. 겹친 정지 구간은 설비별 통신 끊김 우선
         후 가장 이른 고장 원인 한 건에만 배분해 중복 합산하지 않는다.
-  /notifications:
-    get:
-      tags:
-        - Notification
-      operationId: ntf001Operation
-      summary: 본인 알림과 읽지 않은 수 조회
-      x-api-id: NTF-001
-      x-requirement-ids:
-        - FR0501
-        - FR0502
-      x-nfr-ids:
-        - NFR02
-        - NFR09
-      x-interface-ids: []
-      x-business-rule-ids:
-        - BR-NTF-001
-      x-test-ids:
-        - TC-NTF-001-01
-        - TC-NTF-001-02
-      x-permissions:
-        - ADMIN
-        - USER
-      parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/Size"
-      responses:
-        "200":
-          description: 처리 성공
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotificationPageResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-      description: 본인 알림만 최신 순으로 반환. 종료된 알람은 목록·unreadCount에서 제외. GET은 읽음 상태를 변경하지 않는다.
-  "/notifications/{notificationId}/read":
-    patch:
-      tags:
-        - Notification
-      operationId: ntf002Operation
-      summary: 본인 알림 읽음 처리
-      x-api-id: NTF-002
-      x-requirement-ids:
-        - FR0502
-      x-nfr-ids:
-        - NFR02
-        - NFR09
-      x-interface-ids: []
-      x-business-rule-ids:
-        - BR-NTF-002
-      x-test-ids:
-        - TC-NTF-002-01
-        - TC-NTF-002-02
-      x-permissions:
-        - ADMIN
-        - USER
-      parameters:
-        - name: notificationId
-          in: path
-          required: true
-          schema:
-            $ref: "#/components/schemas/Identifier"
-      responses:
-        "200":
-          description: 처리 성공
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotificationResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NotificationReadRequest"
-      description: 본인 알림만 멱등 읽음 처리. 다른 사용자 알림은 404. 읽음은 ACTIVE 알람 종료나 접기와 별개다.
   /telegram/updates:
     post:
       tags:
@@ -2754,7 +2744,7 @@ x-websocket:
           processStatus:
             $ref: "#/components/schemas/AlarmProcessStatus"
           occurredAt:
-            &a4
+            &a5
             type: string
             format: date-time
     - destination: /topic/alarm-counts
@@ -2791,6 +2781,7 @@ x-websocket:
           - stage
           - remainingMinutes
           - occurredAt
+          - stageThresholds
         properties:
           eventId:
             type: string
@@ -2810,6 +2801,7 @@ x-websocket:
               - MAINTAIN
               - CAUTION
               - DANGER
+              - null
             nullable: true
           remainingMinutes:
             type: number
@@ -2817,6 +2809,8 @@ x-websocket:
           occurredAt:
             type: string
             format: date-time
+          stageThresholds:
+            $ref: "#/components/schemas/InventoryStageThresholds"
     - destination: /user/queue/notifications
       requirementIds:
         - FR0501
@@ -2824,27 +2818,29 @@ x-websocket:
       schema:
         type: object
         required:
-          - notificationId
+          - eventId
+          - sequence
           - type
           - alarmId
-          - unreadCount
-          - createdAt
+          - occurredAt
         properties:
-          notificationId:
-            $ref: "#/components/schemas/Identifier"
+          eventId:
+            type: string
+          sequence:
+            type: integer
+            minimum: 0
           type:
             type: string
             enum:
               - CREATED
               - GRADE_ESCALATED
-              - READ
-              - CLOSED
+              - ALARM_CLOSED
           alarmId:
             $ref: "#/components/schemas/Identifier"
-          unreadCount:
-            type: integer
-            minimum: 0
-          createdAt: *a4
+          occurredAt:
+            type: string
+            format: date-time
+      description: 개인 수신 이벤트만 전달. 읽음·unreadCount는 브라우저 메모리에서 관리하고 새로고침하면 0. 종료 시 화면 알림에서 제거.
   inventoryIntervalSeconds: 60
 x-mqtt:
   springBootDirectSubscription: false
@@ -2859,12 +2855,16 @@ x-mqtt:
   messageShape: equipmentCode, measuredAt, messageId, values[]
   communicationTimeoutSeconds: 30
   productionCounter:
-    productionDataItemCode: prod_count
-    assemblyInputDataItemCode: input_count
+    dataItemCode: prod_count
     valueType: CUMULATIVE
-    resetTimeSource: data_item.reset_time
-    description: 코드는 프로젝트 제안값. 수집값 감소 시 리셋과 유실을 구별할 수 없으면 COUNTER_RESET_PENDING; 임의로
-      재고 0을 만들지 않는다.
+    aggregation: 설비별 누적 차분을 production_log에1분 수량으로 기록
+    partLineTerminals:
+      - OR-06-1
+      - IR-06-1
+      - CG-06-1
+      - SH-05-1
+    assemblyTerminal: AS-04-1
+    assemblyConsumption: AS-04-1 완성1개마다 네 PART 재고에서 각각1개 차감
   nodeRedDelivery: MQTT 입력을 변환해 POST /internal/v1/measurements로 전달
 x-non-rest-requirements:
   - requirementIds:
@@ -3553,6 +3553,7 @@ components:
         - lineId
         - lineName
         - displayOrder
+        - lineType
       properties:
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -3562,6 +3563,8 @@ components:
         displayOrder:
           type: integer
           minimum: 1
+        lineType:
+          $ref: "#/components/schemas/LineType"
     LineListResponse:
       type: object
       required:
@@ -3652,6 +3655,7 @@ components:
             - NORMAL
             - CAUTION
             - CRITICAL
+            - null
           nullable: true
         cautionThreshold:
           type: number
@@ -3700,6 +3704,7 @@ components:
         - status
         - statusStartedAt
         - activeAlarmCount
+        - lineType
       properties:
         equipmentId:
           $ref: "#/components/schemas/Identifier"
@@ -3736,6 +3741,8 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AbnormalMeasurement"
+        lineType:
+          $ref: "#/components/schemas/LineType"
     ProcessEquipmentResponse:
       type: object
       required:
@@ -3852,7 +3859,7 @@ components:
           type: string
           format: uri
           nullable: true
-        registeredAt: *a4
+        registeredAt: *a5
     EquipmentDetailData:
       type: object
       required:
@@ -4007,9 +4014,9 @@ components:
               - endedAt
               - grade
             properties:
-              startedAt: *a4
+              startedAt: *a5
               endedAt:
-                &a5
+                &a6
                 type: string
                 format: date-time
                 nullable: true
@@ -4026,6 +4033,14 @@ components:
         - quantity
         - consumptionPerMinute
         - productionPerMinute
+        - lineType
+        - calculatedAt
+        - calculationStatus
+        - stage
+        - remainingMinutes
+        - assemblyStopExpectedAt
+        - stageThresholds
+        - inventorySource
       properties:
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -4059,6 +4074,34 @@ components:
             - INSUFFICIENT_DATA
             - COUNTER_RESET_PENDING
             - COUNTER_INCONSISTENT
+        lineType:
+          $ref: "#/components/schemas/LineType"
+        stage:
+          type: string
+          enum:
+            - MAINTAIN
+            - CAUTION
+            - DANGER
+            - null
+          nullable: true
+        remainingMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+        assemblyStopExpectedAt:
+          type: string
+          format: date-time
+          nullable: true
+        stageThresholds:
+          $ref: "#/components/schemas/InventoryStageThresholds"
+        inventorySource:
+          type: string
+          enum:
+            - INVENTORY_SYSTEM
+            - DEMO_PRODUCTION
+          description: 재고 시스템에서 받은 stock_history 또는 시연용 생산 계산. 출처 표시 필드는 제안 계약
+      description: 현재 재고는 stock_history의 최신 줄. 대상 PART 라인만 반환. 시연은 기초300 + 라인 끝 생산 증가
+        - AS-04-1 완성 증가로 stock_history를 갱신. 재고 시스템과 시연 계산을 동시에 더하지 않는다.
     InventoryResponse:
       type: object
       required:
@@ -4076,46 +4119,8 @@ components:
     InventoryDetail:
       allOf:
         - $ref: "#/components/schemas/InventoryLine"
-        - type: object
-          required:
-            - stage
-            - remainingMinutes
-            - expectedDepletionAt
-            - expectedRecoveryAt
-            - appropriateInventory
-            - cycleTimeSeconds
-            - calculationStatus
-          properties:
-            stage:
-              type: string
-              enum:
-                - MAINTAIN
-                - CAUTION
-                - DANGER
-              nullable: true
-            remainingMinutes:
-              type: number
-              minimum: 0
-              nullable: true
-            expectedDepletionAt: *a5
-            expectedRecoveryAt: *a5
-            appropriateInventory:
-              type: integer
-              minimum: 0
-              nullable: true
-              description: "프로젝트 제안: 소비 속도 × 주의 기준 분을 올림. 데이터 부족 시 null"
-            cycleTimeSeconds:
-              type: number
-              minimum: 0
-              nullable: true
-              description: "프로젝트 제안: 소비 속도 > 0이면 60/소비 속도. 그 외 null"
-            calculationStatus:
-              type: string
-              enum:
-                - READY
-                - INSUFFICIENT_DATA
-                - COUNTER_RESET_PENDING
-                - COUNTER_INCONSISTENT
+      description: 현재 재고·분당 입고·분당 소비·소진 예상·조립 정지 예상만 표시.
+        appropriateInventory/cycleTimeSeconds/최대재고 비율/구매품 재고는 제공하지 않음.
     InventoryDetailResponse:
       type: object
       required:
@@ -4166,7 +4171,25 @@ components:
         - lineId
         - lineName
         - currentInventory
+        - netConsumptionPerMinute
+        - remainingMinutes
         - stage
+        - assemblyStopExpectedAt
+        - sourceEquipmentId
+        - activeAlarmId
+        - recoveryExpectedAt
+        - marginMinutes
+        - marginStatus
+        - hourlyProduction
+        - unitPrice
+        - expectedLossAmount
+        - lineType
+        - repairHistoryCount
+        - averageRepairMinutes
+        - shortageMinutes
+        - unitPriceConfigured
+        - forecastStatus
+        - stageThresholds
       properties:
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -4182,15 +4205,16 @@ components:
           format: double
           nullable: true
         remainingMinutes:
-          type: integer
-          nullable: true
+          type: number
           minimum: 0
+          nullable: true
         stage:
           type: string
           enum:
             - MAINTAIN
             - CAUTION
             - DANGER
+            - null
           nullable: true
         assemblyStopExpectedAt:
           type: string
@@ -4208,34 +4232,64 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: 고장 발생 시각 + 예상 조치시간. 같은 설비·항목 종료 기록 3건 이상 평균 → 같은 설비 전체 평균 → defaultRecoveryMinutes(초기30분) 순서.
+          description: 고장 발생 시각 + averageRepairMinutes. 이력0건이면 null
         marginMinutes:
-          type: integer
+          type: number
           nullable: true
+          description: 정지 예상-복구 예상, 분. 둘 중 하나가 없으면 null
         marginStatus:
           type: string
           enum:
             - AVAILABLE
             - SHORTAGE
+            - null
           nullable: true
         hourlyProduction:
           type: number
-          nullable: true
           minimum: 0
+          nullable: true
+          description: HOURLY_OUTPUT 조립 기준값. 실측값으로 대체 금지
         unitPrice:
           type: number
-          nullable: true
           minimum: 0
-          description: 원/개
+          nullable: true
+          description: UNIT_PRICE 원/개. 0도 유효한 초기값
         expectedLossAmount:
           type: number
-          nullable: true
           minimum: 0
-          description: 원
+          nullable: true
+          description: shortageMinutes/60 × hourlyProduction × unitPrice. 복구/정지 예상 없으면
+            null. 금액0은 데이터 없음과 다름
+        lineType:
+          $ref: "#/components/schemas/LineType"
+        repairHistoryCount:
+          type: integer
+          minimum: 0
+          description: 동일 설비·동일 항목의 유효한 종료 경보 표본 수. 0일 때 다른 설비/항목으로 대체하지 않음
+        averageRepairMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+          description: closedAt-occurredAt의 분 평균. 표본0건이면 null, 1~2건도 그대로 평균
+        shortageMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+          description: max(복구 예상-정지 예상,0), 분. 복구/정지 예상 없으면 null
+        unitPriceConfigured:
+          type: boolean
+          description: UNIT_PRICE > 0. false이면 개당 금액을 설정해 주세요 안내
+        forecastStatus:
+          $ref: "#/components/schemas/ForecastStatus"
+        stageThresholds:
+          $ref: "#/components/schemas/InventoryStageThresholds"
+      description: 복구 이력0건이어도 남은 시간·정지 예상·단계는 계산 가능한 한 유지한다. 복구 예상·평균·여유·부족·손실만 null.
+        평균0분은 유효한 표본이며 표본0건과 구분한다. 금액은 최종 원 단위 반올림.
     AssemblyStopForecastData:
       type: object
       required:
         - lines
+        - calculatedAt
       properties:
         representativeLineId:
           type: integer
@@ -4249,6 +4303,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LineStopForecast"
+        calculatedAt:
+          type: string
+          format: date-time
+          description: 동일 계산 snapshot의 서버 기준 시각
     AssemblyStopForecastResponse:
       type: object
       required:
@@ -4273,6 +4331,11 @@ components:
         - processStatus
         - occurredAt
         - elapsedSeconds
+        - dataItemId
+        - cautionThreshold
+        - criticalThreshold
+        - thresholdDirection
+        - decimalPlaces
       properties:
         alarmId:
           $ref: "#/components/schemas/Identifier"
@@ -4308,6 +4371,7 @@ components:
         thresholdValue:
           type: number
           nullable: true
+          description: 발생 당시 적용 기준의 스냅샷. 현재 항목 기준2개와 구분
         unit:
           type: string
           nullable: true
@@ -4317,9 +4381,9 @@ components:
           $ref: "#/components/schemas/AlarmValueStatus"
         processStatus:
           $ref: "#/components/schemas/AlarmProcessStatus"
-        occurredAt: *a4
-        recoveredAt: *a5
-        closedAt: *a5
+        occurredAt: *a5
+        recoveredAt: *a6
+        closedAt: *a6
         elapsedSeconds:
           type: integer
           minimum: 0
@@ -4334,6 +4398,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MeasurementPoint"
+        cautionThreshold:
+          type: number
+          nullable: true
+          description: 항목 현재 설정의 주의 기준. STATE/CUMULATIVE는 null
+        criticalThreshold:
+          type: number
+          nullable: true
+          description: 항목 현재 설정의 경보 기준. STATE/CUMULATIVE는 null
+        thresholdDirection:
+          type: string
+          enum:
+            - ABOVE
+            - BELOW
+            - null
+          nullable: true
+          description: 항목 현재 설정의 임계값 방향. 값의 크기로 추측하지 않음
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          nullable: true
+          description: 항목에 등록된 소수 자릿수. STATE/CUMULATIVE는0
     AlarmPageData:
       type: object
       required:
@@ -4401,7 +4487,7 @@ components:
             - equipmentHistories
             - action
           properties:
-            assemblyStopExpectedAt: *a5
+            assemblyStopExpectedAt: *a6
             trendBeforeAndAfter:
               type: array
               items:
@@ -4481,7 +4567,7 @@ components:
         actionContent:
           type: string
           maxLength: 4000
-        closedAt: *a4
+        closedAt: *a5
         handledBy:
           $ref: "#/components/schemas/UserBrief"
         durationSeconds:
@@ -4531,8 +4617,8 @@ components:
       properties:
         alarmId:
           $ref: "#/components/schemas/Identifier"
-        occurredAt: *a4
-        closedAt: *a4
+        occurredAt: *a5
+        closedAt: *a5
         cause:
           type: string
           maxLength: 1000
@@ -4990,6 +5076,10 @@ components:
         displayOrder:
           type: integer
           minimum: 1
+        lineType:
+          $ref: "#/components/schemas/LineType"
+          default: PART
+          description: 추가 계약 필드. 생략하면 PART(제안값); 기존 ASSEMBLY는 유지
     LineLayoutEquipment:
       type: object
       required:
@@ -5252,6 +5342,7 @@ components:
         - communicationLossSeconds
         - alarmConsecutiveCount
         - inventoryWarningMinutes
+        - inventoryDangerMinutes
       properties:
         communicationLossSeconds:
           type: integer
@@ -5268,8 +5359,17 @@ components:
           minimum: 5
           maximum: 120
           default: 30
-      description: 정상 복귀에도 alarmConsecutiveCount를 사용한다. 남은 시간 구분 기준은 주의분이며 위험분은
-        주의분/3으로 계산(프로젝트 제안값).
+          description: STOCK_LEVEL_MIN
+        inventoryDangerMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 10
+          description: STOCK_DANGER_MIN. inventoryWarningMinutes보다 작아야 함
+      description: communicationLossSeconds=COMM_TIMEOUT_SEC,
+        alarmConsecutiveCount=ALARM_STREAK_COUNT, 주의=STOCK_LEVEL_MIN,
+        위험=STOCK_DANGER_MIN. 정상 복귀 횟수는 연속 횟수와 동일. 0 < 위험 < 주의를 서버에서 검증하고 실패
+        시422.
     JudgementSettingRange:
       type: object
       required:
@@ -5311,57 +5411,51 @@ components:
       required:
         - unitPrice
         - speedWindowMinutes
-        - defaultRecoveryMinutes
         - hourlyProduction
       properties:
         unitPrice:
           type: number
           minimum: 0
           maximum: 100000000
-          description: 원/개. 상한은 프로젝트 제안값
+          description: UNIT_PRICE, 원/개. 초기0, 0이면 화면에 개당 금액 설정 안내. 상한은 프로젝트 제안값
+          default: 0
         speedWindowMinutes:
           type: integer
           minimum: 5
           maximum: 60
           default: 10
-        defaultRecoveryMinutes:
-          type: integer
-          minimum: 5
-          maximum: 240
-          default: 30
+          description: RATE_WINDOW_MIN. production_log 속도 계산 구간(분)
         hourlyProduction:
           type: integer
           minimum: 1
           maximum: 1000
-          description: 개/시간, 관리자가 입력
+          description: HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간)
+          default: 360
     CalculationSettings:
       type: object
       required:
         - unitPrice
         - speedWindowMinutes
-        - defaultRecoveryMinutes
         - hourlyProduction
       properties:
         unitPrice:
           type: number
           minimum: 0
           maximum: 100000000
-          description: 원/개. 상한은 프로젝트 제안값
+          description: UNIT_PRICE, 원/개. 초기0, 0이면 화면에 개당 금액 설정 안내. 상한은 프로젝트 제안값
+          default: 0
         speedWindowMinutes:
           type: integer
           minimum: 5
           maximum: 60
           default: 10
-        defaultRecoveryMinutes:
-          type: integer
-          minimum: 5
-          maximum: 240
-          default: 30
+          description: RATE_WINDOW_MIN. production_log 속도 계산 구간(분)
         hourlyProduction:
           type: integer
           minimum: 1
           maximum: 1000
-          description: 개/시간, 관리자가 입력
+          description: HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간)
+          default: 360
     CalculationSettingsResponse:
       type: object
       required:
@@ -5935,76 +6029,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/StopCause"
-    Notification:
-      type: object
-      required:
-        - notificationId
-        - alarmId
-        - eventType
-        - createdAt
-        - readAt
-        - alarm
-      properties:
-        notificationId:
-          $ref: "#/components/schemas/Identifier"
-        alarmId:
-          $ref: "#/components/schemas/Identifier"
-        eventType:
-          type: string
-          enum:
-            - CREATED
-            - GRADE_ESCALATED
-        createdAt: *a4
-        readAt: *a5
-        alarm:
-          $ref: "#/components/schemas/AlarmSummary"
-    NotificationPageResponse:
-      type: object
-      required:
-        - success
-        - data
-        - meta
-      properties:
-        success:
-          type: boolean
-          enum:
-            - true
-        data:
-          type: object
-          required:
-            - unreadCount
-            - items
-          properties:
-            unreadCount:
-              type: integer
-              minimum: 0
-            items:
-              type: array
-              items:
-                $ref: "#/components/schemas/Notification"
-        meta:
-          $ref: "#/components/schemas/PageMeta"
-    NotificationReadRequest:
-      type: object
-      required:
-        - read
-      properties:
-        read:
-          type: boolean
-          enum:
-            - true
-    NotificationResponse:
-      type: object
-      required:
-        - success
-        - data
-      properties:
-        success:
-          type: boolean
-          enum:
-            - true
-        data:
-          $ref: "#/components/schemas/Notification"
     TelegramUpdate:
       type: object
       required:
@@ -6048,11 +6072,68 @@ components:
           properties:
             processed:
               type: boolean
+    LineType:
+      type: string
+      enum:
+        - PART
+        - ASSEMBLY
+      description: DB line.line_type. PART=부품 라인, ASSEMBLY=조립 라인
+    InventoryStageThresholds:
+      type: object
+      required:
+        - inventoryWarningMinutes
+        - inventoryDangerMinutes
+      properties:
+        inventoryWarningMinutes:
+          type: integer
+          minimum: 5
+          maximum: 120
+          description: 현재 STOCK_LEVEL_MIN
+        inventoryDangerMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          description: 현재 STOCK_DANGER_MIN. 주의보다 작음
+    ForecastStatus:
+      type: string
+      enum:
+        - READY
+        - NO_DEPLETION
+        - NO_RECOVERY_HISTORY
+        - INSUFFICIENT_DATA
+      description: NO_DEPLETION=소비<=공급으로 소진 없음. NO_RECOVERY_HISTORY=소진 예측은 있으나 동일
+        설비·항목 종료 경보0건. INSUFFICIENT_DATA=재고/카운터/설정 등 필수 입력 부족. 복수 사유가 겹치면
+        입력부족→소진없음→이력없음 순서.
 x-source-documents:
-  - 요구사항정의서_1.pdf (2026-11-17)
-  - 기능목록_수정본_1.pdf (2026-11-17)
-  - 기능_변경내역_1.pdf (2026-11-17)
-  - 화면설계서_1.pdf (75 pages / 71 screens)
-  - 공통동작_정의서_1.pdf
-  - 화면_HTML과_PNG_1.zip (71 HTML + 71 PNG)
+  - "요구사항정의서 (2).pdf: 19쪽"
+  - "기능목록_수정본 (2).pdf: 26쪽"
+  - "기능_변경내역 (2).pdf: 10쪽"
+  - "화면설계서 (1).pdf: 76쪽"
+  - "화면_HTML과_PNG.zip: 72 HTML + 72 PNG"
+  - "Confluence 4259864: 2026-11-17 조립 정지 예측 결정 2판"
+  - "공통동작_정의서_1.pdf: 변경 없는 공통 UI 동작 보조자료"
 x-implementation-status: contract-updated-implementation-migration-required
+x-decision-source: https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/4259864
+x-migration-policy:
+  reservedVersion: V5
+  reservedOwner: DB 담당
+  reservedFile: V5__forecast_settings_and_initial_stock.sql
+  newMigrationMinimumVersion: 6
+  policy: DB 담당 V5를 검토·통합하고 새 변경은 V6부터. 적용된 과거 migration과 삭제 기능의 테이블/칼럼은 유지.
+x-client-notifications:
+  serverReadPersistence: false
+  resetUnreadOnRefresh: true
+  activeAlarmSource: ALM-001 activeCount
+  unreadSource: 브라우저 메모리, CREATED/GRADE_ESCALATED 수신 시 증가
+x-inventory-calculation:
+  currentQuantity: stock_history 최신줄
+  inventorySystemAssumption: true
+  demoInitialQuantity: 300
+  demoFormula: 300 + 기준점 이후 라인 끝 생산 증가량 - AS-04-1 완성 증가량
+  rateWindowSetting: RATE_WINDOW_MIN
+  faultedPartSupplyRate: 0
+  recomputeSeconds: 60
+  unitPriceSetting: UNIT_PRICE
+  hourlyProductionSetting: HOURLY_OUTPUT
+  warningSetting: STOCK_LEVEL_MIN
+  dangerSetting: STOCK_DANGER_MIN
