@@ -1595,7 +1595,7 @@ paths:
       tags: [SystemUser]
       operationId: deleteSystemUser
       summary: 사용자 계정 논리 삭제
-      description: deletedAt과 deletedBy를 기록하고 로그인 및 일반 조회 대상에서 제외한다.
+      description: deletedAt을 기록하고 삭제자는 변경 이력에 남긴다. 현재·예정 당번의 유일한 보전 담당자는 대체 담당자를 먼저 지정해야 삭제할 수 있다. 계정 삭제·당번 제외·변경 이력은 함께 처리하고 완료된 과거 당번은 보존한다.
       x-api-id: USR-004
       x-requirement-ids: [FR1403]
       x-nfr-ids: [NFR02, NFR06]
@@ -1610,7 +1610,7 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '422':
-          description: 자기 계정 삭제(USER_SELF_DELETE_FORBIDDEN) 또는 마지막 시스템관리자 삭제(LAST_SYSTEM_ADMIN_REQUIRED)
+          description: 자기 계정 삭제(USER_SELF_DELETE_FORBIDDEN), 마지막 시스템관리자 삭제(LAST_SYSTEM_ADMIN_REQUIRED), 현재·예정 당번 대체 담당자 미지정(DUTY_REPLACEMENT_REQUIRED)
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ErrorResponse'}
@@ -1750,6 +1750,7 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/TelegramConnectionResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
     delete:
       tags: [Telegram]
       operationId: unlinkMyTelegram
@@ -2043,17 +2044,22 @@ x-websocket:
   protocol: STOMP
   proposed: true
   authentication: Bearer JWT in STOMP CONNECT header
+  session-authorization:
+    checks: [CONNECT, SUBSCRIBE, outbound-message, periodic-idle-check]
+    idle-check-interval-ms: 10000
+    invalid-session-close-code: 1008
+    description: 만료·폐기·비활성 계정은 전송을 거절하고 연결을 종료한다. 재발급된 JWT로 다시 CONNECT한다.
   heartbeatSeconds: 10
   reconnect: exponential backoff, then refetch current screen REST APIs
   reconnectMaximumSeconds: 30
   topics:
-    - {destination: '/topic/equipment-status', requirementIds: [FR0302, FR1501]}
-    - {destination: '/topic/measurements/{equipmentId}', requirementIds: [FR0201, FR1501]}
-    - {destination: '/topic/alarms', requirementIds: [FR0501, FR0601, FR1501]}
-    - {destination: '/topic/alarm-counts', requirementIds: [FR0502, FR1501]}
-    - {destination: '/topic/inventory', requirementIds: [FR0902, FR1501]}
-    - {destination: '/topic/alarm-effects/{alarmId}', requirementIds: [FR0608, FR1501]}
-    - {destination: '/user/queue/notifications', requirementIds: [FR0501, FR0504, FR0505, FR0508]}
+    - {destination: '/topic/equipment-status', requirementIds: [FR0302, FR1501], schema: {$ref: '#/components/schemas/EquipmentStatusEvent'}}
+    - {destination: '/topic/measurements/{equipmentId}', requirementIds: [FR0201, FR1501], schema: {$ref: '#/components/schemas/MeasurementEvent'}}
+    - {destination: '/topic/alarms', requirementIds: [FR0501, FR0601, FR1501], schema: {$ref: '#/components/schemas/AlarmChangedEvent'}}
+    - {destination: '/topic/alarm-counts', requirementIds: [FR0502, FR1501], schema: {$ref: '#/components/schemas/AlarmCountEvent'}}
+    - {destination: '/topic/inventory', requirementIds: [FR0902, FR1501], schema: {$ref: '#/components/schemas/InventoryChangedEvent'}}
+    - {destination: '/topic/alarm-effects/{alarmId}', requirementIds: [FR0608, FR1501], schema: {$ref: '#/components/schemas/AlarmEffectEvent'}}
+    - {destination: '/user/queue/notifications', requirementIds: [FR0501, FR0504, FR0505, FR0508], schema: {$ref: '#/components/schemas/UserNotificationEvent'}}
 x-mqtt:
   springBootDirectSubscription: false
   proposed: true
@@ -2376,7 +2382,7 @@ components:
         - type: object
           required: [accessToken, tokenType, expiresAt]
           properties:
-            accessToken: {type: string, writeOnly: true}
+            accessToken: {type: string, readOnly: true}
             tokenType: {type: string, enum: [Bearer]}
             expiresAt: {type: string, format: date-time}
     RefreshTokenRequest:
@@ -2388,7 +2394,7 @@ components:
       type: object
       required: [accessToken, tokenType, expiresAt]
       properties:
-        accessToken: {type: string, writeOnly: true}
+        accessToken: {type: string, readOnly: true}
         tokenType: {type: string, enum: [Bearer]}
         expiresAt: {type: string, format: date-time}
     TokenResponse:
@@ -3581,7 +3587,8 @@ components:
       properties:
         deliveryId: {$ref: '#/components/schemas/Identifier'}
         sentAt: {type: string, format: date-time}
-        recipient: {$ref: '#/components/schemas/UserBrief'}
+        recipient: {type: object, allOf: [{$ref: '#/components/schemas/UserBrief'}], nullable: true}
+        recipientName: {type: string, description: 발송 시점 이름 스냅샷. 삭제·거절 계정도 보존}
         alarmId: {type: integer, format: int64, nullable: true}
         messageSummary: {type: string}
         result: {$ref: '#/components/schemas/DeliveryResult'}
@@ -3679,7 +3686,7 @@ components:
       properties:
         dataItemCode: {type: string, minLength: 1, maxLength: 50, pattern: '^[a-z][a-z0-9_]*$', description: V2 data_item.item_code와 동일}
         valueType: {$ref: '#/components/schemas/DataValueType'}
-        value: {type: number, description: STATE는 0 또는 1, CUMULATIVE는 0 이상의 정수}
+        value: {type: number, description: "STATE는 0 또는 1, CUMULATIVE는 0 이상의 정수"}
     MeasurementIngestionRequest:
       type: object
       required: [messageId, equipmentCode, measuredAt, values]
@@ -3701,3 +3708,198 @@ components:
       properties:
         success: {type: boolean, enum: [true]}
         data: {$ref: '#/components/schemas/IngestionAccepted'}
+
+    EquipmentStatusEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - equipmentId
+      - status
+      - statusStartedAt
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        equipmentId:
+          $ref: '#/components/schemas/Identifier'
+        status:
+          $ref: '#/components/schemas/EquipmentStatus'
+        statusStartedAt:
+          type: string
+          format: date-time
+        occurredAt:
+          type: string
+          format: date-time
+
+    MeasurementEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - equipmentId
+      - dataItemId
+      - valueType
+      - value
+      - measuredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        equipmentId:
+          $ref: '#/components/schemas/Identifier'
+        dataItemId:
+          $ref: '#/components/schemas/Identifier'
+        valueType:
+          $ref: '#/components/schemas/DataValueType'
+        value:
+          type: number
+        measuredAt:
+          type: string
+          format: date-time
+
+    AlarmChangedEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - alarmId
+      - eventType
+      - grade
+      - processStatus
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        alarmId:
+          $ref: '#/components/schemas/Identifier'
+        eventType:
+          type: string
+        grade:
+          $ref: '#/components/schemas/AlarmGrade'
+        processStatus:
+          $ref: '#/components/schemas/AlarmProcessStatus'
+        occurredAt:
+          type: string
+          format: date-time
+
+    AlarmCountEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - unacknowledgedCount
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        unacknowledgedCount:
+          type: integer
+          minimum: 0
+        occurredAt:
+          type: string
+          format: date-time
+
+    InventoryChangedEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - lineId
+      - quantity
+      - stage
+      - remainingMinutes
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        lineId:
+          $ref: '#/components/schemas/Identifier'
+        quantity:
+          type: integer
+          format: int64
+          minimum: 0
+        stage:
+          $ref: '#/components/schemas/InventoryStage'
+        remainingMinutes:
+          type: number
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+
+    AlarmEffectEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - alarmId
+      - effectStatus
+      - currentProductionCount
+      - targetProductionCount
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        alarmId:
+          $ref: '#/components/schemas/Identifier'
+        effectStatus:
+          $ref: '#/components/schemas/EffectStatus'
+        currentProductionCount:
+          type: integer
+          format: int64
+          minimum: 0
+        targetProductionCount:
+          type: integer
+          format: int64
+          minimum: 1
+        occurredAt:
+          type: string
+          format: date-time
+
+    UserNotificationEvent:
+      type: object
+      required:
+      - eventId
+      - sequence
+      - userId
+      - type
+      - alarmId
+      - message
+      - occurredAt
+      properties:
+        eventId:
+          type: string
+        sequence:
+          type: integer
+          format: int64
+        userId:
+          $ref: '#/components/schemas/Identifier'
+        type:
+          type: string
+        alarmId:
+          type: integer
+          format: int64
+          nullable: true
+        message:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
