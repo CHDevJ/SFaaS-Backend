@@ -70,3 +70,15 @@ GitHub 연결 도구의 권한 오류 때문에 인증된 기존 로컬 Git의 f
 - 공통 개발 DB 안내는 3307/stf이며 현재 수동 검증은 분리된 3308/stf_b_manual이다. 전달받은 비밀번호로 기존 계정이나 테스트 환경 비밀번호를 바꾸지 않았다.
 - 안내에 포함된 볼륨 삭제 명령은 실행하지 않았다. 비밀번호·JWT·봇 토큰은 코드·문서·Git에 추가하지 않는다.
 - 공유 DB에서는 DB 담당자가 B의 V3와 A의 V4를 검토하고 V1→V2→V3→V4 순서를 맞춰야 한다. 이번 작업은 공유 DB 적용을 수행하지 않았다.
+
+## 일반 Spring Boot 실행의 JWT 설정 오류 수정 (2026-11-17)
+
+- 원인: manual-test 프로필과 달리 일반 실행에는 유효한 JWT_SECRET 전달 경로가 없었다.
+- 변경: application.properties에서 optional:file:./secrets/jwt-local.properties를 읽는다. scripts/Setup-LocalJwt.ps1은 Git 제외를 확인하고 안전한 난수 키를 생성하며 유효한 기존 파일은 보존한다. README에 IDE 작업 디렉터리와 초기 설정 순서를 추가했다.
+- 현재 PC의 Git 제외 파일을 생성했다. 실제 비밀값은 코드·문서·로그에 포함하지 않는다. 프로세스 환경변수 JWT_SECRET이 우선하며 최소 32 UTF-8 바이트 검증은 유지한다.
+- 재검증: Gradle clean test 398개 통과, 실패·오류·건너뜀 0. MySQL 검증 4개 포함.
+- 실제 JAR 4개 확인 통과: 파일·환경변수 모두 없으면 기동 거절, 짧은 환경변수가 유효한 로컬 파일보다 우선하여 기동 거절, JWT 환경변수 없이 파일만 있으면 health 200, 실제 로그인과 B API 200.
+- 검증에는 전용 3308 DB·6380 Redis와 임시 8082 포트를 사용했다. 검증 세션은 로그아웃하고 임시 프로세스를 종료했다. 공유 DB와 일반 개발 DB는 변경하지 않았다.
+- 생성 스크립트 재실행 시 기존 키 보존, PowerShell 문법 검사, 실제 비밀값 5개 대조 검사도 통과했다.
+- 오류 기록: https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/3833857 (TS-30), https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/3604483 (TS-31).
+- 공유 범위는 실행 설정·키 생성 스크립트·README·이 검증 문서 4개다. 실제 로컬 키 파일과 .env·secrets·logs·build는 Git에서 제외한다.
