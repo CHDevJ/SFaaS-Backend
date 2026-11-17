@@ -4,6 +4,7 @@ import com.sfaasproject.stf.operations.port.BPorts.Duties;
 import com.sfaasproject.stf.system.entity.AuditTargetType;
 import com.sfaasproject.stf.system.service.AuditRecorder;
 import com.sfaasproject.stf.user.event.AccountDeletedEvent;
+import com.sfaasproject.stf.user.event.AccountPositionChangedEvent;
 import java.time.Clock;
 import java.time.LocalDate;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,10 +29,21 @@ public class AccountDutyCleanup {
 
     @EventListener
     @Transactional(propagation = Propagation.MANDATORY)
+    public void reclassify(AccountPositionChangedEvent event) {
+        if ("MAINTENANCE".equals(event.previousPosition()) && !"MAINTENANCE".equals(event.position()))
+            remove(event.accountId(), event.changedBy(), "담당자 제외(보전 직책 변경)");
+    }
+
+    @EventListener
+    @Transactional(propagation = Propagation.MANDATORY)
     public void remove(AccountDeletedEvent event) {
-        for (var duty : duties.excludeAccount(event.accountId(), LocalDate.now(clock))) {
-            audit.record(event.deletedBy(), AuditTargetType.DUTY, "당번 " + duty.id(),
-                    "담당자 제외(계정 삭제)", Long.toString(event.accountId()), null);
+        remove(event.accountId(), event.deletedBy(), "담당자 제외(계정 삭제)");
+    }
+
+    private void remove(long accountId, long actorId, String reason) {
+        for (var duty : duties.excludeAccount(accountId, LocalDate.now(clock))) {
+            audit.record(actorId, AuditTargetType.DUTY, "당번 " + duty.id(),
+                    reason, Long.toString(accountId), null);
         }
     }
 }

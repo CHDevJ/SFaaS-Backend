@@ -4,7 +4,7 @@
 
 최신 결과: Gradle 433개 / 실제 HTTP 62개 / STOMP 4개 확인 통과. 실패·오류·건너뜀 0이며 MySQL 5개 포함이다.
 
-**남은 구현·담당·준비물은 [BACKEND_B_NEXT_STEPS.md](BACKEND_B_NEXT_STEPS.md)를 따른다.** A HTTP 30개 미구현, 수집 어댑터 활성화, 일반 당번 변경 감사·보전 직책 해제 시 당번 처리·비밀번호 초기화 발송 결과의 B 이력 연결, 이름 길이 계약 정합성, 공유 DB·프론트·Telegram/PLC 연결과 미정 계약 확장이 남아 있다. 아래는 통합 전 기록이다.
+**남은 구현·담당·준비물은 [BACKEND_B_NEXT_STEPS.md](BACKEND_B_NEXT_STEPS.md)를 따른다.** A HTTP 30개 미구현, 수집 어댑터 활성화, 이름 길이 계약 정합성, 공유 DB·프론트·Telegram/PLC 연결과 미정 계약 확장이 남아 있다. 당번 감사·직책 변경 보호·초기화 발송 이력은 완료했고 [상세 결과](BACKEND_B_DUTY_RESET_HISTORY.md)를 따른다. 아래는 통합 전 기록이다.
 
 # Back_B 구현 및 연결 현황 (2026-11-17)
 

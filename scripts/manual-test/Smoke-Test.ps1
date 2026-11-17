@@ -1,4 +1,4 @@
-﻿param([string]$OutputPath)
+param([string]$OutputPath)
 . (Join-Path $PSScriptRoot 'Common.ps1')
 if (-not $OutputPath) { $OutputPath=Join-Path $ManualRoot 'logs/manual-smoke-results.json' }
 $results=[Collections.Generic.List[object]]::new()
@@ -85,6 +85,8 @@ if($created.Status -eq 201){
     $duty.endDate=$today.AddDays(8).ToString('yyyy-MM-dd')
     Check 'WRITE-002' '당번 수정' PUT "/api/v1/system/alarm-duty-schedules/$schedule" 200 $admin $duty | Out-Null
     Check 'WRITE-003' '당번 삭제' DELETE "/api/v1/system/alarm-duty-schedules/$schedule" 204 $admin | Out-Null
+    $auditCount=[int](@(Invoke-ManualSql "SELECT COUNT(*) FROM change_log WHERE target_type='DUTY' AND target_name='당번 $schedule';")[0])
+    if($auditCount -ne 7){throw 'Duty create/update/delete must retain seven field audit rows.'}
 }
 $label='[SMOKE] '+[guid]::NewGuid().ToString('N')
 $smokeCode='smoke_'+[guid]::NewGuid().ToString('N')
@@ -114,11 +116,18 @@ try {
     }
     $blocked=Check 'USR-DUT-001' '대체 당번 없는 계정 삭제 거절' DELETE "/api/v1/system/users/$temporaryId" 422 $admin
     if(($blocked.Body|ConvertFrom-Json).error.code -ne 'DUTY_REPLACEMENT_REQUIRED'){throw 'Expected the replacement-required error code.'}
+    $positionBody=@{name='[SMOKE] 당번 직책 변경';position='LINE_MANAGER'}
+    $positionBlocked=Check 'USR-POS-001' '대체 당번 없는 보전 직책 변경 거절' PUT "/api/v1/system/users/$temporaryId" 422 $admin $positionBody
+    if(($positionBlocked.Body|ConvertFrom-Json).error.code -ne 'DUTY_REPLACEMENT_REQUIRED'){throw 'Expected the replacement-required role-change error.'}
+    $role=[string](@(Invoke-ManualSql "SELECT role FROM account WHERE account_id=$temporaryId;")[0])
+    if($role -ne 'MAINTENANCE'){throw 'Blocked role change must roll back.'}
     $replacement=@{startDate=$from.ToString('yyyy-MM-dd');endDate=$through.ToString('yyyy-MM-dd');dutyUserId=$maintId}
     Check 'USR-DUT-002' '첫 일정 대체 보전 담당자 지정' PUT ("/api/v1/system/alarm-duty-schedules/"+$temporaryDuties[0]) 200 $admin $replacement|Out-Null
     Check 'USR-DUT-003' '남은 예정 당번 때문에 삭제 거절' DELETE "/api/v1/system/users/$temporaryId" 422 $admin|Out-Null
+    Check 'USR-POS-002' '남은 예정 당번 때문에 직책 변경 거절' PUT "/api/v1/system/users/$temporaryId" 422 $admin $positionBody|Out-Null
     $replacement.startDate=$through.AddDays(1).ToString('yyyy-MM-dd');$replacement.endDate=$through.AddDays(4).ToString('yyyy-MM-dd')
     Check 'USR-DUT-004' '다음 일정 대체 보전 담당자 지정' PUT ("/api/v1/system/alarm-duty-schedules/"+$temporaryDuties[1]) 200 $admin $replacement|Out-Null
+    Check 'USR-POS-003' '모든 대체 당번 지정 후 직책 변경 성공' PUT "/api/v1/system/users/$temporaryId" 200 $admin $positionBody|Out-Null
     Check 'USR-DUT-005' '대체 담당자 지정 후 계정 삭제 성공' DELETE "/api/v1/system/users/$temporaryId" 204 $admin|Out-Null
     Check 'USR-DUT-006' '삭제된 계정의 일반 조회 제외' GET "/api/v1/system/users/$temporaryId" 404 $admin|Out-Null
 } finally {

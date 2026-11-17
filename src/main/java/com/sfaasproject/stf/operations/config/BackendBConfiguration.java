@@ -195,8 +195,9 @@ public class BackendBConfiguration {
             Users users,
             UnitOfWork tx,
             DutyScheduleDecisionService rules,
-            Clock backendBClock) {
-        return new DutyApplicationService(duties, users, tx, rules, backendBClock);
+            Clock backendBClock,
+            com.sfaasproject.stf.system.service.AuditRecorder audit) {
+        return new DutyApplicationService(duties, users, tx, rules, backendBClock, audit);
     }
 
     @Bean
