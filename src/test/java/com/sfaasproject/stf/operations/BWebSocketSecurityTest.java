@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
+import com.sfaasproject.stf.auth.security.AccessTokenAuthentication;
 import com.sfaasproject.stf.operations.config.BWebSocketConfiguration;
 import com.sfaasproject.stf.operations.dto.BContract.Position;
 import com.sfaasproject.stf.operations.dto.BContract.UserBrief;
@@ -73,7 +74,9 @@ class BWebSocketSecurityTest {
     @Test
     void privateQueueCannotSubscribeAsAnotherUser() {
         var own = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
-        own.setUser(() -> "1");
+        own.setUser(new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,
+                com.sfaasproject.stf.auth.service.AuthPolicyService.Position.LINE_MANAGER,
+                "stomp-test",clock.instant(),clock.instant().plusSeconds(1800))));
         own.setDestination("/user/queue/notifications");
         assertNotNull(interceptor.preSend(message(own), mock(MessageChannel.class)));
         own.setDestination("/user/2/queue/notifications");
@@ -96,5 +99,24 @@ class BWebSocketSecurityTest {
         assertThrows(
                 MessageDeliveryException.class,
                 () -> interceptor.preSend(message(send), mock(MessageChannel.class)));
+    }
+
+    @Test void logoutAfterConnectPreventsNewSubscription() {
+        var headers=StompHeaderAccessor.create(StompCommand.CONNECT);
+        headers.setNativeHeader("Authorization","Bearer "+jwt.issue(1,
+                com.sfaasproject.stf.auth.service.AuthPolicyService.Position.LINE_MANAGER,clock.instant()).value());
+        interceptor.preSend(message(headers),mock(MessageChannel.class));
+        var subscribe=StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        subscribe.setUser(headers.getUser()); subscribe.setDestination("/topic/alarms");
+        when(tokens.revoked(any())).thenReturn(true);
+        assertThrows(MessageDeliveryException.class,()->interceptor.preSend(message(subscribe),mock(MessageChannel.class)));
+    }
+    @Test void expiredConnectedPrincipalCannotSubscribe() {
+        var subscribe=StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        subscribe.setUser(new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,
+                com.sfaasproject.stf.auth.service.AuthPolicyService.Position.LINE_MANAGER,"expired",
+                clock.instant().minusSeconds(1800),clock.instant())));
+        subscribe.setDestination("/user/queue/notifications");
+        assertThrows(MessageDeliveryException.class,()->interceptor.preSend(message(subscribe),mock(MessageChannel.class)));
     }
 }

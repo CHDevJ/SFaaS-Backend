@@ -16,7 +16,19 @@ PowerShell을 기존 `stf` 폴더에서 열고 다음을 실행한다.
 
 Swagger 오른쪽 위 **Authorize**를 누르고 Value에 붙여넣는다. `Bearer `를 직접 붙이지 않는다. Authorize와 Close를 누른 후 기능을 펼쳐 **Try it out → Execute**로 실행한다. JWT는 30분 동안 유효하다. 새로고침 후에는 다시 입력한다. 브라우저 영구 저장은 사용하지 않는다.
 
-역할별 테스트는 `-Role MAINTENANCE` 또는 `-Role LINE_MANAGER`로 새 토큰을 발급한다. 토큰은 테스트 DB의 승인된 계정(admin01 / maint01 / linemgr01)을 코드로 조회해 발급한다. 실제 로그인·가입·승인 API를 대신하는 기능은 없다.
+역할별 테스트는 `-Role MAINTENANCE` 또는 `-Role LINE_MANAGER`로 새 토큰을 발급한다. 토큰은 테스트 DB의 승인된 계정(admin01 / maint01 / linemgr01)을 코드로 조회해 발급한다. A의 실제 로그인·가입·승인 API도 통합했다. 이 명령은 로그인 API와 별도로 B 기능만 빠르게 점검할 때 사용한다.
+
+## 실제 로그인 API로 확인하기
+
+```powershell
+.\scripts\manual-test\Get-ManualTestLogin.ps1
+```
+
+이 명령이 출력하는 JSON을 Swagger `POST /api/v1/auth/login`의 요청 본문에 넣는다. 응답의 accessToken을 Authorize에 붙여넣는다. 출력에는 로컬 연습 계정 비밀번호가 포함되므로 Git·공유 문서에 복사하지 않는다.
+
+역할별 연습 계정은 badmin01(SYSTEM_ADMIN), bmaint01(MAINTENANCE), bline01(LINE_MANAGER)이다. 비밀번호는 최초 실행 시 `.env.manual-test`에 무작위로 생성한다. 원래 V2 계정은 수정하지 않으며 연습 계정의 비밀번호나 역할을 바꾸어도 재시작으로 덮어쓰지 않는다.
+
+봇 이름이 없으면 실제 회원가입 연결 URL을 만들 수 없다. 회원가입·실제 Telegram 연결은 TELEGRAM_BOT_USERNAME과 TELEGRAM_BOT_TOKEN 준비 후 확인한다. Refresh·로그아웃·내 정보 등 이번 A 브랜치에 없는 Controller는 A의 후속 구현 범위다.
 
 ## 추천 확인 순서
 
@@ -75,6 +87,6 @@ Telegram 봇 설정은 비워 두었다. 실제 발송·PLC 수집·자동 정�
 | 실행 파일 | `logs/manual-test-runtime.jar` (Gradle clean 파일 잠금 방지) |
 | 인증·DB 설정 | `.env.manual-test`, `secrets/manual-test.properties` (Git 제외) |
 
-기존 `compose.yaml`의 개발 DB(3307)·Redis(6379)와 분리했다. 테스트용 V1/V2/V3 적용은 전용 DB에서만 수행했다. 공유 DB 적용·A 인증 PR 통합은 별도다. 비밀번호·서명키·JWT는 문서·Git에 넣지 않는다.
+기존 `compose.yaml`의 개발 DB(3307)·Redis(6379)와 분리했다. 테스트용 V1/V2/V3/V4 적용은 전용 DB에서만 수행한다. 공유 DB 적용과 backend 브랜치 머지는 별도다. 비밀번호·서명키·JWT는 문서·Git에 넣지 않는다.
 
-최종 실행 결과: Gradle 233개 통과(실패·건너뜀 0), 실제 HTTP 45개 통과. Swagger에 현재 구현된 B API 40개가 표시되는 것을 확인했다.
+통합 전 기록: Gradle 233개·실제 HTTP 45개 통과. 현재 Swagger는 B API 40개와 A 로그인·가입·승인 API 5개를 제공한다. 최신 통합 검증 결과는 docs/BACKEND_B_GITHUB_RECHECK.md를 따른다.

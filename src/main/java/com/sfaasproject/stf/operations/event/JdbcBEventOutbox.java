@@ -28,6 +28,7 @@ public class JdbcBEventOutbox {
         Map<String, Class<?>> types = new HashMap<>();
         for (var type : BEvents.class.getDeclaredClasses())
             if (type.isRecord()) types.put(type.getSimpleName(), type);
+        types.put(SignupNotificationRequested.class.getSimpleName(), SignupNotificationRequested.class);
         TYPES = Map.copyOf(types);
     }
 

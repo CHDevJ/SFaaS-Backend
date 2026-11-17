@@ -1,4 +1,4 @@
--- H2 test adaptation of V1 and V3.
+-- H2 test adaptation of V1, V3 and V4.
 -- STF 설비통합관제 시스템 첫 스키마 (Flyway V1)
 -- 만든 방법: erd.dbml (dbdiagram.io 형식) 을 DBML 도구 (dbml2sql) 로 변환
 -- 대상: MySQL 8.0 / InnoDB / utf8mb4
@@ -456,3 +456,9 @@ CREATE TABLE backend_event_outbox (
   published_at datetime(3)
 );
 CREATE INDEX idx_backend_outbox_pending ON backend_event_outbox(published_at,outbox_id);
+
+-- A V4 authentication schema, adapted for H2.
+ALTER TABLE account ADD COLUMN last_login_at datetime;
+ALTER TABLE auth_token ADD COLUMN family_id varchar(36) NOT NULL;
+ALTER TABLE auth_token ADD COLUMN used_at datetime;
+CREATE INDEX idx_auth_token_family ON auth_token(family_id);

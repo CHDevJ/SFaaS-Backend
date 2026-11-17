@@ -84,11 +84,6 @@ public class BackendBConfiguration {
     }
 
     @Bean
-    public Clock backendBClock() {
-        return Clock.system(ZoneId.of("Asia/Seoul"));
-    }
-
-    @Bean
     public JdbcBDatabase bDatabase(
             JdbcTemplate jdbc, PlatformTransactionManager manager, Clock backendBClock) {
         return new JdbcBDatabase(jdbc, new TransactionTemplate(manager), backendBClock);
@@ -148,6 +143,12 @@ public class BackendBConfiguration {
             InventoryRuntime inventory,
             Alarms alarms) {
         return new JdbcBReadPort(db, users, settings, inventory, alarms);
+    }
+
+    @Bean
+    public SignupNotificationBridge bSignupNotifications(BEventPublisher events, EventClaims claims,
+            com.sfaasproject.stf.telegram.port.NotificationPort notifications) {
+        return new SignupNotificationBridge(events, claims, notifications);
     }
 
     @Bean
@@ -236,7 +237,8 @@ public class BackendBConfiguration {
             TelegramLinkTokenService issuing,
             TelegramDeliveryService delivery,
             Clock backendBClock,
-            @Value("${stf.telegram.bot-username:}") String username) {
+            com.sfaasproject.stf.auth.config.TelegramProperties properties) {
+        String username = properties.configured() ? properties.normalizedBotUsername() : "";
         return new TelegramApplicationService(
                 store, tokens, users, issuing, delivery, backendBClock, username);
     }

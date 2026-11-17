@@ -1,11 +1,13 @@
 package com.sfaasproject.stf.part.controller;
 
 import com.sfaasproject.stf.operations.dto.BContract.*;
+import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.port.BReadPort.*;
 import com.sfaasproject.stf.operations.service.*;
 
 import jakarta.validation.Valid;
 
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -26,8 +28,9 @@ public class PartController {
 
     @GetMapping("/equipment/{equipmentId}/parts")
     public InstalledPartListResponse getEquipmentParts(
-            @PathVariable("equipmentId") Long equipmentId) {
-        BAccess.current();
+            @PathVariable("equipmentId") Long equipmentId,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getEquipmentParts(new GetEquipmentPartsQuery(equipmentId));
     }
 
@@ -38,8 +41,9 @@ public class PartController {
             @RequestParam(name = "equipmentId", required = false) Long equipmentId,
             @RequestParam(name = "status", required = false) PartUsageStatus status,
             @RequestParam(name = "page", required = false, defaultValue = "0") Integer page,
-            @RequestParam(name = "size", required = false, defaultValue = "20") Integer size) {
-        BAccess.current();
+            @RequestParam(name = "size", required = false, defaultValue = "20") Integer size,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getPartUsage(
                 new GetPartUsageQuery(lineId, processId, equipmentId, status, page, size));
     }
@@ -49,8 +53,9 @@ public class PartController {
             @PathVariable("equipmentId") Long equipmentId,
             @PathVariable("partId") Long partId,
             @RequestParam(name = "from", required = false) OffsetDateTime from,
-            @RequestParam(name = "to", required = false) OffsetDateTime to) {
-        BAccess.current();
+            @RequestParam(name = "to", required = false) OffsetDateTime to,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return reads.getPartReplacementHistories(
                 new GetPartReplacementHistoriesQuery(equipmentId, partId, from, to));
     }
@@ -60,8 +65,9 @@ public class PartController {
     public PartReplacementResponse createPartReplacement(
             @PathVariable("equipmentId") Long equipmentId,
             @PathVariable("partId") Long partId,
-            @Valid @RequestBody PartReplacementRequest request) {
-        BAccess.current();
+            @Valid @RequestBody PartReplacementRequest request,
+            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+        BAccess.current(principal);
         return commands.createPartReplacement(equipmentId, partId, request);
     }
 }

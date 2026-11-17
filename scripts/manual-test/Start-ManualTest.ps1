@@ -11,9 +11,15 @@ try {
         [IO.File]::WriteAllText((Join-Path $ManualRoot '.env.manual-test'),$content,[Text.UTF8Encoding]::new($false))
     }
     $config = Read-ManualEnv
+    if (-not $config.ContainsKey('MANUAL_LOGIN_PASSWORD')) {
+        $loginPassword='T7!'+[guid]::NewGuid().ToString('N')
+        [IO.File]::AppendAllText((Join-Path $ManualRoot '.env.manual-test'),[Environment]::NewLine+'MANUAL_LOGIN_PASSWORD='+$loginPassword,[Text.UTF8Encoding]::new($false))
+        $config=Read-ManualEnv
+    }
     $properties = "spring.datasource.password="+$config.MANUAL_DB_PASSWORD+"
 JWT_SECRET="+$config.JWT_SECRET+"
 JWT_ISSUER=stf-manual-test
+MANUAL_LOGIN_PASSWORD="+$config.MANUAL_LOGIN_PASSWORD+"
 "
     [IO.File]::WriteAllText((Join-Path $ManualRoot 'secrets/manual-test.properties'),$properties,[Text.UTF8Encoding]::new($false))
     & docker compose @ManualComposeArgs up -d --wait --wait-timeout 150

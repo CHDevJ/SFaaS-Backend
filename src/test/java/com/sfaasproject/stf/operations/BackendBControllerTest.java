@@ -6,6 +6,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.sfaasproject.stf.alarm.controller.AlarmController;
+import com.sfaasproject.stf.auth.security.AccessTokenAuthentication;
+import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
+import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import com.sfaasproject.stf.common.ApiExceptionHandler;
 import com.sfaasproject.stf.duty.controller.DutyController;
 import com.sfaasproject.stf.inventory.controller.InventoryController;
@@ -21,8 +24,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.*;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -92,6 +93,7 @@ class BackendBControllerTest {
                                 new DutyController(duty),
                                 new TelegramController(telegram))
                         .setControllerAdvice(new ApiExceptionHandler())
+                        .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                         .build();
         login("SYSTEM_ADMIN");
     }
@@ -104,8 +106,9 @@ class BackendBControllerTest {
     void login(String role) {
         SecurityContextHolder.getContext()
                 .setAuthentication(
-                        new UsernamePasswordAuthenticationToken(
-                                "1", null, List.of(new SimpleGrantedAuthority("ROLE_" + role))));
+                        new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,
+                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Position.valueOf(role),
+                                        "controller-test", java.time.Instant.now(), java.time.Instant.now().plusSeconds(1800))));
     }
 
     MockHttpServletRequestBuilder request(Case c) {

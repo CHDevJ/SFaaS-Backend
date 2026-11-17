@@ -1,6 +1,6 @@
 # 로컬 Swagger 수동 테스트 (2026-11-17)
 
-기존 로컬 프로젝트의 전용 테스트 DB·Redis·서버가 준비되어 있다. 접속: http://localhost:8081/swagger-ui.html. 토큰 발급·시작·종료·테스트 명령은 scripts/manual-test/README.md를 따른다. 공유 DB와 분리된 stf_b_manual(3308), Redis(6380)를 사용한다. A 인증 통합 전 B 단독 검증 환경이다.
+기존 로컬 프로젝트의 전용 테스트 DB·Redis·서버가 준비되어 있다. 접속: http://localhost:8081/swagger-ui.html. 토큰 발급·시작·종료·테스트 명령은 scripts/manual-test/README.md를 따른다. 공유 DB와 분리된 stf_b_manual(3308), Redis(6380)를 사용한다. A 인증 구현(68a71fd)과 B 기능을 함께 검증하는 환경이다.
 
 아래는 팀 통합 환경 안내다.
 
@@ -10,7 +10,7 @@
 
 ## 실행
 
-1. DB 담당자와 V3__backend_b_contract_and_jobs.sql을 검토한다. V1/V2는 DB seed 브랜치 원본이다.
+1. DB 담당자와 V3__backend_b_contract_and_jobs.sql 및 A의 V4__auth_session_columns.sql을 검토한다. V1/V2는 DB seed 브랜치 원본이며 V1→V2→V3→V4 순서로 적용한다.
 2. application-local.example.properties를 참고해 Git에서 제외된 application-local.properties 또는 DB_URL·DB_USER·DB_PASSWORD를 설정한다. 현재 개발 MySQL 컨테이너의 호스트 포트는 3307이다.
 3. JWT_SECRET은 A와 동일한 32바이트 이상 값, JWT_ISSUER도 동일하게 제공한다.
 4. ./gradlew.bat bootRun --args='--spring.profiles.active=local,backend-b' 실행. 프로필 없이 가짜 빈 데이터 API를 제공하지 않는다.
@@ -33,9 +33,12 @@
 ## A와의 경계
 
 - BPorts.Users·Settings는 JDBC 구현을 제공하며 A 서비스가 준비되면 교체할 수 있다.
-- A의 AuthFlowService.SessionStore Bean이 있으면 HTTP·STOMP가 그 isAccessRevoked를 사용한다.
-- Bean이 없을 때 공유 Redis 폐기 키: auth:access:revoked:{jti} 존재 시 거부. auth:user:revoked-before:{userId}의 epoch millisecond 이전·동일 발급 토큰도 거부. A는 이 키를 쓰거나 SessionStore를 제공해야 한다.
-- telegram.port.NotificationPort는 A 가입 결과 알림용이다. 삭제 전 수신자 이름·chat ID를 스냅샷하고 커밋 후 호출한다.
+- HTTP SecurityFilterChain·JWT 서비스·Clock은 A 설정 하나만 사용한다. BHttpSecurityConfiguration과 B의 별도 JWT/Clock 빈은 제거했다.
+- B HTTP Controller는 @AuthenticationPrincipal Claims를 받는다. STOMP도 같은 Claims·계정 상태와 SessionStore를 사용하며 개인 라우팅 이름은 계정 ID 문자열이다.
+- BTokenGuard는 A의 AuthFlowService.SessionStore를 필수로 사용한다. Redis 대체 경로는 제거했다. A 구현의 auth:user:revoked-until:{userId}는 epoch second 기준이며 B가 직접 해석하지 않는다.
+- JWT 설정은 app.jwt.*, 봇 이름은 app.telegram.bot-username으로 통일했다. 환경변수 JWT_SECRET·JWT_ISSUER·TELEGRAM_BOT_USERNAME은 그대로다.
+- STOMP는 CONNECT와 SUBSCRIBE 시 활성 계정·폐기·만료를 확인한다. 개인 큐와 클라이언트 SEND 제한은 유지한다.
+- A의 SignupDecidedEvent를 B Outbox에 원래 트랜잭션과 함께 저장한다. 커밋 후 SIGNUP_RESULT 알림을 전달하고 발송 결과를 별도 트랜잭션으로 남긴다. 거절된 신청자는 account_id=NULL과 이름 스냅샷을 사용한다. 재시도 시 같은 이벤트의 중복 발송을 막는다.
 - A의 별도 INT-001을 쓸 때 B의 선택적 수집 Controller를 끈다.
 
 ## V3와 계산 전제
@@ -47,6 +50,8 @@
 - 손실 방지 실적은 복구 전 저장한 예측 스냅샷이 있는 효과 확인 완료 알람만 집계한다.
 
 ## 테스트
+
+최신 통합 결과와 GitHub 재확인은 BACKEND_B_GITHUB_RECHECK.md를 따른다. 아래 233개 결과는 통합 전 검증 기록이다.
 
 - ./gradlew.bat clean test --no-daemon.
 - MySQL을 함께 검증하려면 테스트 전용 STF_TEST_MYSQL_URL·STF_TEST_MYSQL_PASSWORD를 제공한다. 격리 컨테이너의 stf_b_test URL이어야 하며 테스트마다 별도 스키마를 만든다.
