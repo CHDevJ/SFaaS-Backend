@@ -10,12 +10,12 @@ function Read-ManualEnv {
     }
     return $values
 }
-function Invoke-ManualHttp([string]$Path, [string]$Token = '') {
+function Invoke-ManualHttp([string]$Path, [string]$Token = '', [int]$TimeoutSeconds = 4) {
     Add-Type -AssemblyName System.Net.Http
     $handler = [Net.Http.HttpClientHandler]::new()
     $handler.UseProxy = $false
     $client = [Net.Http.HttpClient]::new($handler)
-    $client.Timeout = [TimeSpan]::FromSeconds(4)
+    $client.Timeout = [TimeSpan]::FromSeconds($TimeoutSeconds)
     try {
         if ($Token) { $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$Token) }
         $result = $client.GetAsync('http://127.0.0.1:8081' + $Path).GetAwaiter().GetResult()

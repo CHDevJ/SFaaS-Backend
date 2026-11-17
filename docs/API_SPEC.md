@@ -309,6 +309,8 @@
 
 - 연결 URL: `/ws`
 - 인증: STOMP CONNECT 헤더의 Bearer JWT
+- CONNECT·SUBSCRIBE와 메시지 전송 전 계정·만료·폐기를 확인한다. 유휴 연결도 기본 10초 간격으로 재확인하며 무효 세션은 1008로 종료한다. 새 JWT를 받으면 다시 CONNECT한다.
+- AUTH-001/002 응답의 accessToken은 읽기 전용 응답 필드다. 비밀번호와 대체 입력용 refreshToken의 writeOnly는 유지한다.
 - REST는 최초 조회·검색·등록·수정·상태 변경, WebSocket은 변경 통지만 담당한다.
 - 아래 주소는 프로젝트 제안값으로 확정한다.
 

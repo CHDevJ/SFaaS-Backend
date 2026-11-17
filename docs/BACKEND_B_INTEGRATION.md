@@ -1,6 +1,6 @@
 # 로컬 Swagger 수동 테스트 (2026-11-17)
 
-기존 로컬 프로젝트의 전용 테스트 DB·Redis·서버가 준비되어 있다. 접속: http://localhost:8081/swagger-ui.html. 토큰 발급·시작·종료·테스트 명령은 scripts/manual-test/README.md를 따른다. 공유 DB와 분리된 stf_b_manual(3308), Redis(6380)를 사용한다. A 인증 구현(68a71fd)과 B 기능을 함께 검증하는 환경이다.
+기존 로컬 프로젝트의 전용 테스트 DB·Redis·서버가 준비되어 있다. 접속: http://localhost:8081/swagger-ui.html. 토큰 발급·시작·종료·테스트 명령은 scripts/manual-test/README.md를 따른다. 공유 DB와 분리된 stf_b_manual(3308), Redis(6380)를 사용한다. A 인증 구현(68a71fd·587f3b0)과 B 기능을 함께 검증하는 환경이다.
 
 아래는 팀 통합 환경 안내다.
 
@@ -37,7 +37,7 @@
 - B HTTP Controller는 @AuthenticationPrincipal Claims를 받는다. STOMP도 같은 Claims·계정 상태와 SessionStore를 사용하며 개인 라우팅 이름은 계정 ID 문자열이다.
 - BTokenGuard는 A의 AuthFlowService.SessionStore를 필수로 사용한다. Redis 대체 경로는 제거했다. A 구현의 auth:user:revoked-until:{userId}는 epoch second 기준이며 B가 직접 해석하지 않는다.
 - JWT 설정은 app.jwt.*, 봇 이름은 app.telegram.bot-username으로 통일했다. 환경변수 JWT_SECRET·JWT_ISSUER·TELEGRAM_BOT_USERNAME은 그대로다.
-- STOMP는 CONNECT와 SUBSCRIBE 시 활성 계정·폐기·만료를 확인한다. 개인 큐와 클라이언트 SEND 제한은 유지한다.
+- STOMP는 CONNECT·SUBSCRIBE·메시지 전송 전과 유휴 주기에 활성 계정·폐기·만료를 확인한다. 무효 연결은 1008로 종료하며 새 JWT를 받으면 다시 CONNECT한다. 기본 재확인 10초, manual-test 1초다. 개인 큐와 클라이언트 SEND 제한은 유지한다.
 - A의 SignupDecidedEvent를 B Outbox에 원래 트랜잭션과 함께 저장한다. 커밋 후 SIGNUP_RESULT 알림을 전달하고 발송 결과를 별도 트랜잭션으로 남긴다. 거절된 신청자는 account_id=NULL과 이름 스냅샷을 사용한다. 재시도 시 같은 이벤트의 중복 발송을 막는다.
 - A의 별도 INT-001을 쓸 때 B의 선택적 수집 Controller를 끈다.
 
@@ -61,4 +61,16 @@
 
 ## 확인한 GitHub 기준
 
-backend 5ff3f90, DB seed 267afd2, frontend 4bb5ec7. 프론트 REST 클라이언트·토픽·Vite 프록시·BACK_REQUESTS를 읽고 연결 규격을 맞췄다.
+backend b387df8(PR #11), A 587f3b0, frontend 1cdc56d(PR #12), Node-RED 89c201b. 최신 대응표는 BACKEND_B_GITHUB_RECHECK.md를 따른다.
+
+## DB 담당자에게 전달할 검토 요청
+
+아래 내용은 비밀정보 없이 바로 전달할 수 있다. 이 작업에서 메시지는 발송하지 않았다.
+
+> V1·V2 원본은 그대로 사용 중이고 seed-data 브랜치와 파일 차이가 없습니다. Back_B의 V3__backend_b_contract_and_jobs.sql과 A의 V4__auth_session_columns.sql을 함께 검토 부탁드립니다.
+>
+> V3: v5 입력 길이에 맞춘 알람·조치·교체 컬럼, 소수 교체 기준, backend_event_claim(이벤트 중복 방지), backend_job_lock(당번 동시 수정), backend_alarm_impact(발생 당시 예측 스냅샷), backend_event_outbox(커밋 후 발행·재시도)입니다.
+>
+> V4: A 인증의 account.last_login_at, auth_token.family_id·used_at, family 인덱스입니다. 적용·병합 순서는 V1→V2→V3→V4가 필요합니다. 이미 실행된 V1·V2는 고치지 않고 신규 마이그레이션으로 관리하겠습니다.
+>
+> 분리된 실제 MySQL 8.4 환경에서 전체 마이그레이션과 B 읽기·쓰기 검증을 완료했습니다. 공유 DB 적용은 하지 않았습니다. 텔레그램 연결 코드는 Redis에 10분, 통신 끊김은 COMM_TIMEOUT_SEC=30을 사용합니다. 비밀번호는 별도 비공개 경로로 관리합니다.

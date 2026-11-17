@@ -1,8 +1,10 @@
-# 최신 A/B 통합 검증 (2026-11-17)
+# 최신 A/B 통합 및 프론트 PR #12 대응 (2026-11-17)
 
-A 인증 브랜치 68a71fd를 기존 로컬 Back_B에서 통합했다. 단일 보안·Claims principal·STOMP·가입 결과 Outbox 연결을 구현했고 Gradle 358개(실패·오류·건너뜀 0), 실제 HTTP 48개를 통과했다. Swagger는 45개 operation을 제공한다. 상세는 BACKEND_B_GITHUB_RECHECK.md를 따른다.
+기존 로컬 Back_B에서 A 587f3b0의 세션 API와 B 40개 API를 통합했다. 기존 A/B 코드는 e49e82f로 푸시했고 backend 이력도 연결했다. 로그아웃·만료·비활성 계정의 기존 WebSocket 구독 종료와 응답 토큰 계약을 보완했다.
 
-설정·문서 커밋 7dd7ce4 이후 A/B 통합 코드도 사용자 지시에 따라 Back_B에 커밋·공유한다. 공유 DB 적용과 frontend의 backend 계약 동기화는 별도다. 아래는 통합 전 B 담당 구현 기록이다.
+Gradle 398개 / 실제 HTTP 54개 / 실제 WebSocket 4개 확인을 통과했다. 실패·오류·건너뜀 0. Swagger는 49개 operation이다. 상세 대응표와 최신 결과는 BACKEND_B_GITHUB_RECHECK.md를 따른다.
+
+남은 것은 공유 DB 배포·실제 Telegram/현장 연결·frontend의 backend 기준 동기화와 미정 계약 확정이다. 알람 상세 확장·다중 발생 비교·알림 읽음 이력은 v5에 없는 필드/동작이므로 임의 추가하지 않았다. 아래는 통합 전 B 담당 구현 기록이다.
 
 # Back_B 구현 및 연결 현황 (2026-11-17)
 
@@ -35,7 +37,7 @@ INT-001 연결 어댑터도 선택적으로 제공한다. A의 수집 Controller
 | 항목 | 필요한 작업 |
 |---|---|
 | 공유 MySQL | DB 담당자가 V3와 추가 테이블을 검토 후 적용. 공유 서버에는 실행하지 않음 |
-| A 인증·사용자 | A의 로그인/회원가입 API·SessionStore와 연결. 같은 JWT issuer/secret 및 폐기 저장소 계약 사용 |
+| A 인증·사용자 | 로그인·갱신·로그아웃·내 정보·비밀번호 변경·가입 승인·SessionStore 연결 완료. 사용자 관리 등 나머지 A API는 별도 |
 | 프론트 | Back_B를 검토·병합한 뒤 frontend에서 npm run api:sync와 npm run check. 현재 스크립트는 origin/backend 고정 |
 | 텔레그램 | 실제 봇 이름·토큰 환경변수 설정 후 private 실발송 확인. 이번에는 외부 메시지를 보내지 않음 |
 | 현장 데이터 | Node-RED 대상 URL·내부 키, PLC 주소/배율·임계값·생산 카운터·운영 단가 설정 및 시연 |

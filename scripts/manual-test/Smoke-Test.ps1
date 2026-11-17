@@ -5,23 +5,24 @@ $results=[Collections.Generic.List[object]]::new()
 $admin=& (Join-Path $PSScriptRoot 'Get-ManualTestToken.ps1') -Role SYSTEM_ADMIN
 $maintenance=& (Join-Path $PSScriptRoot 'Get-ManualTestToken.ps1') -Role MAINTENANCE
 $lineManager=& (Join-Path $PSScriptRoot 'Get-ManualTestToken.ps1') -Role LINE_MANAGER
-function Request([string]$Method,[string]$Path,[string]$Token,[object]$Body=$null) {
+function Request([string]$Method,[string]$Path,[string]$Token,[object]$Body=$null,[string]$RefreshCookie='') {
     $handler=[Net.Http.HttpClientHandler]::new(); $handler.UseProxy=$false
     $client=[Net.Http.HttpClient]::new($handler); $client.Timeout=[TimeSpan]::FromSeconds(10)
     try {
         $request=[Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::new($Method),'http://127.0.0.1:8081'+$Path)
+        if ($RefreshCookie) { $request.Headers.Add('Cookie',$RefreshCookie) }
         if ($Token) { $request.Headers.Authorization=[Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$Token) }
         if ($null -ne $Body) { $request.Content=[Net.Http.StringContent]::new(($Body|ConvertTo-Json -Depth 12 -Compress),[Text.Encoding]::UTF8,'application/json') }
         $watch=[Diagnostics.Stopwatch]::StartNew()
         $response=$client.SendAsync($request).GetAwaiter().GetResult()
-        return [pscustomobject]@{Status=[int]$response.StatusCode;Body=$response.Content.ReadAsStringAsync().GetAwaiter().GetResult();Seconds=$watch.Elapsed.TotalSeconds}
+        return [pscustomobject]@{Status=[int]$response.StatusCode;Body=$response.Content.ReadAsStringAsync().GetAwaiter().GetResult();Seconds=$watch.Elapsed.TotalSeconds;Cookie=$(if($response.Headers.Contains('Set-Cookie')){(@($response.Headers.GetValues('Set-Cookie'))[0] -split ';',2)[0]}else{''})}
     } finally { $client.Dispose(); $handler.Dispose() }
 }
-function Check([string]$Id,[string]$Title,[string]$Method,[string]$Path,[int]$Expected,[string]$Token,[object]$Body=$null) {
-    $r=Request $Method $Path $Token $Body
+function Check([string]$Id,[string]$Title,[string]$Method,[string]$Path,[int]$Expected,[string]$Token,[object]$Body=$null,[string]$RefreshCookie='') {
+    $r=Request $Method $Path $Token $Body $RefreshCookie
     $passed=$r.Status -eq $Expected
-    $results.Add([pscustomobject]@{id=$Id;title=$Title;method=$Method;path=$Path;expected=$Expected;actual=$r.Status;result=$(if($passed){'PASS'}else{'FAIL'});seconds=[Math]::Round($r.Seconds,4);evidence=$(if($Path -eq '/api/v1/auth/login') {"login response redacted"} else {$r.Body.Substring(0,[Math]::Min(220,$r.Body.Length))});executedAt=[DateTimeOffset]::Now.ToString('o')})
-    if (-not $passed) { Write-Warning "$Id expected $Expected but got $($r.Status): $($r.Body)" }
+    $results.Add([pscustomobject]@{id=$Id;title=$Title;method=$Method;path=$Path;expected=$Expected;actual=$r.Status;result=$(if($passed){'PASS'}else{'FAIL'});seconds=[Math]::Round($r.Seconds,4);evidence=$(if($Path -in '/api/v1/auth/login','/api/v1/auth/refresh') {"login response redacted"} else {$r.Body.Substring(0,[Math]::Min(220,$r.Body.Length))});executedAt=[DateTimeOffset]::Now.ToString('o')})
+    if (-not $passed) { Write-Warning "$Id expected $Expected but got $($r.Status). See the redacted result record." }
     return $r
 }
 Check 'ENV-001' '서버 및 MySQL·Redis 상태' GET '/actuator/health' 200 '' | Out-Null
@@ -30,7 +31,7 @@ $schema=Check 'ENV-003' 'OpenAPI JSON' GET '/v3/api-docs' 200 ''
 $doc=$schema.Body|ConvertFrom-Json
 $operationCount=0
 foreach($p in $doc.paths.PSObject.Properties){foreach($m in $p.Value.PSObject.Properties){if($m.Name -in 'get','post','put','patch','delete'){$operationCount++}}}
-if($operationCount -ne 45 -or $doc.components.securitySchemes.bearerAuth.scheme -ne 'bearer'){throw 'Expected 40 B and 5 A authentication/signup operations in Swagger.'}
+if($operationCount -ne 49 -or $doc.components.securitySchemes.bearerAuth.scheme -ne 'bearer'){throw 'Expected 40 B and 9 A authentication/signup operations in Swagger.'}
 $loginBody=& (Join-Path $PSScriptRoot 'Get-ManualTestLogin.ps1')|ConvertFrom-Json
 $loginResponse=Check 'AUTH-LIVE-001' '실제 로그인 성공' POST '/api/v1/auth/login' 200 '' $loginBody
 $loginJson=$loginResponse.Body|ConvertFrom-Json
@@ -38,6 +39,13 @@ $loginJwt=$loginJson.data.accessToken
 # The login response contains credentials. Store only its non-sensitive status as evidence.
 $results[$results.Count-1].evidence='success=true; accessToken received (redacted); refresh cookie verified by automated integration test'
 Check 'AUTH-LIVE-002' '로그인 JWT로 B API 호출' GET '/api/v1/inventory' 200 $loginJwt|Out-Null
+Check 'AUTH-LIVE-004' '로그인 사용자 조회' GET '/api/v1/auth/me' 200 $loginJwt|Out-Null
+$refreshResponse=Check 'AUTH-LIVE-005' '쿠키로 토큰 갱신' POST '/api/v1/auth/refresh' 200 '' $null $loginResponse.Cookie
+$refreshedJwt=($refreshResponse.Body|ConvertFrom-Json).data.accessToken
+Check 'AUTH-LIVE-006' '갱신 JWT로 B API 호출' GET '/api/v1/inventory' 200 $refreshedJwt|Out-Null
+Check 'AUTH-LIVE-007' '로그아웃 및 쿠키 폐기' POST '/api/v1/auth/logout' 204 $refreshedJwt $null $refreshResponse.Cookie|Out-Null
+Check 'AUTH-LIVE-008' '로그아웃 JWT의 B API 접근 거절' GET '/api/v1/inventory' 401 $refreshedJwt|Out-Null
+Check 'AUTH-LIVE-009' '로그아웃 Refresh Token 재사용 거절' POST '/api/v1/auth/refresh' 401 '' $null $refreshResponse.Cookie|Out-Null
 Check 'AUTH-LIVE-003' '잘못된 비밀번호 거절' POST '/api/v1/auth/login' 401 '' @{loginId=$loginBody.loginId;password='WrongPassword999!'}|Out-Null
 Check 'SEC-001' '미인증 요청 거절' GET '/api/v1/inventory' 401 '' | Out-Null
 Check 'SEC-002' '잘못된 JWT 거절' GET '/api/v1/inventory' 401 'invalid-token' | Out-Null

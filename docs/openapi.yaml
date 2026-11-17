@@ -2029,6 +2029,11 @@ x-websocket:
   protocol: STOMP
   proposed: true
   authentication: Bearer JWT in STOMP CONNECT header
+  session-authorization:
+    checks: [CONNECT, SUBSCRIBE, outbound-message, periodic-idle-check]
+    idle-check-interval-ms: 10000
+    invalid-session-close-code: 1008
+    description: 만료·폐기·비활성 계정은 전송을 거절하고 연결을 종료한다. 재발급된 JWT로 다시 CONNECT한다.
   heartbeatSeconds: 10
   reconnect: exponential backoff, then refetch current screen REST APIs
   reconnectMaximumSeconds: 30
@@ -2362,7 +2367,7 @@ components:
         - type: object
           required: [accessToken, tokenType, expiresAt]
           properties:
-            accessToken: {type: string, writeOnly: true}
+            accessToken: {type: string, readOnly: true}
             tokenType: {type: string, enum: [Bearer]}
             expiresAt: {type: string, format: date-time}
     RefreshTokenRequest:
@@ -2374,7 +2379,7 @@ components:
       type: object
       required: [accessToken, tokenType, expiresAt]
       properties:
-        accessToken: {type: string, writeOnly: true}
+        accessToken: {type: string, readOnly: true}
         tokenType: {type: string, enum: [Bearer]}
         expiresAt: {type: string, format: date-time}
     TokenResponse:

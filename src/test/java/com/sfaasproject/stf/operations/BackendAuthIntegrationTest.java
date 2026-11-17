@@ -7,6 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.sfaasproject.stf.auth.service.AccessRevocationStore;
+import com.sfaasproject.stf.operations.service.BWebSocketSessions;
+import jakarta.servlet.http.Cookie;
+import org.springframework.web.socket.WebSocketSession;
+import org.springframework.web.socket.CloseStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.operations.event.JdbcBEventOutbox;
@@ -48,6 +52,7 @@ class BackendAuthIntegrationTest {
     @Autowired PasswordEncoder passwords;
     @Autowired JwtAccessTokenService jwt;
     @Autowired Clock clock;
+    @Autowired BWebSocketSessions webSockets;
     @Autowired JdbcTemplate jdbc;
     @Autowired JdbcBEventOutbox outbox;
     @Autowired ApplicationEventPublisher events;
@@ -178,9 +183,46 @@ class BackendAuthIntegrationTest {
         verifyNoInteractions(delivery);
         assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM backend_event_outbox",Integer.class));
     }
-    @Test void onlyLoginAndSignupAreAnonymousAuthPostPaths() throws Exception {
-        for(String route:new String[]{"/api/v1/auth/logout","/api/v1/auth/refresh","/api/v1/auth/me"})
-            mvc.perform(post(route)).andExpect(status().isUnauthorized());
+    @Test void sessionEndpointsEnforceTheirOwnAuthenticationContracts() throws Exception {
+        mvc.perform(post("/api/v1/auth/logout")).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_TOKEN_INVALID"));
+        mvc.perform(get("/api/v1/auth/me")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/auth/refresh")).andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_REFRESH_TOKEN_INVALID"));
+    }
+
+    @Test void refreshedTokenCallsBackendBAndLogoutRevokesHttpAndExistingWebSocket() throws Exception {
+        var login = mvc.perform(post("/api/v1/auth/login").contentType("application/json")
+                .content("{\"loginId\":\"adminauth\",\"password\":\""+password+"\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        String cookie = login.getHeader("Set-Cookie").split(";", 2)[0].substring("refreshToken=".length());
+        var refresh = mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("refreshToken", cookie)))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        var body = JsonMapper.builder().build().readValue(refresh.getContentAsString(), java.util.Map.class);
+        String token = ((java.util.Map<?,?>)body.get("data")).get("accessToken").toString();
+        var claims = jwt.verify(token, clock.instant());
+        String nextCookie = refresh.getHeader("Set-Cookie").split(";", 2)[0].substring("refreshToken=".length());
+        mvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer "+token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.userId").value(admin.getId()));
+        mvc.perform(get("/api/v1/inventory").header("Authorization", "Bearer "+token)).andExpect(status().isOk());
+        var socket = mock(WebSocketSession.class);
+        when(socket.getId()).thenReturn("b-session-integration");
+        when(socket.isOpen()).thenReturn(true);
+        webSockets.opened(socket);
+        webSockets.authenticated(socket.getId(), claims);
+        assertTrue(webSockets.permitDelivery(socket.getId()));
+        doAnswer(invocation -> {
+            when(revocations.isAccessRevoked(claims.jti())).thenReturn(true);
+            return null;
+        }).when(revocations).revokeAccess(eq(claims.jti()), any());
+        mvc.perform(post("/api/v1/auth/logout").header("Authorization", "Bearer "+token)
+                .cookie(new Cookie("refreshToken", nextCookie))).andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/inventory").header("Authorization", "Bearer "+token))
+                .andExpect(status().isUnauthorized());
+        assertFalse(webSockets.permitDelivery(socket.getId()));
+        verify(socket).close(CloseStatus.POLICY_VIOLATION);
+        mvc.perform(post("/api/v1/auth/refresh").cookie(new Cookie("refreshToken", nextCookie)))
+                .andExpect(status().isUnauthorized());
     }
     @Test void notificationEnvelopeDoesNotPrintChatOrMessage() {
         assertEquals("SignupNotificationRequested[redacted]",
