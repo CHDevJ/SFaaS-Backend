@@ -124,6 +124,13 @@ public class AccountEntity {
         this.updatedAt = now;
     }
 
+    /** 관리자가 이름과 직책을 고친다. 승인된 계정에만 쓴다. */
+    public void updateProfile(String name, String role, LocalDateTime now) {
+        this.name = name;
+        this.role = role;
+        this.updatedAt = now;
+    }
+
     /** 텔레그램 봇과 연결한 대화 번호를 저장한다. 연결해야 텔레그램 알림을 받는다. */
     public void connectTelegram(String chatId, LocalDateTime now) {
         this.telegramChatId = chatId;
@@ -136,6 +143,19 @@ public class AccountEntity {
         this.telegramChatId = null;
         this.telegramLinkedAt = null;
         this.deletedAt = now;
+        this.updatedAt = now;
+    }
+
+    /** 관리자가 발급한 임시 비밀번호로 바꾸고 다음 로그인 뒤 변경하게 한다. */
+    public void resetPassword(String temporaryPasswordHash, LocalDateTime now) {
+        this.passwordHash = temporaryPasswordHash;
+        this.mustChangePassword = true;
+        this.updatedAt = now;
+    }
+
+    /** 만료된 임시 비밀번호를 지운다. 이후 로그인은 관리자가 다시 초기화할 때까지 실패한다. */
+    public void expireTemporaryPassword(LocalDateTime now) {
+        this.passwordHash = null;
         this.updatedAt = now;
     }
 

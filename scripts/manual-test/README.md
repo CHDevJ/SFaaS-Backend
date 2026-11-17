@@ -95,8 +95,14 @@ Telegram 봇 설정은 비워 두었다. 실제 발송·PLC 수집·자동 정�
 
 기존 `compose.yaml`의 개발 DB(3307)·Redis(6379)와 분리했다. 테스트용 V1/V2/V3/V4 적용은 전용 DB에서만 수행한다. 공유 DB 적용과 backend 브랜치 머지는 별도다. 비밀번호·서명키·JWT는 문서·Git에 넣지 않는다.
 
-최신 결과: Gradle 398개·실제 HTTP 54개·WebSocket 4개 확인 통과. Swagger는 B 40개와 A 인증·가입·승인 9개, 총 49개를 제공한다. 233개 Excel 보고서는 통합 전 스냅샷이다. 최신 통합 검증 결과는 docs/BACKEND_B_GITHUB_RECHECK.md를 따른다.
+최신 결과: Gradle 433개·실제 HTTP 62개·WebSocket 4개 확인 통과. Swagger는 B 40개와 A 인증·사용자·가입 승인 14개, 총 54개를 제공한다. 233개 Excel 보고서는 통합 전 스냅샷이다. 최신 통합 검증 결과는 docs/BACKEND_B_GITHUB_RECHECK.md를 따른다.
 
 브라우저의 Secure Refresh 쿠키는 localhost 또는 HTTPS에서 확인한다. 현재 수동 서버는 같은 PC의 loopback 전용이다. 프론트 Vite에는 STF_BACKEND_URL=http://localhost:8081을 설정한다. Smoke-Test의 명시적 Cookie 헤더 검증은 브라우저 저장 검증을 대신하지 않는다.
 
 브라우저의 Secure Refresh 쿠키는 localhost 또는 HTTPS에서 확인한다. 현재 수동 서버는 같은 PC의 loopback 전용이다. 프론트 Vite에는 STF_BACKEND_URL=http://localhost:8081을 설정한다. Smoke-Test의 명시적 Cookie 헤더 검증은 브라우저 저장 검증을 대신하지 않는다.
+
+## 계정 삭제와 당번 재지정
+
+현재·예정 당번의 유일 담당자인 계정은 422 DUTY_REPLACEMENT_REQUIRED로 삭제가 거절된다. 관리자 토큰으로 DUT-004(일정 수정)에서 다른 사용 중인 MAINTENANCE를 먼저 지정한 뒤 USR-004를 실행한다. 과거 이력과 duty 기간은 보존한다.
+
+Smoke-Test는 [SMOKE] 임시 계정과 연속된 임시 일정을 사용해 422 → 일정 재지정 → 남은 일정 때문에 422 → 다음 일정 재지정 → 204 → 404 흐름을 검증한다. 임시 일정은 정리하고 계정은 논리 삭제하며 실제 비밀값은 결과에 저장하지 않는다. 사용자 관리와 B 정책을 함께 쓰려면 backend-b 프로필이 필요하다.

@@ -68,6 +68,8 @@ class BackendAuthIntegrationTest {
         jdbc.update("DELETE FROM notification_log");
         jdbc.update("DELETE FROM change_log");
         jdbc.update("DELETE FROM auth_token");
+        jdbc.update("DELETE FROM duty_member");
+        jdbc.update("DELETE FROM duty");
         jdbc.update("DELETE FROM account");
         admin = approved("adminauth", Position.SYSTEM_ADMIN);
         when(delivery.sendWithOneRetry(anyString(),anyString())).thenReturn(new DeliveryResult(true,0,null));

@@ -82,3 +82,16 @@ GitHub 연결 도구의 권한 오류 때문에 인증된 기존 로컬 Git의 f
 - 생성 스크립트 재실행 시 기존 키 보존, PowerShell 문법 검사, 실제 비밀값 5개 대조 검사도 통과했다.
 - 오류 기록: https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/3833857 (TS-30), https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/3604483 (TS-31).
 - 공유 범위는 실행 설정·키 생성 스크립트·README·이 검증 문서 4개다. 실제 로컬 키 파일과 .env·secrets·logs·build는 Git에서 제외한다.
+
+## A 사용자 관리와 당번 제외 최종 통합 (2026-11-17)
+
+- A 원본 0a6e0e2를 merge --no-ff로 통합해 원본 계보를 보존한다. 기존 JWT 로컬 설정·STOMP 7개 스키마·readOnly·단일 보안 구성을 유지했다.
+- 사용자는 마지막 담당자인 계정을 삭제하기 전에 대체 보전 담당자를 먼저 지정하는 정책을 확정했다. 422 DUTY_REPLACEMENT_REQUIRED를 USR-004와 API_SPEC 오류 표에 반영했다.
+- 동기 AccountDutyCleanup은 같은 트랜잭션에서 현재·예정 멤버 제외와 DUTY 감사 기록을 처리한다. 완료된 과거 멤버·기간은 보존한다. 실패 시 계정 삭제까지 롤백한다.
+- 당번 후보 계정→DUTY 순서의 잠금과 과거 이름 조회/신규 검증을 보완했다. A의 Entity·Repository를 B 업무 코드에서 직접 참조하지 않았다.
+- Gradle clean test: **433개 통과, 71개 클래스, 실패·오류·건너뜀 0**, 실제 MySQL 검증 5개 포함.
+- 실제 HTTP **62개 통과**, 실제 STOMP **4개 확인 통과**, Swagger **54개 operation**. 실제 Telegram·PLC 발송/수집은 수행하지 않았다.
+- OpenAPI lint 통과. STOMP 전용 7개 위치별 제외만 유지한다. V1/V2 및 V3/V4 마이그레이션 변경은 없다.
+- 새 검증: AccountDutyCleanupIntegrationTest(9개)와 MySqlBackendBTest의 계정 제외 검증, Smoke-Test의 사용자 조회·재지정·삭제 흐름.
+- 관련 오류 TS-33: https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/4063245. 테스트 실패 주입을 AOP 실제 대상으로 수정했으며 제품 트랜잭션 정책은 유지했다.
+- 남은 구현과 필요한 준비물·API 목록은 BACKEND_B_NEXT_STEPS.md에 정리했다. 기존 Excel 보고서는 233개 통합 전 스냅샷이다.
