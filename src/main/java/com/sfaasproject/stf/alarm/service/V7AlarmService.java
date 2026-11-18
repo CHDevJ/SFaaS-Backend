@@ -9,6 +9,7 @@ import com.sfaasproject.stf.operations.dto.V7Contract.*;
 import com.sfaasproject.stf.operations.event.*;
 import com.sfaasproject.stf.operations.port.BPorts.UnitOfWork;
 import com.sfaasproject.stf.operations.port.V7Context;
+import com.sfaasproject.stf.operations.service.V7Support.Period;
 
 import org.springframework.http.HttpStatus;
 
@@ -198,6 +199,11 @@ public class V7AlarmService implements com.sfaasproject.stf.alarm.port.AlarmQuer
             int page,
             int size) {
         page(page, size);
+        var instant = now();
+        var globalActive =
+                rows(null, null, null).stream()
+                        .filter(r -> "ACTIVE".equals(r.get("process_state")))
+                        .toList();
         var all = rows(line, equipment, grade);
         var selected =
                 all.stream()
@@ -215,7 +221,8 @@ public class V7AlarmService implements com.sfaasproject.stf.alarm.port.AlarmQuer
                                                 r -> number(r, "alarm_id"),
                                                 Comparator.reverseOrder()))
                         .toList();
-        var today = now().atZoneSameInstant(KST).toLocalDate().atStartOfDay(KST).toOffsetDateTime();
+        var today =
+                instant.atZoneSameInstant(KST).toLocalDate().atStartOfDay(KST).toOffsetDateTime();
         var closedToday =
                 all.stream()
                         .filter(
@@ -248,7 +255,24 @@ public class V7AlarmService implements com.sfaasproject.stf.alarm.port.AlarmQuer
                         "data",
                         com.sfaasproject.stf.operations.service.V7Support.map(
                                 "activeCount",
-                                repository.activeCount(),
+                                globalActive.size(),
+                                "activeCautionCount",
+                                globalActive.stream()
+                                        .filter(r -> "CAUTION".equals(r.get("grade")))
+                                        .count(),
+                                "activeCriticalCount",
+                                globalActive.stream()
+                                        .filter(r -> "CRITICAL".equals(r.get("grade")))
+                                        .count(),
+                                "yesterdayOccurredCount",
+                                all.stream()
+                                        .filter(
+                                                r ->
+                                                        in(
+                                                                dateTime(r.get("occurred_at")),
+                                                                new Period(
+                                                                        today.minusDays(1), today)))
+                                        .count(),
                                 "todayOccurredCount",
                                 all.stream()
                                         .filter(
@@ -275,23 +299,49 @@ public class V7AlarmService implements com.sfaasproject.stf.alarm.port.AlarmQuer
             com.sfaasproject.stf.operations.dto.V7Contract.AlarmGrade grade,
             int page,
             int size) {
+        page(page, size);
+        var to = now().atZoneSameInstant(KST).toOffsetDateTime();
+        var from = to.minusHours(24);
         var selected =
                 rows(line, equipment, grade).stream()
-                        .filter(
-                                r -> {
-                                    var at = dateTime(r.get("occurred_at"));
-                                    return !at.isBefore(now().minusHours(24)) && !at.isAfter(now());
-                                })
+                        .filter(r -> in(dateTime(r.get("occurred_at")), new Period(from, to)))
+                        .sorted(
+                                Comparator.comparing(
+                                                (Map<String, Object> r) ->
+                                                        dateTime(r.get("occurred_at")))
+                                        .thenComparingLong(r -> number(r, "alarm_id"))
+                                        .reversed())
                         .toList();
-        return dto(
-                com.sfaasproject.stf.operations.service.V7Support.map(
-                        "success",
-                        true,
-                        "data",
-                        slice(selected, page, size).stream().map(this::summary).toList(),
-                        "meta",
-                        meta(page, size, selected.size())),
-                RecentAlarmListResponse.class);
+        var hourly = new ArrayList<AlarmHourlyCount>();
+        for (int hour = 0; hour < 24; hour++) {
+            var start = from.plusHours(hour);
+            var end = start.plusHours(1);
+            var bucket =
+                    selected.stream()
+                            .filter(r -> in(dateTime(r.get("occurred_at")), new Period(start, end)))
+                            .toList();
+            hourly.add(
+                    new AlarmHourlyCount(
+                            start,
+                            end,
+                            (int)
+                                    bucket.stream()
+                                            .filter(r -> "CAUTION".equals(r.get("grade")))
+                                            .count(),
+                            (int)
+                                    bucket.stream()
+                                            .filter(r -> "CRITICAL".equals(r.get("grade")))
+                                            .count()));
+        }
+        return new RecentAlarmListResponse(
+                from,
+                to,
+                hourly,
+                true,
+                slice(selected, page, size).stream()
+                        .map(r -> dto(summary(r), AlarmSummary.class))
+                        .toList(),
+                meta(page, size, selected.size()));
     }
 
     public AlarmDetailResponse detail(long id, OffsetDateTime expectedStop) {

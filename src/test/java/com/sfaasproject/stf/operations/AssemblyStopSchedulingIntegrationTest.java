@@ -32,6 +32,9 @@ class AssemblyStopSchedulingIntegrationTest {
     @Autowired PlatformTransactionManager transactions;
     @MockitoBean AccessRevocationStore revocations;
 
+    // Test only B reconciliation: unrelated communication jobs run once immediately at startup.
+    @MockitoBean com.sfaasproject.stf.equipment.service.V7EquipmentAlarmBridge equipmentBridge;
+
     @Test
     void schedulerObservesExternalStockChangesWithoutAnyAEvent() throws Exception {
         var now = LocalDateTime.now();
