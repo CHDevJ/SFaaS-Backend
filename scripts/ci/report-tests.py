@@ -5,13 +5,16 @@ import sys
 import xml.etree.ElementTree as ET
 
 
+REQUIRED_MYSQL_CLASSES = {"MySqlBackendBTest", "V7MySqlMigrationTest", "MySqlMasterLineTest"}
+
+
 def main():
     reports = sorted(Path("build/test-results/test").glob("TEST-*.xml"))
     suites = [ET.parse(report).getroot() for report in reports]
     counts = {key: sum(int(suite.get(key, "0")) for suite in suites)
               for key in ("tests", "failures", "errors", "skipped")}
     mysql = [suite for suite in suites
-             if suite.get("name", "").endswith((".MySqlBackendBTest", ".V7MySqlMigrationTest"))]
+             if suite.get("name", "").rsplit(".", 1)[-1] in REQUIRED_MYSQL_CLASSES]
     mysql_classes = {suite.get("name", "").split(".")[-1] for suite in mysql}
     mysql_tests = sum(int(suite.get("tests", "0")) for suite in mysql)
     mysql_skipped = sum(int(suite.get("skipped", "0")) for suite in mysql)
@@ -30,7 +33,7 @@ def main():
             output.write(summary)
     if (not reports or counts["tests"] == 0 or counts["failures"] or counts["errors"]
             or counts["skipped"] or mysql_tests == 0 or mysql_skipped
-            or mysql_classes != {"MySqlBackendBTest", "V7MySqlMigrationTest"}):
+            or mysql_classes != REQUIRED_MYSQL_CLASSES):
         print("::error::All tests, including MySQL integration tests, must execute without failures or skips.")
         return 1
     return 0

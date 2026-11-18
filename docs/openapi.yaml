@@ -1385,6 +1385,51 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/BusinessRuleViolation"
+  /equipment-photos/{fileName}:
+    get:
+      tags: [MasterData]
+      operationId: getEquipmentPhoto
+      summary: 설비 사진 조회(서명 주소)
+      description: |
+        설비 응답의 photoUrl 그대로 연다. 화면의 img 태그가 쓰도록 로그인 없이 열리지만 10분 동안만 유효한 HMAC 서명이 있어야 한다(2026-11-18 A 추가, 제안값).
+        서명이 틀렸거나 만료됐거나 파일이 없으면 모두 404 EQUIPMENT_PHOTO_NOT_FOUND 다. 만료되면 설비를 다시 조회해 새 주소를 받는다.
+      security: []
+      x-api-id: MST-018
+      x-requirement-ids: [FR1302]
+      x-nfr-ids: [NFR07]
+      x-interface-ids: []
+      x-business-rule-ids: []
+      x-test-ids: []
+      x-permissions: [ANONYMOUS]
+      parameters:
+        - name: fileName
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9a-f]{32}\.(jpg|png|webp)$'}
+        - name: expires
+          in: query
+          required: true
+          description: 만료 시각(epoch 초)
+          schema: {type: integer, format: int64}
+        - name: signature
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: 사진 파일
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '404':
+          description: EQUIPMENT_PHOTO_NOT_FOUND
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
   /master/lines:
     get:
       tags:
@@ -1634,6 +1679,10 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/BusinessRuleViolation"
   "/master/data-items/{dataItemId}":
@@ -1672,6 +1721,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MasterDataItemResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1713,6 +1764,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ThresholdResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -2418,15 +2471,27 @@ paths:
         - $ref: "#/components/parameters/To"
         - name: itemType
           in: query
+          description: change_log.target_type 코드. 2026-11-18 A 확정(한글 표시는 화면이 바꾼다)
           schema:
             type: string
+            enum:
+              - EQUIPMENT
+              - LINE
+              - DATA_ITEM
+              - THRESHOLD
+              - PART
+              - SETTING
+              - ACCOUNT
+              - DUTY
         - name: keyword
           in: query
+          description: 대상·바꾼 항목·이전 값·변경 값에서 대소문자 없이 찾는다. %와 _는 글자 그대로 찾는다
           schema:
             type: string
             maxLength: 100
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Size"
+      description: 기간은 from 이상 to 미만이다. 최근 변경부터(changedAt DESC, historyId DESC).
       responses:
         "200":
           description: 비밀정보를 제외한 변경 이력
@@ -2434,6 +2499,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChangeHistoryPageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3236,6 +3303,44 @@ components:
       properties:
         code:
           type: string
+          description: >-
+            API_SPEC 7장 오류코드. 서버가 실제로 내는 코드와 이 목록이 같은지 OpenApiErrorCodeContractTest 가 확인한다.
+            2026-11-18 A 추가(enum)
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_PERIOD
+            - PASSWORD_POLICY_VIOLATION
+            - AUTH_INVALID_CREDENTIALS
+            - AUTH_TOKEN_INVALID
+            - AUTH_REFRESH_TOKEN_INVALID
+            - INTERNAL_API_KEY_INVALID
+            - AUTH_PERMISSION_DENIED
+            - AUTH_APPROVAL_PENDING
+            - USER_NOT_FOUND
+            - LINE_NOT_FOUND
+            - PROCESS_NOT_FOUND
+            - EQUIPMENT_NOT_FOUND
+            - EQUIPMENT_PHOTO_NOT_FOUND
+            - DATA_ITEM_NOT_FOUND
+            - ALARM_NOT_FOUND
+            - USER_LOGIN_ID_DUPLICATE
+            - SIGNUP_REQUEST_STATE_CONFLICT
+            - LINE_NAME_DUPLICATE
+            - EQUIPMENT_CODE_DUPLICATE
+            - DATA_ITEM_CODE_DUPLICATE
+            - ALARM_STATE_CONFLICT
+            - USER_SELF_DELETE_FORBIDDEN
+            - LAST_ADMIN_REQUIRED
+            - LINE_HAS_EQUIPMENT
+            - EQUIPMENT_HAS_ACTIVE_ALARM
+            - INVALID_THRESHOLD_ORDER
+            - DATA_ITEM_VALUE_TYPE_IMMUTABLE
+            - THRESHOLD_NOT_SUPPORTED
+            - ACTION_CONTENT_REQUIRED
+            - SETTING_OUT_OF_RANGE
+            - TELEGRAM_NOT_CONNECTED
+            - TELEGRAM_DELIVERY_FAILED
+            - INTERNAL_SERVER_ERROR
           example: VALIDATION_ERROR
         message:
           type: string
@@ -3538,6 +3643,8 @@ components:
         lastReceivedAt:
           type: string
           format: date-time
+          nullable: true
+          description: 마지막 수신 시각. 값을 받은 적 없는 설비는 null(2026-11-18 A 보완)
         disconnectedSince:
           type: string
           format: date-time
@@ -3545,6 +3652,7 @@ components:
         todayDisconnectionCount:
           type: integer
           minimum: 0
+          description: 오늘(Asia/Seoul 0시~지금)과 겹치는 통신 끊김 횟수. 어제부터 이어진 끊김도 1회
         todayDisconnectionMinutes:
           type: integer
           minimum: 0
@@ -3588,7 +3696,7 @@ components:
           $ref: "#/components/schemas/Identifier"
         lineName:
           type: string
-          maxLength: 100
+          maxLength: 50
         displayOrder:
           type: integer
           minimum: 1
@@ -3626,6 +3734,15 @@ components:
           minimum: 1
         hasAbnormalEquipment:
           type: boolean
+          description: 공정 설비 중 FAULT·CAUTION·COMMUNICATION_LOST가 하나라도 있으면 true(OVW-001과 같은 기준)
+        representativeStatus:
+          allOf:
+            - $ref: "#/components/schemas/EquipmentStatus"
+          nullable: true
+          description: >-
+            공정 설비 중 가장 나쁜 상태(COMMUNICATION_LOST → FAULT → CAUTION → IDLE → RUNNING). 설비가 없으면 null.
+            2026-11-18 A 추가(프론트 요청)
+          x-proposed: true
     ProcessListResponse:
       type: object
       required:
@@ -3719,6 +3836,37 @@ components:
             - CRITICAL
         threshold:
           type: number
+          description: 벗어난 쪽 기준(측정값은 등급에 맞는 주의/경보 기준, 상태값은 알람 발생 값)
+        displayValue:
+          type: string
+          nullable: true
+          description: 표시 값(측정값은 소수 자릿수 반올림, 상태값은 0/1 표시 이름). 2026-11-18 A 추가
+          x-proposed: true
+        cautionThreshold:
+          type: number
+          nullable: true
+          description: 항목의 주의 기준. 상태값은 null. 2026-11-18 A 추가
+          x-proposed: true
+        criticalThreshold:
+          type: number
+          nullable: true
+          description: 항목의 경보 기준. 상태값은 null. 2026-11-18 A 추가
+          x-proposed: true
+        thresholdDirection:
+          type: string
+          nullable: true
+          enum:
+            - ABOVE
+            - BELOW
+            - null
+          description: 측정값 기준 방향. 상태값은 null. 2026-11-18 A 추가
+          x-proposed: true
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: 항목의 소수 자릿수. 2026-11-18 A 추가
+          x-proposed: true
     EquipmentSummary:
       type: object
       required:
@@ -3739,10 +3887,10 @@ components:
           $ref: "#/components/schemas/Identifier"
         equipmentCode:
           type: string
-          maxLength: 100
+          maxLength: 20
         equipmentName:
           type: string
-          maxLength: 200
+          maxLength: 100
         lineId:
           $ref: "#/components/schemas/Identifier"
         lineName:
@@ -3886,8 +4034,9 @@ components:
           type: string
         photoUrl:
           type: string
-          format: uri
+          format: uri-reference
           nullable: true
+          description: 10분 동안 열리는 서명 상대 주소(MST-018). 사진이 없으면 null
         registeredAt: *a5
     EquipmentDetailData:
       type: object
@@ -4020,8 +4169,36 @@ components:
         criticalThreshold:
           type: number
           nullable: true
+        thresholdDirection:
+          type: string
+          nullable: true
+          enum:
+            - ABOVE
+            - BELOW
+            - null
+          description: 측정값 기준 방향. 상태값·누적값은 null. 2026-11-18 A 추가(추세 메타정보)
+          x-proposed: true
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: 항목의 소수 자릿수. 2026-11-18 A 추가
+          x-proposed: true
+        zeroDisplayName:
+          type: string
+          nullable: true
+          description: 상태값 0 표시 이름. 2026-11-18 A 추가
+          x-proposed: true
+        oneDisplayName:
+          type: string
+          nullable: true
+          description: 상태값 1 표시 이름. 2026-11-18 A 추가
+          x-proposed: true
         points:
           type: array
+          description: >-
+            시각순. 원본이면 측정 시각, 집계면 칸 시작 시각(Asia/Seoul 자정 기준). 통신 끊김 구간 시작 시각마다 value=null 점이
+            있어 차트 선을 끊는다.
           items:
             $ref: "#/components/schemas/MeasurementPoint"
         alarmMarkers:
@@ -4997,19 +5174,19 @@ components:
         equipmentCode:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 20
           description: 등록 후 수정 불가
         equipmentName:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 100
         equipmentType:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         serialNumber:
           type: string
-          maxLength: 200
+          maxLength: 50
           nullable: true
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -5019,7 +5196,7 @@ components:
         communicationMethod:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 20
         photo:
           type: string
           format: binary
@@ -5040,14 +5217,14 @@ components:
         equipmentName:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 100
         equipmentType:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         serialNumber:
           type: string
-          maxLength: 200
+          maxLength: 50
           nullable: true
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -5057,7 +5234,7 @@ components:
         communicationMethod:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 20
         photo:
           type: string
           format: binary
@@ -5133,7 +5310,7 @@ components:
         lineName:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         displayOrder:
           type: integer
           minimum: 1
@@ -5233,15 +5410,25 @@ components:
         - valueType
         - collectionIntervalSeconds
       properties:
+        dataItemCode:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[a-z][a-z0-9_]*$
+          description: >-
+            INT-001 dataItemCode와 맞추는 항목 코드(data_item.item_code). MST-011에서는 필수이고 설비 안에서
+            중복할 수 없다(삭제한 항목 포함, 409 DATA_ITEM_CODE_DUPLICATE). MST-012에서는 바꿀 수 없으며 보내도 무시한다.
+            2026-11-18 추가(A 제안값).
+          x-proposed: true
         dataItemName:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         valueType:
           $ref: "#/components/schemas/DataValueType"
         unit:
           type: string
-          maxLength: 30
+          maxLength: 20
           nullable: true
         collectionIntervalSeconds:
           type: integer
@@ -5249,14 +5436,15 @@ components:
         decimalPlaces:
           type: integer
           minimum: 0
+          maximum: 10
           nullable: true
         zeroDisplayName:
           type: string
-          maxLength: 100
+          maxLength: 20
           nullable: true
         oneDisplayName:
           type: string
-          maxLength: 100
+          maxLength: 20
           nullable: true
         measurementThreshold:
           type: object
@@ -5268,13 +5456,23 @@ components:
           allOf:
             - $ref: "#/components/schemas/StateAlarmCondition"
           nullable: true
-      description: valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다.
+      description: >-
+        valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다. MEASUREMENT는 zeroDisplayName·oneDisplayName·
+        stateAlarmCondition을 받지 않고 decimalPlaces를 비우면 1이다. STATE는 unit·measurementThreshold를 받지 않고
+        decimalPlaces는 0이다. CUMULATIVE는 두 기준과 0/1 표시를 받지 않고 decimalPlaces는 0이다. 맞지 않으면 400.
+        MST-012에서 measurementThreshold·stateAlarmCondition 칸을 보내지 않으면 기존 기준을 유지하고, null을 보내면
+        지운다. valueType은 바꿀 수 없다(422 DATA_ITEM_VALUE_TYPE_IMMUTABLE). 길이는 ERD data_item 컬럼(이름 50,
+        단위 20, 0/1 표시 20)을 따른다.
     ThresholdWriteRequest:
       oneOf:
         - $ref: "#/components/schemas/MeasurementThreshold"
         - $ref: "#/components/schemas/StateAlarmCondition"
     ThresholdStatistics:
       type: object
+      description: >-
+        recentMinimum/Average/Maximum은 최근 7일(오늘 포함, Asia/Seoul) 측정값으로 계산하며 MEASUREMENT 항목만 값이 있다.
+        alarmCountLast30Days는 지금부터 30일 전 이후 발생한 알람 수다. 2026-11-18 A 제안값.
+      x-proposed: true
       properties:
         recentMinimum:
           type: number
@@ -5292,12 +5490,17 @@ components:
       type: object
       required:
         - dataItemId
+        - dataItemCode
         - dataItemName
         - valueType
         - collectionIntervalSeconds
       properties:
         dataItemId:
           $ref: "#/components/schemas/Identifier"
+        dataItemCode:
+          type: string
+          description: INT-001 dataItemCode와 같은 항목 코드. 2026-11-18 추가(A 제안값).
+          x-proposed: true
         dataItemName:
           type: string
         valueType:
@@ -5517,6 +5720,12 @@ components:
           maximum: 1000
           description: HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간)
           default: 360
+        ranges:
+          type: array
+          description: 각 칸의 입력 범위(판정 설정 ranges와 같은 형식). 응답에만 있다. 2026-11-18 A 추가
+          x-proposed: true
+          items:
+            $ref: "#/components/schemas/JudgementSettingRange"
     CalculationSettingsResponse:
       type: object
       required:
@@ -5882,8 +6091,23 @@ components:
           $ref: "#/components/schemas/UserBrief"
         itemType:
           type: string
+          enum:
+            - EQUIPMENT
+            - LINE
+            - DATA_ITEM
+            - THRESHOLD
+            - PART
+            - SETTING
+            - ACCOUNT
+            - DUTY
+          description: change_log.target_type 코드. 2026-11-18 A 확정
         itemName:
           type: string
+          description: 바꾼 대상(change_log.target_name). 예 OR-04-1/coolant_flow
+        fieldName:
+          type: string
+          description: 바꾼 항목(change_log.field_name). 예 경보 기준. 2026-11-18 A 추가
+          x-proposed: true
         previousValue:
           type: string
           nullable: true
