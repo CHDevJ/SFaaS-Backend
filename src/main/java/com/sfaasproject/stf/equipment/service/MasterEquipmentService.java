@@ -18,6 +18,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -199,6 +200,15 @@ public class MasterEquipmentService {
         int parts = equipment.deletePartsOf(equipmentId, now);
         audit.record(actorId, AuditTargetType.EQUIPMENT, target.getEquipCode(), "설비 삭제", "사용",
                 "삭제(데이터 항목 " + items + "개, 장착 부품 " + parts + "개 함께 삭제)");
+    }
+
+    /** EQP-004 의 basicInfo. 사용 중인 설비가 아니면(없음·삭제·라인 삭제) 비어 있다. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<MasterEquipmentView> findActive(long equipmentId) {
+        return equipment.findById(equipmentId).filter(item -> !item.isDeleted()).flatMap(item ->
+                processes.findById(item.getProcessId()).flatMap(process ->
+                        lines.findByIdAndDeletedAtIsNull(process.getLineId()).map(line -> view(item,
+                                new Placement(line, process), runtime.find(List.of(item.getId())).get(item.getId())))));
     }
 
     private MasterEquipmentView view(EquipmentEntity item, Placement placement, EquipmentRuntimeQuery.Runtime state) {

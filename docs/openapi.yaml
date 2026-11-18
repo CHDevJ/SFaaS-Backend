@@ -3680,6 +3680,15 @@ components:
           minimum: 1
         hasAbnormalEquipment:
           type: boolean
+          description: 공정 설비 중 FAULT·CAUTION·COMMUNICATION_LOST가 하나라도 있으면 true(OVW-001과 같은 기준)
+        representativeStatus:
+          allOf:
+            - $ref: "#/components/schemas/EquipmentStatus"
+          nullable: true
+          description: >-
+            공정 설비 중 가장 나쁜 상태(COMMUNICATION_LOST → FAULT → CAUTION → IDLE → RUNNING). 설비가 없으면 null.
+            2026-11-18 A 추가(프론트 요청)
+          x-proposed: true
     ProcessListResponse:
       type: object
       required:
@@ -3773,6 +3782,37 @@ components:
             - CRITICAL
         threshold:
           type: number
+          description: 벗어난 쪽 기준(측정값은 등급에 맞는 주의/경보 기준, 상태값은 알람 발생 값)
+        displayValue:
+          type: string
+          nullable: true
+          description: 표시 값(측정값은 소수 자릿수 반올림, 상태값은 0/1 표시 이름). 2026-11-18 A 추가
+          x-proposed: true
+        cautionThreshold:
+          type: number
+          nullable: true
+          description: 항목의 주의 기준. 상태값은 null. 2026-11-18 A 추가
+          x-proposed: true
+        criticalThreshold:
+          type: number
+          nullable: true
+          description: 항목의 경보 기준. 상태값은 null. 2026-11-18 A 추가
+          x-proposed: true
+        thresholdDirection:
+          type: string
+          nullable: true
+          enum:
+            - ABOVE
+            - BELOW
+            - null
+          description: 측정값 기준 방향. 상태값은 null. 2026-11-18 A 추가
+          x-proposed: true
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: 항목의 소수 자릿수. 2026-11-18 A 추가
+          x-proposed: true
     EquipmentSummary:
       type: object
       required:

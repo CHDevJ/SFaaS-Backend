@@ -14,6 +14,10 @@ public interface DataItemRepository extends JpaRepository<DataItemEntity, Long> 
     /** MST-010. 사용 중인 항목을 표시 순서, 번호순으로. */
     List<DataItemEntity> findByEquipmentIdAndDeletedAtIsNullOrderBySortOrderAscIdAsc(Long equipmentId);
 
+    /** EQP-003. 여러 설비의 사용 중인 항목. */
+    List<DataItemEntity> findByEquipmentIdInAndDeletedAtIsNullOrderBySortOrderAscIdAsc(
+            java.util.Collection<Long> equipmentIds);
+
     /** DB 의 (equipment_id, item_code) 는 UNIQUE 이고 삭제한 항목도 줄이 남으므로 삭제 여부와 상관없이 검사한다. */
     boolean existsByEquipmentIdAndItemCode(Long equipmentId, String itemCode);
 
