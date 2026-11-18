@@ -3303,6 +3303,44 @@ components:
       properties:
         code:
           type: string
+          description: >-
+            API_SPEC 7장 오류코드. 서버가 실제로 내는 코드와 이 목록이 같은지 OpenApiErrorCodeContractTest 가 확인한다.
+            2026-11-18 A 추가(enum)
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_PERIOD
+            - PASSWORD_POLICY_VIOLATION
+            - AUTH_INVALID_CREDENTIALS
+            - AUTH_TOKEN_INVALID
+            - AUTH_REFRESH_TOKEN_INVALID
+            - INTERNAL_API_KEY_INVALID
+            - AUTH_PERMISSION_DENIED
+            - AUTH_APPROVAL_PENDING
+            - USER_NOT_FOUND
+            - LINE_NOT_FOUND
+            - PROCESS_NOT_FOUND
+            - EQUIPMENT_NOT_FOUND
+            - EQUIPMENT_PHOTO_NOT_FOUND
+            - DATA_ITEM_NOT_FOUND
+            - ALARM_NOT_FOUND
+            - USER_LOGIN_ID_DUPLICATE
+            - SIGNUP_REQUEST_STATE_CONFLICT
+            - LINE_NAME_DUPLICATE
+            - EQUIPMENT_CODE_DUPLICATE
+            - DATA_ITEM_CODE_DUPLICATE
+            - ALARM_STATE_CONFLICT
+            - USER_SELF_DELETE_FORBIDDEN
+            - LAST_ADMIN_REQUIRED
+            - LINE_HAS_EQUIPMENT
+            - EQUIPMENT_HAS_ACTIVE_ALARM
+            - INVALID_THRESHOLD_ORDER
+            - DATA_ITEM_VALUE_TYPE_IMMUTABLE
+            - THRESHOLD_NOT_SUPPORTED
+            - ACTION_CONTENT_REQUIRED
+            - SETTING_OUT_OF_RANGE
+            - TELEGRAM_NOT_CONNECTED
+            - TELEGRAM_DELIVERY_FAILED
+            - INTERNAL_SERVER_ERROR
           example: VALIDATION_ERROR
         message:
           type: string
@@ -5682,6 +5720,12 @@ components:
           maximum: 1000
           description: HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간)
           default: 360
+        ranges:
+          type: array
+          description: 각 칸의 입력 범위(판정 설정 ranges와 같은 형식). 응답에만 있다. 2026-11-18 A 추가
+          x-proposed: true
+          items:
+            $ref: "#/components/schemas/JudgementSettingRange"
     CalculationSettingsResponse:
       type: object
       required:

@@ -1097,10 +1097,12 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | 코드 | HTTP | 발생조건 |
 |---|---|---|
 | VALIDATION_ERROR | 400 | 필수·형식·범위 입력 오류 |
+| PASSWORD_POLICY_VIOLATION | 400 | 새 비밀번호 규칙 위반(AUTH-006). 2026-11-18 표에 추가 |
 | INVALID_PERIOD | 400 | from≥to 또는 기간 입력 오류 |
 | AUTH_INVALID_CREDENTIALS | 401 | 아이디/비밀번호 불일치 |
 | AUTH_TOKEN_INVALID | 401 | 만료·폐기 토큰 |
 | AUTH_REFRESH_TOKEN_INVALID | 401 | 갱신 토큰 오류/재사용 |
+| INTERNAL_API_KEY_INVALID | 401 | 내부 수집·Webhook 인증 실패. 2026-11-18 표에 추가 |
 | AUTH_PERMISSION_DENIED | 403 | ADMIN 필요 또는 비밀번호 변경 전 업무 접근 |
 | AUTH_APPROVAL_PENDING | 403 | 미승인 로그인 |
 | USER_LOGIN_ID_DUPLICATE | 409 | 로그인 ID 중복 |
@@ -1123,7 +1125,9 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | ALARM_NOT_FOUND | 404 | 알람 없음 |
 | ALARM_STATE_CONFLICT | 409 | 이미 종료된 알람에 조치 |
 | ACTION_CONTENT_REQUIRED | 400 | 조치 상세 공백 |
-| SETTING_OUT_OF_RANGE | 422 | 설정값 범위·관계 오류 |
+| SETTING_OUT_OF_RANGE | 422 | 설정값 범위·관계 오류(위험≥주의 포함) |
+| LINE_NAME_DUPLICATE | 409 | 라인 이름 중복(삭제한 라인 포함, MST-006/007). 2026-11-18 표에 추가 |
+| INTERNAL_SERVER_ERROR | 500 | 처리하지 못한 서버 오류 |
 | TELEGRAM_NOT_CONNECTED | 422 | 미연결 테스트/초기화 |
 | TELEGRAM_DELIVERY_FAILED | 422 | 재시도 발송 실패 |
 
@@ -1298,6 +1302,15 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - itemType은 change_log.target_type 코드(EQUIPMENT·LINE·DATA_ITEM·THRESHOLD·PART·SETTING·ACCOUNT·DUTY)이고 한글 표시는 화면이 바꾼다. 다른 값은 400이다.
 - keyword(최대 100자)는 대상·바꾼 항목·이전 값·변경 값에서 대소문자 없이 찾고 %와 _는 글자 그대로 찾는다.
 - 계약 보완: ChangeHistory.fieldName(바꾼 항목), 400 응답. 변경자가 나중에 삭제된 계정이어도 이름·권한을 보여 준다.
+
+### 11.6 2026-11-18 계약 정리 (A)
+
+- ErrorDetail.code에 오류코드 enum(34개)을 넣었다. 표에 없던 v7 코드(PASSWORD_POLICY_VIOLATION, INTERNAL_API_KEY_INVALID, LINE_NAME_DUPLICATE, INTERNAL_SERVER_ERROR)를 추가했다. 예전 v5 기능 전용 코드(당번·부품·확인·오경보)는 기본 실행에서 꺼져 있어 넣지 않는다.
+- SYS-002의 위험≥주의 오류코드가 구현에서 SETTING_VALUE_OUT_OF_RANGE였다. 계약대로 SETTING_OUT_OF_RANGE로 고쳤다.
+- SYS-003 응답에 ranges(unitPrice 0~100000000, speedWindowMinutes 5~60, hourlyProduction 1~1000)를 추가했다. 서버 검증 범위와 같다.
+- 설정 변경 이력의 대상·항목을 설정 키 대신 한글로 남긴다(판정 설정/계산 기준값, 통신 끊김 판정(초) 등). 이미 쌓인 이력은 바꾸지 않는다.
+- AUTH-006에서 현재 비밀번호가 틀리면 코드·상태(401 AUTH_INVALID_CREDENTIALS)는 그대로 두고 문구만 "현재 비밀번호를 확인해 주세요."로 바꿨다.
+- OpenApiErrorCodeContractTest가 서버 코드와 enum의 일치, openapi 중복 키 없음을 확인한다.
 
 ## 12. 필드 사전
 
@@ -2353,6 +2366,7 @@ communicationLossSeconds=COMM_TIMEOUT_SEC, alarmConsecutiveCount=ALARM_STREAK_CO
 | unitPrice | number | Y | N | 값≥0; 값≤100000000; 기본 0 | UNIT_PRICE, 원/개. 초기0, 0이면 화면에 개당 금액 설정 안내. 상한은 프로젝트 제안값 |
 | speedWindowMinutes | integer | Y | N | 값≥5; 값≤60; 기본 10 | RATE_WINDOW_MIN. production_log 속도 계산 구간(분) |
 | hourlyProduction | integer | Y | N | 값≥1; 값≤1000; 기본 360 | HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간) |
+| ranges | array<JudgementSettingRange> | N | N | - | 각 칸의 입력 범위(응답만). 2026-11-18 추가 |
 
 ### CalculationSettingsResponse
 
