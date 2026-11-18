@@ -4,13 +4,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.jayway.jsonpath.JsonPath;
 import com.sfaasproject.stf.auth.AuthTestConfig;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.equipment.service.EquipmentPhotoStorage;
+import com.sfaasproject.stf.equipment.service.EquipmentPhotoUrlSigner;
 import com.sfaasproject.stf.equipment.service.EquipmentPhotoValidationService;
 import com.sfaasproject.stf.telegram.service.RedisTelegramLinkTokenStore;
 import com.sfaasproject.stf.user.entity.AccountEntity;
@@ -35,6 +38,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.mock.web.MockMultipartFile;
@@ -46,7 +50,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * MST-001~004 설비 기준정보 (openapi v7). B 의 H2 스키마(V1 과 같은 컬럼)를 써서
+ * MST-001~004 설비 기준정보와 MST-018 사진 조회 (openapi v7). B 의 H2 스키마(V1 과 같은 컬럼)를 써서
  * 데이터 항목·장착 부품·알람·설비 상태 테이블까지 함께 확인한다.
  */
 @SpringBootTest(properties = {
@@ -74,7 +78,7 @@ class MasterEquipmentApiTest {
     @Autowired PasswordEncoder passwords;
     @Autowired JwtAccessTokenService jwt;
     @Autowired Clock clock;
-    @Autowired com.sfaasproject.stf.equipment.service.MasterEquipmentService equipmentService;
+    @Autowired EquipmentPhotoUrlSigner signer;
 
     AccountEntity manager;
     String token;
@@ -188,8 +192,8 @@ class MasterEquipmentApiTest {
     // ---------- MST-002 ----------
 
     @Test
-    void createStoresEquipmentWithPhoto() throws Exception {
-        mvc.perform(createForm("OR-05-1").file(photo("photo.png", "image/png", PNG))
+    void createStoresEquipmentWithPhotoAndServesItThroughSignedUrl() throws Exception {
+        String body = mvc.perform(createForm("OR-05-1").file(photo("photo.png", "image/png", PNG))
                         .param("serialNumber", "  SN-1  ")
                         .param("registeredAt", "2026-11-17T08:30:00+09:00"))
                 .andExpect(status().isCreated())
@@ -202,8 +206,7 @@ class MasterEquipmentApiTest {
                 .andExpect(jsonPath("$.data.communicationMethod").value("OPC_UA"))
                 .andExpect(jsonPath("$.data.registeredAt").value("2026-11-17T08:30:00+09:00"))
                 .andExpect(jsonPath("$.data.lastReceivedAt").doesNotExist())
-                // v7 에 사진 조회 주소가 없어 photoUrl 은 비운다.
-                .andExpect(jsonPath("$.data.photoUrl").doesNotExist());
+                .andReturn().getResponse().getContentAsString();
 
         Map<String, Object> row = jdbc.queryForMap("SELECT * FROM equipment WHERE equip_code = 'OR-05-1'");
         assertThat(row.get("equip_type")).isEqualTo("연삭기");
@@ -212,6 +215,13 @@ class MasterEquipmentApiTest {
         String fileName = (String) row.get("photo_path");
         assertThat(fileName).matches("[0-9a-f]{32}\\.png");
         assertThat(Files.readAllBytes(PHOTO_DIR.resolve(fileName))).isEqualTo(PNG);
+
+        String photoUrl = JsonPath.read(body, "$.data.photoUrl");
+        assertThat(photoUrl).startsWith("/api/v1/equipment-photos/" + fileName + "?expires=");
+        mvc.perform(get(photoUrl))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.IMAGE_PNG))
+                .andExpect(content().bytes(PNG));
 
         assertThat(changes()).containsExactly("EQUIPMENT|OR-05-1|설비 등록|null|외륜 연삭기 1호기|" + manager.getId());
     }
@@ -247,19 +257,19 @@ class MasterEquipmentApiTest {
     @Test
     void createValidatesInputWithoutStoringAnything() throws Exception {
         List<MockMultipartHttpServletRequestBuilder> invalid = List.of(
-                createForm("A".repeat(101)),
+                createForm("A".repeat(21)),
                 createForm("   "),
-                createForm("OR-09-1", "communicationMethod", "C".repeat(101)),
+                createForm("OR-09-1", "communicationMethod", "C".repeat(21)),
                 createForm("OR-09-1", "communicationMethod", " "),
                 createForm("OR-09-1", "communicationMethod", null),
                 createForm("OR-09-1", "processOrder", "0"),
                 createForm("OR-09-1", "lineId", "abc"),
                 createForm("OR-09-1", "lineId", null),
                 createForm("OR-09-1", "registeredAt", "어제"),
-                createForm("OR-09-1", "equipmentName", "가".repeat(201)),
+                createForm("OR-09-1", "equipmentName", "가".repeat(101)),
                 createForm("OR-09-1", "equipmentType", " "),
-                createForm("OR-09-1", "equipmentType", "T".repeat(101)),
-                createForm("OR-09-1", "serialNumber", "S".repeat(201)),
+                createForm("OR-09-1", "equipmentType", "T".repeat(51)),
+                createForm("OR-09-1", "serialNumber", "S".repeat(51)),
                 createForm("OR-09-1").file(photo("photo.png", "image/png", "not an image".getBytes())),
                 createForm("OR-09-1").file(photo("photo.jpg", "image/png", JPEG)),
                 multipart(BASE).param("equipmentCode", "OR-09-1").header("Authorization", token));
@@ -273,13 +283,10 @@ class MasterEquipmentApiTest {
     }
 
     @Test
-    void codeLongerThanDbColumnIsDbErrorNotDuplicate() {
-        // v7 은 코드를 100자까지 받지만 DB equip_code 는 varchar(20) 이다. 실패한 저장 뒤 다시 조회하지 않는다.
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> equipmentService.create(
-                        new com.sfaasproject.stf.equipment.service.MasterEquipmentService.Command("X".repeat(21),
-                                "긴 코드", "시험기", null, outer, 1, "MQTT", null, null, false), manager.getId()))
-                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThat(count("equipment")).isZero();
+    void longestErdLengthsAreAccepted() throws Exception {
+        mvc.perform(createForm("A".repeat(20), "equipmentName", "가".repeat(100), "equipmentType", "T".repeat(50),
+                        "serialNumber", "S".repeat(50), "communicationMethod", "C".repeat(20)))
+                .andExpect(status().isCreated());
     }
 
     @Test
@@ -303,8 +310,12 @@ class MasterEquipmentApiTest {
                         "image/webp", new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'})))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.communicationMethod").value("EtherNet/IP"));
-        assertThat(jdbc.queryForObject("SELECT photo_path FROM equipment WHERE equip_code = 'OR-05-3'",
-                String.class)).matches("[0-9a-f]{32}\\.webp");
+        String name = jdbc.queryForObject("SELECT photo_path FROM equipment WHERE equip_code = 'OR-05-3'",
+                String.class);
+        assertThat(name).matches("[0-9a-f]{32}\\.webp");
+        mvc.perform(get(signer.url(name, clock.instant())))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("image/webp"));
     }
 
     @Test
@@ -375,7 +386,8 @@ class MasterEquipmentApiTest {
         assertThat(Files.exists(PHOTO_DIR.resolve(first))).isTrue();
 
         mvc.perform(fullUpdate(id).file(photo("b.jpg", "image/jpeg", JPEG)))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.photoUrl").exists());
         String second = photoOf(id);
         assertThat(second).endsWith(".jpg").isNotEqualTo(first);
         assertThat(Files.exists(PHOTO_DIR.resolve(first))).isFalse();
@@ -453,6 +465,29 @@ class MasterEquipmentApiTest {
         mvc.perform(delete(BASE + "/" + id).header("Authorization", token)).andExpect(status().isNoContent());
         mvc.perform(delete("/api/v1/master/lines/" + inner).header("Authorization", token))
                 .andExpect(status().isNoContent());
+    }
+
+    // ---------- MST-018 ----------
+
+    @Test
+    void photoUrlNeedsValidUnexpiredSignature() throws Exception {
+        long id = equipment("OR-01-1", "단조기", forging);
+        mvc.perform(fullUpdate(id).file(photo("a.png", "image/png", PNG))).andExpect(status().isOk());
+        String name = photoOf(id);
+        String valid = signer.url(name, clock.instant());
+        String expired = signer.url(name, clock.instant().minus(EquipmentPhotoUrlSigner.TTL).minusSeconds(5));
+        String otherFile = signer.url("0123456789abcdef0123456789abcdef.png", clock.instant());
+
+        mvc.perform(get(valid)).andExpect(status().isOk());
+        for (String url : List.of(expired, valid.replace("signature=", "signature=x"),
+                valid.replaceAll("expires=\\d+", "expires=99999999999"), otherFile,
+                "/api/v1/equipment-photos/" + name, "/api/v1/equipment-photos/secret.png?expires=99999999999&signature=a")) {
+            mvc.perform(get(url)).andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.error.code").value("EQUIPMENT_PHOTO_NOT_FOUND"));
+        }
+        // 인코딩한 경로 구분자는 Spring Security 방화벽이 먼저 막는다(400). 어느 쪽이든 파일은 열리지 않는다.
+        mvc.perform(get("/api/v1/equipment-photos/..%2Fsecret.png?expires=1&signature=a"))
+                .andExpect(status().is4xxClientError());
     }
 
     // ---------- helpers ----------

@@ -34,20 +34,19 @@ import org.springframework.web.multipart.MultipartFile;
  * MST-001~004 설비 기준정보. 바꾸는 작업은 라인 줄을 먼저 잠그고 설비 줄을 잠근다(배치 변경 MST-009 와 같은 순서).
  * 변경 이력은 같은 트랜잭션에 남기고, 삭제한 사람도 변경 이력에 남긴다(equipment 에 삭제한 사람 컬럼이 없음).
  *
- * <p>openapi v7 을 그대로 따른다(2026-11-18 사용자 결정). 길이는 v7 대로 코드·종류 100자, 이름·시리얼 200자,
- * 통신 방식은 1~100자 문자열이다. DB 컬럼(equip_code 20, name 100, equip_type 50, serial_no 50, comm_type 20)보다
- * 길면 저장할 때 DB 오류가 난다. 등록 일시는 선택이며 비우면 현재 시각이다. 사진은 v7 대로 JPG·PNG·WebP 5MB
- * 이하를 서버 폴더에 저장한다. v7 에 사진 조회 주소가 없어 photoUrl 은 null 이다.
+ * <p>openapi v7 을 따른다. 길이는 ERD 컬럼에 맞춘다(API_SPEC 11.0, 2026-11-18 사용자 결정): 코드 20, 이름 100,
+ * 종류 50, 시리얼 50, 통신 방식 1~20자 문자열. 등록 일시는 선택이며 비우면 현재 시각이다. 사진은 v7 대로 JPG·PNG·WebP 5MB
+ * 이하를 서버 폴더에 저장하고, photoUrl 은 10분 동안 열리는 MST-018 서명 주소다(2026-11-18 사용자 결정).
  * 라인·공정을 찾지 못하면 v7 응답 정의에 맞춰 400 VALIDATION_ERROR 로 알린다.
  */
 @Service
 public class MasterEquipmentService {
 
-    static final int CODE_MAX = 100;
-    static final int NAME_MAX = 200;
-    static final int TYPE_MAX = 100;
-    static final int SERIAL_MAX = 200;
-    static final int COMMUNICATION_METHOD_MAX = 100;
+    static final int CODE_MAX = 20;
+    static final int NAME_MAX = 100;
+    static final int TYPE_MAX = 50;
+    static final int SERIAL_MAX = 50;
+    static final int COMMUNICATION_METHOD_MAX = 20;
 
     /**
      * 등록·수정 입력. equipmentCode 는 등록할 때만 쓴다.
@@ -69,18 +68,21 @@ public class MasterEquipmentService {
     private final EquipmentRuntimeQuery runtime;
     private final EquipmentPhotoValidationService photoValidation;
     private final EquipmentPhotoStorage photoStorage;
+    private final EquipmentPhotoUrlSigner photoUrls;
     private final AuditRecorder audit;
     private final Clock clock;
 
     public MasterEquipmentService(EquipmentRepository equipment, LineRepository lines, ProcessRepository processes,
             EquipmentRuntimeQuery runtime, EquipmentPhotoValidationService photoValidation,
-            EquipmentPhotoStorage photoStorage, AuditRecorder audit, Clock clock) {
+            EquipmentPhotoStorage photoStorage, EquipmentPhotoUrlSigner photoUrls, AuditRecorder audit,
+            Clock clock) {
         this.equipment = equipment;
         this.lines = lines;
         this.processes = processes;
         this.runtime = runtime;
         this.photoValidation = photoValidation;
         this.photoStorage = photoStorage;
+        this.photoUrls = photoUrls;
         this.audit = audit;
         this.clock = clock;
     }
@@ -200,8 +202,7 @@ public class MasterEquipmentService {
     }
 
     private MasterEquipmentView view(EquipmentEntity item, Placement placement, EquipmentRuntimeQuery.Runtime state) {
-        // v7 에 사진 조회 주소가 정의되지 않았다. 사진 파일은 저장하지만 주소는 주지 않는다.
-        String photoUrl = null;
+        String photoUrl = item.getPhotoPath() == null ? null : photoUrls.url(item.getPhotoPath(), clock.instant());
         return new MasterEquipmentView(item.getId(), item.getEquipCode(), item.getName(), item.getEquipType(),
                 item.getSerialNo(), placement.line().getId(), placement.line().getName(), placement.process().getId(),
                 placement.process().getName(), placement.process().getProcessSeq(), item.getCommType(), photoUrl,

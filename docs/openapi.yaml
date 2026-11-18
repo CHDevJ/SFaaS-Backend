@@ -1385,6 +1385,52 @@ paths:
           $ref: "#/components/responses/NotFound"
         "422":
           $ref: "#/components/responses/BusinessRuleViolation"
+  /equipment-photos/{fileName}:
+    get:
+      tags: [MasterData]
+      operationId: getEquipmentPhoto
+      summary: 설비 사진 조회(서명 주소)
+      description: |
+        설비 응답의 photoUrl 그대로 연다. 화면의 img 태그가 쓰도록 로그인 없이 열리지만 10분 동안만 유효한 HMAC 서명이 있어야 한다(2026-11-18 A 추가, 제안값).
+        서명이 틀렸거나 만료됐거나 파일이 없으면 모두 404 EQUIPMENT_PHOTO_NOT_FOUND 다. 만료되면 설비를 다시 조회해 새 주소를 받는다.
+      security: []
+      x-api-id: MST-018
+      x-requirement-ids: [FR1302]
+      x-nfr-ids: [NFR07]
+      x-interface-ids: []
+      x-business-rule-ids: []
+      x-test-ids: []
+      x-permissions: [ANONYMOUS]
+      parameters:
+        - name: fileName
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9a-f]{32}\.(jpg|png|webp)$'}
+        - name: expires
+          in: query
+          required: true
+          description: 만료 시각(epoch 초)
+          schema: {type: integer, format: int64}
+        - name: signature
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: 사진 파일
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '404':
+          description: EQUIPMENT_PHOTO_NOT_FOUND
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+  /master/lines:
   /master/lines:
     get:
       tags:
@@ -3717,10 +3763,10 @@ components:
           $ref: "#/components/schemas/Identifier"
         equipmentCode:
           type: string
-          maxLength: 100
+          maxLength: 20
         equipmentName:
           type: string
-          maxLength: 200
+          maxLength: 100
         lineId:
           $ref: "#/components/schemas/Identifier"
         lineName:
@@ -3864,8 +3910,9 @@ components:
           type: string
         photoUrl:
           type: string
-          format: uri
+          format: uri-reference
           nullable: true
+          description: 10분 동안 열리는 서명 상대 주소(MST-018). 사진이 없으면 null
         registeredAt: *a5
     EquipmentDetailData:
       type: object
@@ -4945,19 +4992,19 @@ components:
         equipmentCode:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 20
           description: 등록 후 수정 불가
         equipmentName:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 100
         equipmentType:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         serialNumber:
           type: string
-          maxLength: 200
+          maxLength: 50
           nullable: true
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -4967,7 +5014,7 @@ components:
         communicationMethod:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 20
         photo:
           type: string
           format: binary
@@ -4988,14 +5035,14 @@ components:
         equipmentName:
           type: string
           minLength: 1
-          maxLength: 200
+          maxLength: 100
         equipmentType:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         serialNumber:
           type: string
-          maxLength: 200
+          maxLength: 50
           nullable: true
         lineId:
           $ref: "#/components/schemas/Identifier"
@@ -5005,7 +5052,7 @@ components:
         communicationMethod:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 20
         photo:
           type: string
           format: binary
