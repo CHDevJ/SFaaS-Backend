@@ -28,7 +28,9 @@ public final class BPorts {
             return active(id) != null;
         }
 
-        default boolean passwordChangeRequired(long id) { return false; }
+        default boolean passwordChangeRequired(long id) {
+            return false;
+        }
 
         Set<Long> maintenanceIds();
 
@@ -82,7 +84,9 @@ public final class BPorts {
     public record Duty(long id, LocalDate from, LocalDate to, long userId) {}
 
     public interface Duties {
-        /** Lock the candidate account before the shared duty lock to match account deletion order. */
+        /**
+         * Lock the candidate account before the shared duty lock to match account deletion order.
+         */
         void lockAssignee(long userId);
 
         /** Remove current/future memberships only when every affected period has a replacement. */
@@ -124,6 +128,9 @@ public final class BPorts {
 
         TelegramDeliveryPageResponse deliveries(
                 LocalDate date, DeliveryResult result, int page, int size);
+
+        TelegramDeliveryPageResponse deliveriesForAlarm(
+                LocalDate date, DeliveryResult result, int page, int size, long alarmId);
     }
 
     public interface LinkTokens {

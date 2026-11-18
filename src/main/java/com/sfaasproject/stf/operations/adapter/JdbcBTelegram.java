@@ -71,12 +71,34 @@ public class JdbcBTelegram implements Telegram {
     @Override
     public TelegramDeliveryPageResponse deliveries(
             LocalDate date, DeliveryResult result, int page, int size) {
+        return queryDeliveries(date, result, page, size, null);
+    }
+
+    @Override
+    public TelegramDeliveryPageResponse deliveriesForAlarm(
+            LocalDate date, DeliveryResult result, int page, int size, long alarmId) {
+        return queryDeliveries(date, result, page, size, alarmId);
+    }
+
+    private TelegramDeliveryPageResponse queryDeliveries(
+            LocalDate date, DeliveryResult result, int page, int size, Long alarmId) {
         var rows =
-                db.rows(
-                        "SELECT * FROM notification_log WHERE sent_at>=? AND sent_at<? ORDER BY"
-                                + " sent_at DESC,notification_id DESC",
-                        date.atStartOfDay(),
-                        date.plusDays(1).atStartOfDay());
+                db
+                        .rows(
+                                "SELECT * FROM notification_log WHERE sent_at>=? AND sent_at<?"
+                                    + " ORDER BY sent_at DESC,notification_id DESC",
+                                date.atStartOfDay(),
+                                date.plusDays(1).atStartOfDay())
+                        .stream()
+                        .filter(
+                                r ->
+                                        alarmId == null
+                                                || Objects.equals(
+                                                        alarmId,
+                                                        r.get("alarm_id") == null
+                                                                ? null
+                                                                : number(r, "alarm_id")))
+                        .toList();
         int success =
                 (int) rows.stream().filter(r -> "SUCCESS".equals(string(r, "send_result"))).count();
         var selected =

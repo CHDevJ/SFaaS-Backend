@@ -648,6 +648,7 @@ public final class BContract {
             @NotNull Boolean success, @NotNull @Valid TelegramTestMessageResult data) {}
 
     public record TelegramTestMessageResult(
+            @NotNull String message,
             @NotNull @DecimalMin(value = "1", inclusive = true) @Valid Long userId,
             @NotNull @Valid DeliveryResult result,
             String failureReason,
