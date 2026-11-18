@@ -3566,7 +3566,7 @@ components:
           $ref: "#/components/schemas/Identifier"
         lineName:
           type: string
-          maxLength: 100
+          maxLength: 50
         displayOrder:
           type: integer
           minimum: 1
@@ -5081,7 +5081,7 @@ components:
         lineName:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         displayOrder:
           type: integer
           minimum: 1

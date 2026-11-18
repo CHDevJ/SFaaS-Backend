@@ -11,6 +11,6 @@ import jakarta.validation.constraints.Size;
  * 수정에서 생략하면 기존 값(ASSEMBLY 포함)을 유지한다.
  */
 public record LineWriteRequest(
-        @NotBlank @Size(max = 100) String lineName,
+        @NotBlank @Size(max = 50) String lineName,
         @NotNull @Min(1) Integer displayOrder,
         @Pattern(regexp = "PART|ASSEMBLY") String lineType) { }
