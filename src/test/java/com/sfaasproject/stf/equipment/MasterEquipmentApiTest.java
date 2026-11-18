@@ -4,16 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.jayway.jsonpath.JsonPath;
 import com.sfaasproject.stf.auth.AuthTestConfig;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.equipment.service.EquipmentPhotoStorage;
-import com.sfaasproject.stf.equipment.service.EquipmentPhotoUrlSigner;
 import com.sfaasproject.stf.equipment.service.EquipmentPhotoValidationService;
 import com.sfaasproject.stf.telegram.service.RedisTelegramLinkTokenStore;
 import com.sfaasproject.stf.user.entity.AccountEntity;
@@ -38,7 +35,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.mock.web.MockMultipartFile;
@@ -50,7 +46,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * MST-001~004 설비 기준정보와 MST-018 사진 조회. B 의 H2 스키마(V1 과 같은 컬럼)를 써서
+ * MST-001~004 설비 기준정보 (openapi v7). B 의 H2 스키마(V1 과 같은 컬럼)를 써서
  * 데이터 항목·장착 부품·알람·설비 상태 테이블까지 함께 확인한다.
  */
 @SpringBootTest(properties = {
@@ -77,7 +73,6 @@ class MasterEquipmentApiTest {
     @Autowired AccountRepository accounts;
     @Autowired PasswordEncoder passwords;
     @Autowired JwtAccessTokenService jwt;
-    @Autowired EquipmentPhotoUrlSigner signer;
     @Autowired Clock clock;
 
     AccountEntity manager;
@@ -101,7 +96,7 @@ class MasterEquipmentApiTest {
                 }
             }
         }
-        manager = approved("maintainer", Position.MAINTENANCE);
+        manager = approved("equser", Permission.USER);
         token = bearer(manager);
         outer = line("외륜", 1);
         forging = process(outer, 1, "단조");
@@ -140,7 +135,6 @@ class MasterEquipmentApiTest {
                 .andExpect(jsonPath("$.data.items[0].processOrder").value(1))
                 .andExpect(jsonPath("$.data.items[0].communicationMethod").value("MODBUS_TCP"))
                 .andExpect(jsonPath("$.data.items[0].photoUrl").doesNotExist())
-                .andExpect(jsonPath("$.data.items[0].deletedAt").doesNotExist())
                 .andExpect(jsonPath("$.data.items[0].lastReceivedAt").value("2026-11-17T09:30:15+09:00"))
                 .andExpect(jsonPath("$.data.items[1].equipmentId").value(b))
                 .andExpect(jsonPath("$.data.items[1].lastReceivedAt").doesNotExist())
@@ -152,7 +146,7 @@ class MasterEquipmentApiTest {
     }
 
     @Test
-    void listFiltersByLineEquipmentAndInactiveAndPages() throws Exception {
+    void listFiltersByLineAndEquipmentAndPages() throws Exception {
         long a = equipment("OR-01-1", "외륜 단조기", forging);
         long b = equipment("OR-02-1", "외륜 선삭기", turning);
         equipment("IR-01-1", "내륜 단조기", innerForging);
@@ -166,11 +160,8 @@ class MasterEquipmentApiTest {
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].equipmentId").value(b))
                 .andExpect(jsonPath("$.data.registeredCount").value(3));
-        mvc.perform(get(BASE).param("lineId", String.valueOf(outer)).param("includeInactive", "true")
-                        .header("Authorization", token))
-                .andExpect(jsonPath("$.data.items.length()").value(3))
-                .andExpect(jsonPath("$.data.items[1].equipmentId").value(gone))
-                .andExpect(jsonPath("$.data.items[1].deletedAt").exists());
+        mvc.perform(get(BASE).param("equipmentId", String.valueOf(gone)).header("Authorization", token))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
         mvc.perform(get(BASE).param("size", "1").param("page", "1").header("Authorization", token))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].equipmentId").value(b))
@@ -180,14 +171,12 @@ class MasterEquipmentApiTest {
     }
 
     @Test
-    void listValidatesLineAndPaging() throws Exception {
-        markDeleted("line", inner);
+    void listReturnsEmptyForUnknownLineAndValidatesPaging() throws Exception {
+        // v7 MST-001 은 200/401 만 정의한다. 없는 라인은 빈 목록이다.
         mvc.perform(get(BASE).param("lineId", "999999").header("Authorization", token))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("LINE_NOT_FOUND"));
-        mvc.perform(get(BASE).param("lineId", String.valueOf(inner)).header("Authorization", token))
-                .andExpect(status().isNotFound());
-        mvc.perform(get(BASE).param("lineId", String.valueOf(inner)).param("includeInactive", "true")
-                .header("Authorization", token)).andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(0))
+                .andExpect(jsonPath("$.data.registeredCount").value(0));
         for (String[] param : new String[][] {{"size", "101"}, {"page", "-1"}, {"lineId", "abc"}}) {
             mvc.perform(get(BASE).param(param[0], param[1]).header("Authorization", token))
                     .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
@@ -198,8 +187,8 @@ class MasterEquipmentApiTest {
     // ---------- MST-002 ----------
 
     @Test
-    void createStoresEquipmentWithPhotoAndServesItThroughSignedUrl() throws Exception {
-        String body = mvc.perform(createForm("OR-05-1").file(photo("photo.png", "image/png", PNG))
+    void createStoresEquipmentWithPhoto() throws Exception {
+        mvc.perform(createForm("OR-05-1").file(photo("photo.png", "image/png", PNG))
                         .param("serialNumber", "  SN-1  ")
                         .param("registeredAt", "2026-11-17T08:30:00+09:00"))
                 .andExpect(status().isCreated())
@@ -212,7 +201,8 @@ class MasterEquipmentApiTest {
                 .andExpect(jsonPath("$.data.communicationMethod").value("OPC_UA"))
                 .andExpect(jsonPath("$.data.registeredAt").value("2026-11-17T08:30:00+09:00"))
                 .andExpect(jsonPath("$.data.lastReceivedAt").doesNotExist())
-                .andReturn().getResponse().getContentAsString();
+                // v7 에 사진 조회 주소가 없어 photoUrl 은 비운다.
+                .andExpect(jsonPath("$.data.photoUrl").doesNotExist());
 
         Map<String, Object> row = jdbc.queryForMap("SELECT * FROM equipment WHERE equip_code = 'OR-05-1'");
         assertThat(row.get("equip_type")).isEqualTo("연삭기");
@@ -222,12 +212,6 @@ class MasterEquipmentApiTest {
         assertThat(fileName).matches("[0-9a-f]{32}\\.png");
         assertThat(Files.readAllBytes(PHOTO_DIR.resolve(fileName))).isEqualTo(PNG);
 
-        String photoUrl = JsonPath.read(body, "$.data.photoUrl");
-        assertThat(photoUrl).startsWith("/api/v1/equipment-photos/" + fileName + "?expires=");
-        mvc.perform(get(photoUrl))
-                .andExpect(status().isOk())
-                .andExpect(content().contentType(MediaType.IMAGE_PNG))
-                .andExpect(content().bytes(PNG));
         assertThat(changes()).containsExactly("EQUIPMENT|OR-05-1|설비 등록|null|외륜 연삭기 1호기|" + manager.getId());
     }
 
@@ -262,19 +246,19 @@ class MasterEquipmentApiTest {
     @Test
     void createValidatesInputWithoutStoringAnything() throws Exception {
         List<MockMultipartHttpServletRequestBuilder> invalid = List.of(
-                createForm("A".repeat(21)),
+                createForm("A".repeat(101)),
                 createForm("   "),
-                createForm("OR-09-1", "communicationMethod", "SERIAL"),
+                createForm("OR-09-1", "communicationMethod", "C".repeat(101)),
+                createForm("OR-09-1", "communicationMethod", " "),
                 createForm("OR-09-1", "communicationMethod", null),
                 createForm("OR-09-1", "processOrder", "0"),
                 createForm("OR-09-1", "lineId", "abc"),
                 createForm("OR-09-1", "lineId", null),
                 createForm("OR-09-1", "registeredAt", "어제"),
-                createForm("OR-09-1", "equipmentName", "가".repeat(101)),
+                createForm("OR-09-1", "equipmentName", "가".repeat(201)),
                 createForm("OR-09-1", "equipmentType", " "),
-                createForm("OR-09-1", "serialNumber", "S".repeat(51)),
-                createForm("OR-09-1").file(photo("photo.webp", "image/webp",
-                        new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'})),
+                createForm("OR-09-1", "equipmentType", "T".repeat(101)),
+                createForm("OR-09-1", "serialNumber", "S".repeat(201)),
                 createForm("OR-09-1").file(photo("photo.png", "image/png", "not an image".getBytes())),
                 createForm("OR-09-1").file(photo("photo.jpg", "image/png", JPEG)),
                 multipart(BASE).param("equipmentCode", "OR-09-1").header("Authorization", token));
@@ -289,15 +273,27 @@ class MasterEquipmentApiTest {
 
     @Test
     void createRequiresExistingLineAndProcessOrder() throws Exception {
-        mvc.perform(createForm("OR-09-1", "lineId", "999999"))
-                .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("LINE_NOT_FOUND"));
+        // v7 MST-002 응답은 201/400/401/409 뿐이라 본문의 라인·공정이 없으면 400 이다.
         markDeleted("line", inner);
-        mvc.perform(createForm("OR-09-1", "lineId", String.valueOf(inner), "processOrder", "1"))
-                .andExpect(status().isNotFound());
-        mvc.perform(createForm("OR-09-1", "processOrder", "7"))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error.code").value("PROCESS_NOT_FOUND"));
+        for (MockMultipartHttpServletRequestBuilder request : List.of(
+                createForm("OR-09-1", "lineId", "999999"),
+                createForm("OR-09-1", "lineId", String.valueOf(inner), "processOrder", "1"),
+                createForm("OR-09-1", "processOrder", "7"))) {
+            mvc.perform(request)
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+        }
         assertThat(count("equipment")).isZero();
+    }
+
+    @Test
+    void createAcceptsWebpPhotoAndFreeCommunicationMethod() throws Exception {
+        mvc.perform(createForm("OR-05-3", "communicationMethod", "EtherNet/IP").file(photo("photo.webp",
+                        "image/webp", new byte[] {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'})))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.communicationMethod").value("EtherNet/IP"));
+        assertThat(jdbc.queryForObject("SELECT photo_path FROM equipment WHERE equip_code = 'OR-05-3'",
+                String.class)).matches("[0-9a-f]{32}\\.webp");
     }
 
     @Test
@@ -368,8 +364,7 @@ class MasterEquipmentApiTest {
         assertThat(Files.exists(PHOTO_DIR.resolve(first))).isTrue();
 
         mvc.perform(fullUpdate(id).file(photo("b.jpg", "image/jpeg", JPEG)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.photoUrl").exists());
+                .andExpect(status().isOk());
         String second = photoOf(id);
         assertThat(second).endsWith(".jpg").isNotEqualTo(first);
         assertThat(Files.exists(PHOTO_DIR.resolve(first))).isFalse();
@@ -397,11 +392,12 @@ class MasterEquipmentApiTest {
                     .andExpect(jsonPath("$.error.code").value("EQUIPMENT_NOT_FOUND"));
         }
         long id = equipment("OR-01-1", "단조기", forging);
-        mvc.perform(fullUpdate(id, "processOrder", "9")).andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error.code").value("PROCESS_NOT_FOUND"));
-        mvc.perform(fullUpdate(id, "communicationMethod", "modbus")).andExpect(status().isBadRequest());
-        mvc.perform(fullUpdate(id, "lineId", "999999")).andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.error.code").value("LINE_NOT_FOUND"));
+        // 본문의 라인·공정이 없으면 v7 MST-003 응답 정의에 맞춰 400 이다.
+        mvc.perform(fullUpdate(id, "processOrder", "9")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+        mvc.perform(fullUpdate(id, "communicationMethod", " ")).andExpect(status().isBadRequest());
+        mvc.perform(fullUpdate(id, "lineId", "999999")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 
     // ---------- MST-004 ----------
@@ -430,7 +426,7 @@ class MasterEquipmentApiTest {
     @Test
     void deleteRejectsEquipmentWithActiveAlarm() throws Exception {
         long id = equipment("OR-01-1", "단조기", forging);
-        alarm(id, dataItem(id), "ACKNOWLEDGED");
+        alarm(id, dataItem(id), "ACTIVE");
         mvc.perform(delete(BASE + "/" + id).header("Authorization", token))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code").value("EQUIPMENT_HAS_ACTIVE_ALARM"));
@@ -446,29 +442,6 @@ class MasterEquipmentApiTest {
         mvc.perform(delete(BASE + "/" + id).header("Authorization", token)).andExpect(status().isNoContent());
         mvc.perform(delete("/api/v1/master/lines/" + inner).header("Authorization", token))
                 .andExpect(status().isNoContent());
-    }
-
-    // ---------- MST-018 ----------
-
-    @Test
-    void photoUrlNeedsValidUnexpiredSignature() throws Exception {
-        long id = equipment("OR-01-1", "단조기", forging);
-        mvc.perform(fullUpdate(id).file(photo("a.png", "image/png", PNG))).andExpect(status().isOk());
-        String name = photoOf(id);
-        String valid = signer.url(name, clock.instant());
-        String expired = signer.url(name, clock.instant().minus(EquipmentPhotoUrlSigner.TTL).minusSeconds(5));
-        String otherFile = signer.url("0123456789abcdef0123456789abcdef.png", clock.instant());
-
-        mvc.perform(get(valid)).andExpect(status().isOk());
-        for (String url : List.of(expired, valid.replace("signature=", "signature=x"),
-                valid.replaceAll("expires=\\d+", "expires=99999999999"), otherFile,
-                "/api/v1/equipment-photos/" + name, "/api/v1/equipment-photos/secret.png?expires=99999999999&signature=a")) {
-            mvc.perform(get(url)).andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.error.code").value("EQUIPMENT_PHOTO_NOT_FOUND"));
-        }
-        // 인코딩한 경로 구분자는 Spring Security 방화벽이 먼저 막는다(400). 어느 쪽이든 파일은 열리지 않는다.
-        mvc.perform(get("/api/v1/equipment-photos/..%2Fsecret.png?expires=1&signature=a"))
-                .andExpect(status().is4xxClientError());
     }
 
     // ---------- helpers ----------
@@ -520,15 +493,15 @@ class MasterEquipmentApiTest {
         return new MockMultipartFile("photo", name, type, bytes);
     }
 
-    private AccountEntity approved(String loginId, Position position) {
+    private AccountEntity approved(String loginId, Permission permission) {
         LocalDateTime now = LocalDateTime.now(clock);
         AccountEntity account = AccountEntity.signup(loginId, passwords.encode("MasterEq123!"), loginId, now);
-        account.approve(position.name(), null, now);
+        account.approve(permission.name(), null, now);
         return accounts.save(account);
     }
 
     private String bearer(AccountEntity account) {
-        return "Bearer " + jwt.issue(account.getId(), Position.valueOf(account.getRole()), clock.instant()).value();
+        return "Bearer " + jwt.issue(account.getId(), Permission.valueOf(account.getRole()), clock.instant()).value();
     }
 
     private long line(String name, int order) {

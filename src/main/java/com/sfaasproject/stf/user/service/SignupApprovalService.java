@@ -2,7 +2,7 @@ package com.sfaasproject.stf.user.service;
 
 import com.sfaasproject.stf.auth.service.AuthPolicyService;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.common.DomainException;
 import com.sfaasproject.stf.common.paging.PageQuery;
 import com.sfaasproject.stf.common.time.KstTime;
@@ -58,7 +58,7 @@ public class SignupApprovalService {
     }
 
     @Transactional
-    public UserView approve(long requestId, Position position, long approverId) {
+    public UserView approve(long requestId, Permission position, long approverId) {
         Objects.requireNonNull(position);
         AccountEntity account = lockPending(requestId);
         LocalDateTime now = KstTime.toLocal(clock.instant());

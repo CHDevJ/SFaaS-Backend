@@ -3,7 +3,6 @@ package com.sfaasproject.stf.auth.dto;
 import com.sfaasproject.stf.auth.service.AuthFlowService;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.common.time.KstTime;
 import java.time.OffsetDateTime;
 
@@ -15,7 +14,6 @@ public record LoginResponse(
         long userId,
         String loginId,
         String name,
-        Position position,
         Permission permission,
         AccountStatus accountStatus,
         OffsetDateTime lastLoginAt,
@@ -27,7 +25,7 @@ public record LoginResponse(
 
     public static LoginResponse from(AuthFlowService.Login login) {
         AuthFlowService.User user = login.user();
-        return new LoginResponse(user.userId(), user.loginId(), user.name(), user.position(),
+        return new LoginResponse(user.userId(), user.loginId(), user.name(),
                 user.permission(), user.status(), KstTime.toOffset(user.lastLoginAt()),
                 login.accessToken(), BEARER, KstTime.toOffset(login.accessExpiresAt()));
     }

@@ -28,20 +28,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * MST-005~009 라인과 설비 배치 기준정보. 바꾸는 작업은 라인 줄을 잠그고 처리하며 변경 이력을 같은 트랜잭션에 남긴다.
+ * MST-005~009 라인과 설비 배치 기준정보 (openapi v7). 바꾸는 작업은 라인 줄을 잠그고 처리하며 변경 이력을 같은 트랜잭션에 남긴다.
  *
- * <p>프로젝트 제안값(2026-11-17 사용자 결정):
  * <ul>
- *   <li>새 라인의 종류는 부품 라인(PART)이다.</li>
- *   <li>라인 이름은 ERD line.name 길이인 50자까지이고, 삭제한 라인을 포함해 이름이 겹치면 LINE_NAME_DUPLICATE(409).</li>
- *   <li>배치 변경은 이 라인의 설비만, 이 라인에 이미 있는 공정 순서로만 옮긴다. 공정이 없으면 PROCESS_NOT_FOUND(422).</li>
+ *   <li>lineType 을 등록에서 생략하면 PART, 수정에서 생략하면 기존 값을 유지한다(v7 LineWriteRequest).</li>
+ *   <li>라인 이름은 v7 대로 100자까지 받는다. DB line.name 은 varchar(50) UNIQUE 다.
+ *       삭제한 라인을 포함해 이름이 겹치면 LINE_NAME_DUPLICATE(409). v7 에 정의가 없어 기존 코드를 유지한다.</li>
+ *   <li>배치 변경은 이 라인의 설비만, 이 라인에 이미 있는 공정 순서로만 옮긴다. 아니면 v7 MST-009 의 400.</li>
  * </ul>
  */
 @Service
 public class MasterLineService {
 
-    /** ERD line.name 은 varchar(50) 이다. */
-    static final int NAME_MAX = 50;
+    /** v7 LineWriteRequest.lineName 최대 길이. */
+    static final int NAME_MAX = 100;
     /** equipment_state 줄이 없는 설비는 종합현황(OVW-001)과 같이 통신 끊김으로 보여 준다. */
     static final String STATUS_WITHOUT_STATE = "COMMUNICATION_LOST";
 
@@ -72,18 +72,22 @@ public class MasterLineService {
 
     /** MST-006. */
     @Transactional
-    public MasterLineView create(String lineName, Integer displayOrder, long actorId) {
+    public MasterLineView create(String lineName, Integer displayOrder, String lineType, long actorId) {
         String name = cleanName(lineName);
         int order = cleanOrder(displayOrder);
+        String type = cleanType(lineType, LineEntity.TYPE_PART);
         if (lines.existsByName(name)) {
             throw duplicateName();
         }
         LineEntity line;
         try {
-            line = lines.saveAndFlush(LineEntity.create(name, order, now()));
+            line = lines.saveAndFlush(LineEntity.create(name, type, order, now()));
         } catch (DataIntegrityViolationException raced) {
-            // 같은 이름을 동시에 등록하면 UNIQUE 제약이 막는다.
-            throw duplicateName();
+            // 같은 이름을 동시에 등록하면 UNIQUE 제약이 막는다. 이름 길이 초과 같은 다른 DB 오류는 그대로 던진다.
+            if (lines.existsByName(name)) {
+                throw duplicateName();
+            }
+            throw raced;
         }
         audit.record(actorId, AuditTargetType.LINE, name, "라인 등록", null, name);
         return view(line);
@@ -91,23 +95,30 @@ public class MasterLineService {
 
     /** MST-007. 바뀐 항목만 변경 이력에 남긴다. */
     @Transactional
-    public MasterLineView update(long lineId, String lineName, Integer displayOrder, long actorId) {
+    public MasterLineView update(long lineId, String lineName, Integer displayOrder, String lineType,
+            long actorId) {
         String name = cleanName(lineName);
         int order = cleanOrder(displayOrder);
         LineEntity line = lock(lineId);
         String oldName = line.getName();
         int oldOrder = line.getSortOrder();
+        String oldType = line.getLineType();
+        String type = cleanType(lineType, oldType);
         boolean nameChanged = !oldName.equals(name);
         boolean orderChanged = oldOrder != order;
+        boolean typeChanged = !oldType.equals(type);
         if (nameChanged && lines.existsByNameAndIdNot(name, lineId)) {
             throw duplicateName();
         }
-        if (nameChanged || orderChanged) {
-            line.update(name, order, now());
+        if (nameChanged || orderChanged || typeChanged) {
+            line.update(name, type, order, now());
             try {
                 lines.flush();
             } catch (DataIntegrityViolationException raced) {
-                throw duplicateName();
+                if (lines.existsByNameAndIdNot(name, lineId)) {
+                    throw duplicateName();
+                }
+                throw raced;
             }
             if (nameChanged) {
                 audit.record(actorId, AuditTargetType.LINE, oldName, "이름", oldName, name);
@@ -115,6 +126,9 @@ public class MasterLineService {
             if (orderChanged) {
                 audit.record(actorId, AuditTargetType.LINE, name, "표시순서",
                         String.valueOf(oldOrder), String.valueOf(order));
+            }
+            if (typeChanged) {
+                audit.record(actorId, AuditTargetType.LINE, name, "라인 종류", oldType, type);
             }
         }
         return view(line);
@@ -173,8 +187,8 @@ public class MasterLineService {
         }
         for (Integer order : targetOrder.values()) {
             if (!bySeq.containsKey(order)) {
-                throw new DomainException(HttpStatus.UNPROCESSABLE_ENTITY, "PROCESS_NOT_FOUND",
-                        "공정을 찾을 수 없습니다.");
+                // 이 라인에 없는 공정 순서. v7 MST-009 는 400/404 만 정의한다.
+                throw validationError();
             }
         }
 
@@ -221,7 +235,7 @@ public class MasterLineService {
             byLine.computeIfAbsent(line.getId(), id -> new ArrayList<>()).add(new EquipmentSummaryView(
                     item.getId(), item.getEquipCode(), item.getName(), line.getId(), line.getName(),
                     process.getId(), process.getName(), process.getProcessSeq(), status, since,
-                    state == null ? 0 : state.activeAlarmCount()));
+                    state == null ? 0 : state.activeAlarmCount(), line.getLineType()));
         }
         Comparator<EquipmentSummaryView> order = Comparator.comparingInt(EquipmentSummaryView::processOrder)
                 .thenComparingLong(EquipmentSummaryView::equipmentId);
@@ -229,7 +243,8 @@ public class MasterLineService {
         for (LineEntity line : source) {
             List<EquipmentSummaryView> items = new ArrayList<>(byLine.getOrDefault(line.getId(), List.of()));
             items.sort(order);
-            result.add(new MasterLineView(line.getId(), line.getName(), line.getSortOrder(), List.copyOf(items)));
+            result.add(new MasterLineView(line.getId(), line.getName(), line.getSortOrder(), line.getLineType(),
+                    List.copyOf(items)));
         }
         return result;
     }
@@ -244,6 +259,16 @@ public class MasterLineService {
             throw validationError();
         }
         return name;
+    }
+
+    private static String cleanType(String lineType, String fallback) {
+        if (lineType == null) {
+            return fallback;
+        }
+        if (!LineEntity.TYPE_PART.equals(lineType) && !LineEntity.TYPE_ASSEMBLY.equals(lineType)) {
+            throw validationError();
+        }
+        return lineType;
     }
 
     private static int cleanOrder(Integer displayOrder) {

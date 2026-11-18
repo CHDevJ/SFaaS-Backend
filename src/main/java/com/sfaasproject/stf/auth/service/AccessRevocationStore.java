@@ -13,7 +13,7 @@ public interface AccessRevocationStore {
 
     boolean isAccessRevoked(String jti);
 
-    /** 이 사용자에게 {@code cutoff} 이전(같은 초 포함)에 발급된 모든 Access Token 을 폐기한다. */
+    /** 이 사용자에게 {@code cutoff} 이전(같은 시각 포함)에 발급된 모든 Access Token 을 폐기한다. */
     void revokeUserTokensIssuedUntil(long userId, Instant cutoff);
 
     boolean isIssuedAtOrBeforeCutoff(long userId, Instant issuedAt);

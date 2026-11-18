@@ -54,6 +54,17 @@ public class JdbcBDatabase {
         return generated.get(0).longValue();
     }
 
+    /** Explicit key column excludes numeric generated projection columns from JDBC keys. */
+    public long insertReturning(String keyColumn, String sql, Object... args) {
+        var key = new GeneratedKeyHolder();
+        jdbc.update(c -> {
+            var statement = c.prepareStatement(sql, new String[] {keyColumn});
+            for (int i = 0; i < args.length; i++) statement.setObject(i + 1, args[i]);
+            return statement;
+        }, key);
+        return Objects.requireNonNull(key.getKey()).longValue();
+    }
+
     public OffsetDateTime now() {
         return OffsetDateTime.now(clock);
     }

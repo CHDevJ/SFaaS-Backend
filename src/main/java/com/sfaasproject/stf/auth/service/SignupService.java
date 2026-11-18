@@ -23,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SignupService {
 
     /** ERD account.name 은 varchar(50) 이다. */
-    static final int NAME_MAX_LENGTH = 50;
+    static final int NAME_MAX_LENGTH = 100;
 
     public record TelegramLink(String linkUrl, String qrPayload, Instant expiresAt) {
         @Override

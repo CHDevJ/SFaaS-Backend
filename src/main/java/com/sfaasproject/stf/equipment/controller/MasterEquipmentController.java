@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * MST-001~004 설비 기준정보. 권한 매트릭스상 모든 직책이 쓸 수 있으므로 로그인만 확인한다.
+ * MST-001~004 설비 기준정보 (openapi v7). ADMIN, USER 모두 쓸 수 있으므로 로그인만 확인한다.
  * 등록과 수정은 사진 때문에 multipart/form-data 로 받는다.
  */
 @RestController
@@ -43,10 +43,9 @@ public class MasterEquipmentController {
     public PagedApiResponse<MasterEquipmentResponse.PageData> list(
             @RequestParam(required = false) Long lineId,
             @RequestParam(required = false) Long equipmentId,
-            @RequestParam(defaultValue = "false") boolean includeInactive,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        EquipmentPage result = equipment.list(lineId, equipmentId, includeInactive, PageQuery.of(page, size));
+        EquipmentPage result = equipment.list(lineId, equipmentId, PageQuery.of(page, size));
         return PagedApiResponse.ok(MasterEquipmentResponse.PageData.from(result), PageMeta.from(result.items()));
     }
 

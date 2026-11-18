@@ -39,16 +39,14 @@ public interface EquipmentRepository extends JpaRepository<EquipmentEntity, Long
     boolean existsByEquipCode(String equipCode);
 
     /**
-     * MST-001 목록. 라인 표시순서, 공정 순서, 설비 번호순으로 정렬한다.
-     *
-     * @param includeInactive true 면 삭제한 설비도 포함한다
+     * MST-001 목록. 사용 중인 설비를 라인 표시순서, 공정 순서, 설비 번호순으로 정렬한다.
      */
     @Query(value = """
             select e from EquipmentEntity e, ProcessEntity p, LineEntity l
             where e.processId = p.id and p.lineId = l.id
               and (:lineId is null or l.id = :lineId)
               and (:equipmentId is null or e.id = :equipmentId)
-              and (:includeInactive = true or e.deletedAt is null)
+              and e.deletedAt is null
             order by l.sortOrder, l.id, p.processSeq, e.id
             """,
             countQuery = """
@@ -56,10 +54,10 @@ public interface EquipmentRepository extends JpaRepository<EquipmentEntity, Long
             where e.processId = p.id
               and (:lineId is null or p.lineId = :lineId)
               and (:equipmentId is null or e.id = :equipmentId)
-              and (:includeInactive = true or e.deletedAt is null)
+              and e.deletedAt is null
             """)
     Page<EquipmentEntity> search(@Param("lineId") Long lineId, @Param("equipmentId") Long equipmentId,
-            @Param("includeInactive") boolean includeInactive, Pageable pageable);
+            Pageable pageable);
 
     /** 사용 중인(삭제되지 않은) 설비 수. lineId 가 없으면 전체. */
     @Query("""
@@ -69,7 +67,7 @@ public interface EquipmentRepository extends JpaRepository<EquipmentEntity, Long
             """)
     long countActive(@Param("lineId") Long lineId);
 
-    /** 사용 중인 설비 중 사용 중인 데이터 항목이 하나 이상 있어 값을 받는 설비 수(API_SPEC P-21). */
+    /** 사용 중인 설비 중 사용 중인 데이터 항목이 하나 이상 있어 값을 받는 설비 수(MST-001 monitoredCount). */
     @Query(nativeQuery = true, value = """
             SELECT COUNT(*) FROM equipment e JOIN process p ON p.process_id = e.process_id
             WHERE e.deleted_at IS NULL

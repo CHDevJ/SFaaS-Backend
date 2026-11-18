@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 
-/** 기준정보 설비 한 건 (openapi MasterEquipment). */
+/** 기준정보 설비 한 건 (openapi v7 MasterEquipment). */
 public record MasterEquipmentResponse(
         long equipmentId,
         String equipmentCode,
@@ -22,7 +22,6 @@ public record MasterEquipmentResponse(
         String communicationMethod,
         String photoUrl,
         OffsetDateTime registeredAt,
-        OffsetDateTime deletedAt,
         OffsetDateTime lastReceivedAt) {
 
     /** MST-001 의 data (openapi MasterEquipmentPageData). */
@@ -38,7 +37,7 @@ public record MasterEquipmentResponse(
         return new MasterEquipmentResponse(view.equipmentId(), view.equipmentCode(), view.equipmentName(),
                 view.equipmentType(), view.serialNumber(), view.lineId(), view.lineName(), view.processId(),
                 view.processName(), view.processOrder(), view.communicationMethod(), view.photoUrl(),
-                offset(view.registeredAt()), offset(view.deletedAt()), offset(view.lastReceivedAt()));
+                offset(view.registeredAt()), offset(view.lastReceivedAt()));
     }
 
     private static OffsetDateTime offset(LocalDateTime local) {

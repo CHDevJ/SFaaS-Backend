@@ -9,7 +9,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.HexFormat;
-import java.util.Optional;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +19,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 설비 사진을 서버 폴더(app.equipment.photo-dir)에 저장한다(API_SPEC P-18). 파일 이름은 추측할 수 없는
+ * 설비 사진을 서버 폴더(app.equipment.photo-dir)에 저장한다. 파일 이름은 추측할 수 없는
  * 128비트 난수이고 DB 에는 이 이름만 남긴다. 트랜잭션 안에서 호출하면 롤백될 때 새 파일을 지우고,
  * 교체·삭제된 옛 파일은 커밋된 뒤에 지운다.
  */
@@ -28,7 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 public class EquipmentPhotoStorage {
 
     private static final Logger log = LoggerFactory.getLogger(EquipmentPhotoStorage.class);
-    private static final Pattern FILE_NAME = Pattern.compile("[0-9a-f]{32}\\.(jpg|png)");
+    private static final Pattern FILE_NAME = Pattern.compile("[0-9a-f]{32}\\.(jpg|png|webp)");
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final Path root;
@@ -41,7 +40,7 @@ public class EquipmentPhotoStorage {
     public String save(MultipartFile photo, Format format) {
         byte[] random = new byte[16];
         RANDOM.nextBytes(random);
-        String name = HexFormat.of().formatHex(random) + "." + format.extension();
+        String name = HexFormat.of().formatHex(random) + "." + extension(format);
         Path target = root.resolve(name);
         try {
             Files.createDirectories(root);
@@ -85,16 +84,15 @@ public class EquipmentPhotoStorage {
         }
     }
 
-    /** 저장된 사진 파일. 이름 형식이 맞지 않으면(경로 조작 포함) 없는 것으로 본다. */
-    public Optional<Path> find(String name) {
-        if (name == null || !FILE_NAME.matcher(name).matches()) {
-            return Optional.empty();
-        }
-        Path path = root.resolve(name);
-        return Files.isRegularFile(path) ? Optional.of(path) : Optional.empty();
+    private static String extension(Format format) {
+        return switch (format) {
+            case JPEG -> "jpg";
+            case PNG -> "png";
+            case WEBP -> "webp";
+        };
     }
 
-    public static boolean isValidName(String name) {
+    static boolean isValidName(String name) {
         return name != null && FILE_NAME.matcher(name).matches();
     }
 

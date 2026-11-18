@@ -462,3 +462,13 @@ ALTER TABLE account ADD COLUMN last_login_at datetime;
 ALTER TABLE auth_token ADD COLUMN family_id varchar(36) NOT NULL;
 ALTER TABLE auth_token ADD COLUMN used_at datetime;
 CREATE INDEX idx_auth_token_family ON auth_token(family_id);
+
+ALTER TABLE account ADD COLUMN deleted_by bigint;
+ALTER TABLE alarm_action ADD COLUMN equipment_text varchar(200);
+ALTER TABLE measurement_latest ADD COLUMN counter_status varchar(30) DEFAULT 'READY';
+ALTER TABLE measurement_latest ADD COLUMN counter_epoch bigint DEFAULT 0;
+ALTER TABLE measurement_latest ADD COLUMN counter_reset_at timestamp;
+
+ALTER TABLE account ALTER COLUMN name varchar(100);
+ALTER TABLE alarm ADD active_data_item_id bigint GENERATED ALWAYS AS (CASE WHEN process_state='ACTIVE' THEN data_item_id ELSE NULL END);
+CREATE UNIQUE INDEX uq_alarm_active_item ON alarm(equipment_id,active_data_item_id);

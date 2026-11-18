@@ -36,8 +36,8 @@ class PasswordResetApiTest extends AbstractSessionApiTest {
 
     @BeforeEach
     void setUp() {
-        adminBearer = bearerFor(approvedAccount("admin001", "SYSTEM_ADMIN"));
-        target = approvedAccount("maint001", "MAINTENANCE");
+        adminBearer = bearerFor(approvedAccount("admin001", "ADMIN"));
+        target = approvedAccount("maint001", "USER");
         target.connectTelegram("555000", LocalDateTime.now(clock));
         target = accounts.save(target);
     }
@@ -105,7 +105,7 @@ class PasswordResetApiTest extends AbstractSessionApiTest {
 
     @Test
     void seeded_accounts_that_must_change_their_password_are_not_treated_as_expired() throws Exception {
-        AccountEntity seeded = approvedAccount("seed0001", "LINE_MANAGER");
+        AccountEntity seeded = approvedAccount("seed0001", "USER");
         seeded.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(seeded);
 
@@ -116,7 +116,7 @@ class PasswordResetApiTest extends AbstractSessionApiTest {
 
     @Test
     void an_account_without_telegram_is_refused_and_nothing_changes() throws Exception {
-        AccountEntity unlinked = approvedAccount("unlinked", "MAINTENANCE");
+        AccountEntity unlinked = approvedAccount("unlinked", "USER");
         String hash = unlinked.getPasswordHash();
 
         mockMvc.perform(post(url(unlinked.getId())).header("Authorization", adminBearer))
@@ -148,7 +148,7 @@ class PasswordResetApiTest extends AbstractSessionApiTest {
     @Test
     void pending_deleted_and_unknown_accounts_are_not_found() throws Exception {
         AccountEntity pending = pendingAccount("waiting1");
-        AccountEntity deleted = approvedAccount("gone0001", "MAINTENANCE");
+        AccountEntity deleted = approvedAccount("gone0001", "USER");
         deleted.markDeleted(LocalDateTime.now(clock));
         accounts.save(deleted);
 

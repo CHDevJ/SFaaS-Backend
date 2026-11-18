@@ -19,7 +19,6 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -34,18 +33,20 @@ import org.springframework.web.multipart.MultipartFile;
  * MST-001~004 설비 기준정보. 바꾸는 작업은 라인 줄을 먼저 잠그고 설비 줄을 잠근다(배치 변경 MST-009 와 같은 순서).
  * 변경 이력은 같은 트랜잭션에 남기고, 삭제한 사람도 변경 이력에 남긴다(equipment 에 삭제한 사람 컬럼이 없음).
  *
- * <p>프로젝트 제안값(2026-11-17 사용자 결정): 길이는 ERD 컬럼에 맞추고 통신 방식은 세 가지만 받는다(C-14),
- * 등록 일시는 선택 입력이며 비우면 현재 시각(C-15), 사진은 JPG·PNG 5MB 이하를 서버 폴더에 저장하고
- * 10분짜리 서명 주소로 보여 준다(P-18), 등록 설비 수와 감시 설비 수는 P-21 을 따른다.
+ * <p>openapi v7 을 그대로 따른다(2026-11-18 사용자 결정). 길이는 v7 대로 코드·종류 100자, 이름·시리얼 200자,
+ * 통신 방식은 1~100자 문자열이다. DB 컬럼(equip_code 20, name 100, equip_type 50, serial_no 50, comm_type 20)보다
+ * 길면 저장할 때 DB 오류가 난다. 등록 일시는 선택이며 비우면 현재 시각이다. 사진은 v7 대로 JPG·PNG·WebP 5MB
+ * 이하를 서버 폴더에 저장한다. v7 에 사진 조회 주소가 없어 photoUrl 은 null 이다.
+ * 라인·공정을 찾지 못하면 v7 응답 정의에 맞춰 400 VALIDATION_ERROR 로 알린다.
  */
 @Service
 public class MasterEquipmentService {
 
-    static final int CODE_MAX = 20;
-    static final int NAME_MAX = 100;
-    static final int TYPE_MAX = 50;
-    static final int SERIAL_MAX = 50;
-    static final Set<String> COMMUNICATION_METHODS = Set.of("MODBUS_TCP", "OPC_UA", "MQTT");
+    static final int CODE_MAX = 100;
+    static final int NAME_MAX = 200;
+    static final int TYPE_MAX = 100;
+    static final int SERIAL_MAX = 200;
+    static final int COMMUNICATION_METHOD_MAX = 100;
 
     /**
      * 등록·수정 입력. equipmentCode 는 등록할 때만 쓴다.
@@ -56,7 +57,7 @@ public class MasterEquipmentService {
             Long lineId, Integer processOrder, String communicationMethod, OffsetDateTime registeredAt,
             MultipartFile photo, boolean removePhoto) { }
 
-    /** MST-001 결과. 설비 수는 lineId 조건만 따르고 equipmentId·includeInactive·페이지와는 상관없다. */
+    /** MST-001 결과. 설비 수는 lineId 조건만 따르고 equipmentId·페이지와는 상관없다. */
     public record EquipmentPage(long registeredCount, long monitoredCount, Page<MasterEquipmentView> items) { }
 
     private record Placement(LineEntity line, ProcessEntity process) { }
@@ -67,37 +68,26 @@ public class MasterEquipmentService {
     private final EquipmentRuntimeQuery runtime;
     private final EquipmentPhotoValidationService photoValidation;
     private final EquipmentPhotoStorage photoStorage;
-    private final EquipmentPhotoUrlSigner photoUrls;
     private final AuditRecorder audit;
     private final Clock clock;
 
     public MasterEquipmentService(EquipmentRepository equipment, LineRepository lines, ProcessRepository processes,
             EquipmentRuntimeQuery runtime, EquipmentPhotoValidationService photoValidation,
-            EquipmentPhotoStorage photoStorage, EquipmentPhotoUrlSigner photoUrls, AuditRecorder audit,
-            Clock clock) {
+            EquipmentPhotoStorage photoStorage, AuditRecorder audit, Clock clock) {
         this.equipment = equipment;
         this.lines = lines;
         this.processes = processes;
         this.runtime = runtime;
         this.photoValidation = photoValidation;
         this.photoStorage = photoStorage;
-        this.photoUrls = photoUrls;
         this.audit = audit;
         this.clock = clock;
     }
 
-    /** MST-001. lineId 가 있으면 그 라인이 있어야 한다(삭제한 라인은 includeInactive=true 일 때만 허용). */
+    /** MST-001. 사용 중인 설비만 보인다. 없는 lineId·equipmentId 는 빈 목록이다(v7 은 200/401 만 정의). */
     @Transactional(readOnly = true)
-    public EquipmentPage list(Long lineId, Long equipmentId, boolean includeInactive, PageQuery page) {
-        if (lineId != null) {
-            boolean exists = includeInactive ? lines.existsById(lineId)
-                    : lines.findByIdAndDeletedAtIsNull(lineId).isPresent();
-            if (!exists) {
-                throw lineNotFound();
-            }
-        }
-        Page<EquipmentEntity> found = equipment.search(lineId, equipmentId, includeInactive,
-                page.toPageable(Sort.unsorted()));
+    public EquipmentPage list(Long lineId, Long equipmentId, PageQuery page) {
+        Page<EquipmentEntity> found = equipment.search(lineId, equipmentId, page.toPageable(Sort.unsorted()));
         Map<Long, ProcessEntity> processById = processes.findAllById(
                         found.getContent().stream().map(EquipmentEntity::getProcessId).distinct().toList())
                 .stream().collect(Collectors.toMap(ProcessEntity::getId, Function.identity()));
@@ -131,7 +121,11 @@ public class MasterEquipmentService {
         try {
             created = equipment.saveAndFlush(EquipmentEntity.register(code, profile, now()));
         } catch (DataIntegrityViolationException raced) {
-            throw duplicateCode();
+            // 같은 코드를 동시에 등록하면 UNIQUE 제약이 막는다. 길이 초과 같은 다른 DB 오류는 그대로 던진다.
+            if (equipment.existsByEquipCode(code)) {
+                throw duplicateCode();
+            }
+            throw raced;
         }
         if (photoFormat != null) {
             created.changePhoto(photoStorage.save(command.photo(), photoFormat), now());
@@ -205,22 +199,23 @@ public class MasterEquipmentService {
     }
 
     private MasterEquipmentView view(EquipmentEntity item, Placement placement, EquipmentRuntimeQuery.Runtime state) {
-        String photoUrl = item.getPhotoPath() == null ? null : photoUrls.url(item.getPhotoPath(), clock.instant());
+        // v7 에 사진 조회 주소가 정의되지 않았다. 사진 파일은 저장하지만 주소는 주지 않는다.
+        String photoUrl = null;
         return new MasterEquipmentView(item.getId(), item.getEquipCode(), item.getName(), item.getEquipType(),
                 item.getSerialNo(), placement.line().getId(), placement.line().getName(), placement.process().getId(),
                 placement.process().getName(), placement.process().getProcessSeq(), item.getCommType(), photoUrl,
-                item.getRegisteredAt(), item.getDeletedAt(), state == null ? null : state.lastReceivedAt());
+                item.getRegisteredAt(), state == null ? null : state.lastReceivedAt());
     }
 
-    /** 사용 중인 라인을 잠그고 그 라인에 이미 있는 공정 순서를 찾는다(P-20 과 같은 규칙). */
+    /** 사용 중인 라인을 잠그고 그 라인에 이미 있는 공정 순서를 찾는다(MST-009 와 같은 규칙). */
     private Placement place(Long lineId, Integer processOrder) {
         if (lineId == null || processOrder == null || processOrder < 1) {
             throw validationError();
         }
-        LineEntity line = lines.findActiveForUpdate(lineId).orElseThrow(MasterEquipmentService::lineNotFound);
+        // 요청 본문의 라인·공정이 없으면 v7 MST-002/003 응답 정의에 맞춰 400 으로 알린다.
+        LineEntity line = lines.findActiveForUpdate(lineId).orElseThrow(MasterEquipmentService::validationError);
         ProcessEntity process = processes.findFirstByLineIdAndProcessSeqOrderByIdAsc(lineId, processOrder)
-                .orElseThrow(() -> new DomainException(HttpStatus.UNPROCESSABLE_ENTITY, "PROCESS_NOT_FOUND",
-                        "공정을 찾을 수 없습니다."));
+                .orElseThrow(MasterEquipmentService::validationError);
         return new Placement(line, process);
     }
 
@@ -229,10 +224,7 @@ public class MasterEquipmentService {
         String name = required(command.equipmentName(), NAME_MAX);
         String type = required(command.equipmentType(), TYPE_MAX);
         String serial = optional(command.serialNumber(), SERIAL_MAX);
-        String method = command.communicationMethod() == null ? "" : command.communicationMethod().strip();
-        if (!COMMUNICATION_METHODS.contains(method)) {
-            throw validationError();
-        }
+        String method = required(command.communicationMethod(), COMMUNICATION_METHOD_MAX);
         LocalDateTime registeredAt = command.registeredAt() == null ? defaultRegisteredAt
                 : KstTime.toLocal(command.registeredAt().toInstant()).truncatedTo(ChronoUnit.SECONDS);
         return new Profile(name, type, serial, 0, method, registeredAt);
@@ -279,10 +271,6 @@ public class MasterEquipmentService {
 
     private LocalDateTime now() {
         return KstTime.toLocal(clock.instant()).truncatedTo(ChronoUnit.SECONDS);
-    }
-
-    private static DomainException lineNotFound() {
-        return new DomainException(HttpStatus.NOT_FOUND, "LINE_NOT_FOUND", "라인을 찾을 수 없습니다.");
     }
 
     private static DomainException equipmentNotFound() {

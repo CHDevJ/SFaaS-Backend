@@ -7,10 +7,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
- * 라인 기준정보 한 건 (openapi MasterLine = LineSummary + equipment).
- * 설비는 EquipmentSummary 의 필수 항목만 담는다. 주요 측정값·이상 값·교체 임박 부품은 선택 항목이라 넣지 않는다.
+ * 라인 기준정보 한 건 (openapi v7 MasterLine = LineSummary + equipment).
+ * 설비는 EquipmentSummary 의 필수 항목만 담는다. 주요 측정값·이상 값은 선택 항목이라 넣지 않는다.
  */
-public record MasterLineResponse(long lineId, String lineName, int displayOrder, List<Equipment> equipment) {
+public record MasterLineResponse(long lineId, String lineName, int displayOrder, String lineType,
+        List<Equipment> equipment) {
 
     public record Equipment(
             long equipmentId,
@@ -23,17 +24,19 @@ public record MasterLineResponse(long lineId, String lineName, int displayOrder,
             int processOrder,
             String status,
             OffsetDateTime statusStartedAt,
-            int activeAlarmCount) {
+            int activeAlarmCount,
+            String lineType) {
 
         static Equipment from(EquipmentSummaryView view) {
             return new Equipment(view.equipmentId(), view.equipmentCode(), view.equipmentName(), view.lineId(),
                     view.lineName(), view.processId(), view.processName(), view.processOrder(), view.status(),
-                    KstTime.toOffset(KstTime.toInstant(view.statusStartedAt())), view.activeAlarmCount());
+                    KstTime.toOffset(KstTime.toInstant(view.statusStartedAt())), view.activeAlarmCount(),
+                    view.lineType());
         }
     }
 
     public static MasterLineResponse from(MasterLineView view) {
-        return new MasterLineResponse(view.lineId(), view.lineName(), view.displayOrder(),
+        return new MasterLineResponse(view.lineId(), view.lineName(), view.displayOrder(), view.lineType(),
                 view.equipment().stream().map(Equipment::from).toList());
     }
 }
