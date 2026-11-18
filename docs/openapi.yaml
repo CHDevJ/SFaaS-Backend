@@ -2472,15 +2472,27 @@ paths:
         - $ref: "#/components/parameters/To"
         - name: itemType
           in: query
+          description: change_log.target_type 코드. 2026-11-18 A 확정(한글 표시는 화면이 바꾼다)
           schema:
             type: string
+            enum:
+              - EQUIPMENT
+              - LINE
+              - DATA_ITEM
+              - THRESHOLD
+              - PART
+              - SETTING
+              - ACCOUNT
+              - DUTY
         - name: keyword
           in: query
+          description: 대상·바꾼 항목·이전 값·변경 값에서 대소문자 없이 찾는다. %와 _는 글자 그대로 찾는다
           schema:
             type: string
             maxLength: 100
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Size"
+      description: 기간은 from 이상 to 미만이다. 최근 변경부터(changedAt DESC, historyId DESC).
       responses:
         "200":
           description: 비밀정보를 제외한 변경 이력
@@ -2488,6 +2500,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ChangeHistoryPageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -6034,8 +6048,23 @@ components:
           $ref: "#/components/schemas/UserBrief"
         itemType:
           type: string
+          enum:
+            - EQUIPMENT
+            - LINE
+            - DATA_ITEM
+            - THRESHOLD
+            - PART
+            - SETTING
+            - ACCOUNT
+            - DUTY
+          description: change_log.target_type 코드. 2026-11-18 A 확정
         itemName:
           type: string
+          description: 바꾼 대상(change_log.target_name). 예 OR-04-1/coolant_flow
+        fieldName:
+          type: string
+          description: 바꾼 항목(change_log.field_name). 예 경보 기준. 2026-11-18 A 추가
+          x-proposed: true
         previousValue:
           type: string
           nullable: true
