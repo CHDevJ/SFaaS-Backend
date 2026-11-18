@@ -1022,7 +1022,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | query | size | N | integer | 값≥1; 값≤100; 기본 20 |
 
 - 요청: 본문 없음
-- 응답: 200 ChangeHistoryPageResponse; 401 Unauthorized; 403 Forbidden
+- 응답: 200 ChangeHistoryPageResponse; 400 ValidationError(INVALID_PERIOD, VALIDATION_ERROR); 401 Unauthorized; 403 Forbidden
 - 규칙/테스트: BR-AUD-001; TC-AUD-001-01, TC-AUD-001-02
 
 ### INT-001 Node-RED 설비 데이터 수집
@@ -1291,6 +1291,13 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - 오늘 끊김 횟수·분은 오늘(Asia/Seoul 0시~지금)과 겹치는 COMMUNICATION_LOST 상태 이력이다. 어제부터 이어진 끊김도 1회로 세고 오늘 안의 길이만 더한다(분 미만 버림).
 - COM-001 summary는 lineId 조건만 따르고 status 조건·페이지와는 상관없다. 없는 lineId는 0대(ALL_NORMAL)다. COM-002는 사용 중인 라인의 사용 중인 설비 전체다.
 - 계약 보완: CommunicationEquipment.lastReceivedAt nullable.
+
+### 11.5 2026-11-18 설정 변경 이력 (A, AUD-001)
+
+- 기간은 from 이상 to 미만이고 최근 변경부터다(changedAt DESC, historyId DESC). from>=to는 400 INVALID_PERIOD다.
+- itemType은 change_log.target_type 코드(EQUIPMENT·LINE·DATA_ITEM·THRESHOLD·PART·SETTING·ACCOUNT·DUTY)이고 한글 표시는 화면이 바꾼다. 다른 값은 400이다.
+- keyword(최대 100자)는 대상·바꾼 항목·이전 값·변경 값에서 대소문자 없이 찾고 %와 _는 글자 그대로 찾는다.
+- 계약 보완: ChangeHistory.fieldName(바꾼 항목), 400 응답. 변경자가 나중에 삭제된 계정이어도 이름·권한을 보여 준다.
 
 ## 12. 필드 사전
 
@@ -2533,8 +2540,9 @@ message는 실제 발송한 고정 테스트 문구다. 화면은 문구를 복�
 | historyId | Identifier | Y | N | - | - |
 | changedAt | string(date-time) | Y | N | - | - |
 | changer | UserBrief | Y | N | - | - |
-| itemType | string | Y | N | - | - |
-| itemName | string | Y | N | - | - |
+| itemType | string | Y | N | 허용 EQUIPMENT, LINE, DATA_ITEM, THRESHOLD, PART, SETTING, ACCOUNT, DUTY | change_log.target_type 코드 |
+| itemName | string | Y | N | - | 바꾼 대상 |
+| fieldName | string | N | N | - | 바꾼 항목(field_name). 2026-11-18 추가 |
 | previousValue | string | Y | Y | - | 비밀번호와 토큰 제외 |
 | changedValue | string | Y | Y | - | 비밀번호와 토큰 제외 |
 
