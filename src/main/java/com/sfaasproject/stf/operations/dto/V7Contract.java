@@ -131,7 +131,16 @@ public final class V7Contract {
             @NotNull @Valid TelegramDeliveryPageData data,
             @NotNull @Valid PageMeta meta) {}
 
+    public record AlarmHourlyCount(
+            @NotNull OffsetDateTime from,
+            @NotNull OffsetDateTime to,
+            @NotNull @DecimalMin("0") Integer cautionCount,
+            @NotNull @DecimalMin("0") Integer criticalCount) {}
+
     public record RecentAlarmListResponse(
+            @NotNull OffsetDateTime windowFrom,
+            @NotNull OffsetDateTime windowTo,
+            @NotNull @Valid List<AlarmHourlyCount> hourlyCounts,
             @NotNull Boolean success,
             @NotNull @Valid List<AlarmSummary> data,
             @NotNull @Valid PageMeta meta) {}
@@ -311,6 +320,9 @@ public final class V7Contract {
             @NotNull OffsetDateTime measuredAt) {}
 
     public record AlarmPageData(
+            @NotNull @DecimalMin("0") Integer yesterdayOccurredCount,
+            @NotNull @DecimalMin("0") Integer activeCautionCount,
+            @NotNull @DecimalMin("0") Integer activeCriticalCount,
             @NotNull @DecimalMin("0") Integer activeCount,
             @NotNull @DecimalMin("0") Integer todayOccurredCount,
             @NotNull @DecimalMin("0") Integer todayClosedCount,
@@ -404,6 +416,10 @@ public final class V7Contract {
             @NotNull @Valid List<FaultHistoryItem> items) {}
 
     public record AlarmResponseStatistics(
+            @NotNull @DecimalMin("0") Integer activeCautionCount,
+            @NotNull @DecimalMin("0") Integer activeCriticalCount,
+            Long longestActionEquipmentId,
+            String longestActionEquipmentName,
             @NotNull @DecimalMin("0") Integer totalCount,
             @NotNull @DecimalMin("0") Integer cautionCount,
             @NotNull @DecimalMin("0") Integer criticalCount,
@@ -465,6 +481,7 @@ public final class V7Contract {
     public record TelegramConnection(@NotNull Boolean connected, OffsetDateTime linkedAt) {}
 
     public record TelegramTestMessageResult(
+            @NotNull String message,
             @NotNull Long userId,
             @NotNull @Valid DeliveryResult result,
             String failureReason,
