@@ -1680,6 +1680,10 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "422":
           $ref: "#/components/responses/BusinessRuleViolation"
   "/master/data-items/{dataItemId}":
@@ -1718,6 +1722,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MasterDataItemResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1759,6 +1765,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ThresholdResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -5228,15 +5236,25 @@ components:
         - valueType
         - collectionIntervalSeconds
       properties:
+        dataItemCode:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[a-z][a-z0-9_]*$
+          description: >-
+            INT-001 dataItemCode와 맞추는 항목 코드(data_item.item_code). MST-011에서는 필수이고 설비 안에서
+            중복할 수 없다(삭제한 항목 포함, 409 DATA_ITEM_CODE_DUPLICATE). MST-012에서는 바꿀 수 없으며 보내도 무시한다.
+            2026-11-18 추가(A 제안값).
+          x-proposed: true
         dataItemName:
           type: string
           minLength: 1
-          maxLength: 100
+          maxLength: 50
         valueType:
           $ref: "#/components/schemas/DataValueType"
         unit:
           type: string
-          maxLength: 30
+          maxLength: 20
           nullable: true
         collectionIntervalSeconds:
           type: integer
@@ -5244,14 +5262,15 @@ components:
         decimalPlaces:
           type: integer
           minimum: 0
+          maximum: 10
           nullable: true
         zeroDisplayName:
           type: string
-          maxLength: 100
+          maxLength: 20
           nullable: true
         oneDisplayName:
           type: string
-          maxLength: 100
+          maxLength: 20
           nullable: true
         measurementThreshold:
           type: object
@@ -5263,13 +5282,23 @@ components:
           allOf:
             - $ref: "#/components/schemas/StateAlarmCondition"
           nullable: true
-      description: valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다.
+      description: >-
+        valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다. MEASUREMENT는 zeroDisplayName·oneDisplayName·
+        stateAlarmCondition을 받지 않고 decimalPlaces를 비우면 1이다. STATE는 unit·measurementThreshold를 받지 않고
+        decimalPlaces는 0이다. CUMULATIVE는 두 기준과 0/1 표시를 받지 않고 decimalPlaces는 0이다. 맞지 않으면 400.
+        MST-012에서 measurementThreshold·stateAlarmCondition 칸을 보내지 않으면 기존 기준을 유지하고, null을 보내면
+        지운다. valueType은 바꿀 수 없다(422 DATA_ITEM_VALUE_TYPE_IMMUTABLE). 길이는 ERD data_item 컬럼(이름 50,
+        단위 20, 0/1 표시 20)을 따른다.
     ThresholdWriteRequest:
       oneOf:
         - $ref: "#/components/schemas/MeasurementThreshold"
         - $ref: "#/components/schemas/StateAlarmCondition"
     ThresholdStatistics:
       type: object
+      description: >-
+        recentMinimum/Average/Maximum은 최근 7일(오늘 포함, Asia/Seoul) 측정값으로 계산하며 MEASUREMENT 항목만 값이 있다.
+        alarmCountLast30Days는 지금부터 30일 전 이후 발생한 알람 수다. 2026-11-18 A 제안값.
+      x-proposed: true
       properties:
         recentMinimum:
           type: number
@@ -5287,12 +5316,17 @@ components:
       type: object
       required:
         - dataItemId
+        - dataItemCode
         - dataItemName
         - valueType
         - collectionIntervalSeconds
       properties:
         dataItemId:
           $ref: "#/components/schemas/Identifier"
+        dataItemCode:
+          type: string
+          description: INT-001 dataItemCode와 같은 항목 코드. 2026-11-18 추가(A 제안값).
+          x-proposed: true
         dataItemName:
           type: string
         valueType:

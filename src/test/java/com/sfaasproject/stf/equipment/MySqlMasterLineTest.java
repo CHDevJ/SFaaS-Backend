@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sfaasproject.stf.auth.AuthTestConfig;
 import com.sfaasproject.stf.common.DomainException;
 import com.sfaasproject.stf.common.paging.PageQuery;
+import com.sfaasproject.stf.equipment.service.MasterDataItemService;
+import com.sfaasproject.stf.equipment.service.MasterDataItemView;
 import com.sfaasproject.stf.equipment.service.MasterEquipmentService;
 import com.sfaasproject.stf.equipment.service.MasterEquipmentService.Command;
 import com.sfaasproject.stf.equipment.service.MasterEquipmentView;
@@ -47,6 +49,7 @@ class MySqlMasterLineTest {
     @MockitoBean TemporaryPasswordSender temporaryPasswordSender;
 
     @Autowired MasterLineService lines;
+    @Autowired MasterDataItemService dataItems;
     @Autowired MasterEquipmentService equipment;
     @Autowired JdbcTemplate jdbc;
 
@@ -185,5 +188,42 @@ class MySqlMasterLineTest {
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM equipment WHERE equipment_id = ?",
                 Boolean.class, created.equipmentId())).isTrue();
         assertThat(equipment.list(lineId, created.equipmentId(), PageQuery.of(0, 20)).items().getContent()).isEmpty();
+    }
+
+    @Test
+    void dataItemFlowWorksOnMySql() {
+        long actor = jdbc.queryForObject("SELECT MIN(account_id) FROM account", Long.class);
+        long equipmentId = jdbc.queryForObject(
+                "SELECT MIN(equipment_id) FROM equipment WHERE deleted_at IS NULL", Long.class);
+        int seeded = dataItems.list(equipmentId).size();
+        assertThat(seeded).isPositive();
+        String code = "vx_" + UUID.randomUUID().toString().substring(0, 8);
+
+        MasterDataItemView created = dataItems.create(equipmentId, new MasterDataItemService.Command(code, "검증 온도",
+                "MEASUREMENT", "℃", 3, null, null, null,
+                new MasterDataItemService.Command.Threshold(70.0, 85.0, "ABOVE"), null), actor);
+        assertThat(created.decimalPlaces()).isEqualTo(1);
+        assertThat(dataItems.list(equipmentId)).hasSize(seeded + 1);
+        assertThatThrownBy(() -> dataItems.create(equipmentId, new MasterDataItemService.Command(code, "중복",
+                "MEASUREMENT", null, 3, null, null, null, null, null), actor))
+                .isInstanceOf(DomainException.class)
+                .hasFieldOrPropertyWithValue("code", "DATA_ITEM_CODE_DUPLICATE");
+
+        MasterDataItemView.AppliedThreshold applied = dataItems.updateThreshold(created.dataItemId(),
+                new MasterDataItemService.Command.Threshold(20.0, 10.0, "BELOW"), null, actor);
+        assertThat(applied.measurementThreshold().direction()).isEqualTo("BELOW");
+
+        String door = "vd_" + UUID.randomUUID().toString().substring(0, 8);
+        MasterDataItemView state = dataItems.create(equipmentId, new MasterDataItemService.Command(door, "검증 문",
+                "STATE", null, 3, null, "닫힘", "열림", null,
+                new MasterDataItemService.Command.StateAlarm(1, "CRITICAL")), actor);
+        assertThat(jdbc.queryForObject("SELECT alarm_state_value FROM data_item WHERE data_item_id = ?",
+                Integer.class, state.dataItemId())).isEqualTo(1);
+        // 이름은 ERD data_item.name(varchar(50))에 맞춰 50자까지다. 50자는 실제 MySQL 에 저장된다.
+        assertThatThrownBy(() -> dataItems.update(state.dataItemId(), new MasterDataItemService.Command(null,
+                "가".repeat(51), "STATE", null, 3, null, null, null, null, null), actor))
+                .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "VALIDATION_ERROR");
+        assertThat(dataItems.update(state.dataItemId(), new MasterDataItemService.Command(null, "가".repeat(50),
+                "STATE", null, 3, null, "닫힘", "열림", null, null), actor).dataItemName()).hasSize(50);
     }
 }
