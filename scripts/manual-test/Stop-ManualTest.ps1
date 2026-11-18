@@ -7,9 +7,10 @@ if (Test-Path -LiteralPath $stateFile) {
     if ($running) {
         $expected = if ($state.StartTimeUtc -is [datetime]) { $state.StartTimeUtc.ToUniversalTime() } else { [DateTimeOffset]::Parse($state.StartTimeUtc).UtcDateTime }
         if ($running.ProcessName -ne 'java' -or [Math]::Abs(($running.StartTime.ToUniversalTime()-$expected).TotalSeconds) -gt 2) { throw 'Process ownership changed. No process was stopped.' }
-        $children = Get-CimInstance Win32_Process -Filter ('ParentProcessId=' + $running.Id)
-        foreach ($child in $children) { if ($child.Name -eq 'java.exe' -and $child.CommandLine -like ('*'+$state.Jar+'*')) { Stop-Process -Id $child.ProcessId } }
+        $expectedJar=[IO.Path]::GetFullPath((Join-Path $ManualRoot 'logs/manual-test-runtime.jar'))
+        if([IO.Path]::GetFullPath($state.Jar) -ne $expectedJar){throw 'Runtime JAR ownership changed. No process was stopped.'}
         Stop-Process -Id $running.Id -ErrorAction SilentlyContinue
+        Wait-Process -Id $running.Id -Timeout 20 -ErrorAction SilentlyContinue
         Write-Host 'Stopped the manual-test server on 8081.'
     }
 }

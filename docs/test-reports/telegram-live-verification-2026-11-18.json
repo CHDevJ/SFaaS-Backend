@@ -1,0 +1,19 @@
+{
+  "verifiedAt": "2026-11-18T11:58:19.8141876+09:00",
+  "botUsername": "sfaas5_alarm_bot",
+  "account": "badmin01",
+  "backendPort": 8081,
+  "getMeVerified": true,
+  "webhookConfigured": false,
+  "receiveMode": "POLLING",
+  "connected": true,
+  "linkedAt": "2026-11-18T11:47:14+09:00",
+  "testMessageResult": "SUCCESS",
+  "testMessage": "설비 통합관제 테스트 메시지. 연결 확인용 테스트 메시지입니다",
+  "deviceReceipt": "USER_CONFIRMED",
+  "frontendPort": 5174,
+  "frontendProxyLoginHttp": 200,
+  "frontendProxyConnectionVisible": true,
+  "webSocketOrigin": "http://localhost:5174",
+  "webSocketHandshake": true
+}
