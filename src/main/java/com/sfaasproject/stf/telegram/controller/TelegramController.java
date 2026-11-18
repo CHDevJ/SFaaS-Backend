@@ -1,15 +1,15 @@
 package com.sfaasproject.stf.telegram.controller;
 
-import com.sfaasproject.stf.operations.dto.BContract.*;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
+import com.sfaasproject.stf.operations.dto.BContract.*;
 import com.sfaasproject.stf.operations.port.BReadPort.*;
 import com.sfaasproject.stf.operations.service.*;
 
 import jakarta.validation.Valid;
 
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.*;
@@ -40,8 +40,7 @@ public class TelegramController {
 
     @DeleteMapping("/telegram/me/connection")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void unlinkMyTelegram(
-            @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
+    public void unlinkMyTelegram(@AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
         BAccess.current(principal);
         commands.unlinkMyTelegram();
     }
@@ -64,11 +63,12 @@ public class TelegramController {
     @GetMapping("/system/telegram/deliveries")
     public TelegramDeliveryPageResponse getTelegramDeliveries(
             @RequestParam(name = "date", required = false) LocalDate date,
+            @RequestParam(name = "alarmId", required = false) Long alarmId,
             @RequestParam(name = "result", required = false) DeliveryResult result,
             @RequestParam(name = "page", required = false, defaultValue = "0") Integer page,
             @RequestParam(name = "size", required = false, defaultValue = "20") Integer size,
             @AuthenticationPrincipal JwtAccessTokenService.Claims principal) {
         BAccess.admin(principal);
-        return commands.getTelegramDeliveries(date, result, page, size);
+        return commands.getTelegramDeliveries(date, result, page, size, alarmId);
     }
 }
