@@ -4115,8 +4115,36 @@ components:
         criticalThreshold:
           type: number
           nullable: true
+        thresholdDirection:
+          type: string
+          nullable: true
+          enum:
+            - ABOVE
+            - BELOW
+            - null
+          description: 측정값 기준 방향. 상태값·누적값은 null. 2026-11-18 A 추가(추세 메타정보)
+          x-proposed: true
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: 항목의 소수 자릿수. 2026-11-18 A 추가
+          x-proposed: true
+        zeroDisplayName:
+          type: string
+          nullable: true
+          description: 상태값 0 표시 이름. 2026-11-18 A 추가
+          x-proposed: true
+        oneDisplayName:
+          type: string
+          nullable: true
+          description: 상태값 1 표시 이름. 2026-11-18 A 추가
+          x-proposed: true
         points:
           type: array
+          description: >-
+            시각순. 원본이면 측정 시각, 집계면 칸 시작 시각(Asia/Seoul 자정 기준). 통신 끊김 구간 시작 시각마다 value=null 점이
+            있어 차트 선을 끊는다.
           items:
             $ref: "#/components/schemas/MeasurementPoint"
         alarmMarkers:
