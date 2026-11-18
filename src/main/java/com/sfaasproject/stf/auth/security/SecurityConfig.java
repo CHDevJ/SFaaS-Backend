@@ -50,6 +50,8 @@ public class SecurityConfig {
                         // HTTP handshake is public; STOMP CONNECT validates the JWT separately.
                         .requestMatchers(HttpMethod.GET, "/ws", "/ws/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/internal/v1/telegram/updates").permitAll()
+                        // MST-018: <img> 가 토큰 없이 연다. 컨트롤러가 10분짜리 서명을 확인한다.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/equipment-photos/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/internal/v1/measurements").hasRole("NODE_RED")
                         .requestMatchers("/api/v1/system/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
