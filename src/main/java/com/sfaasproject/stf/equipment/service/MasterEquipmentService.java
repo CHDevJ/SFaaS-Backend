@@ -1,6 +1,7 @@
 package com.sfaasproject.stf.equipment.service;
 
 import com.sfaasproject.stf.common.DomainException;
+import com.sfaasproject.stf.common.UniqueViolations;
 import com.sfaasproject.stf.common.paging.PageQuery;
 import com.sfaasproject.stf.common.time.KstTime;
 import com.sfaasproject.stf.equipment.entity.EquipmentEntity;
@@ -122,7 +123,7 @@ public class MasterEquipmentService {
             created = equipment.saveAndFlush(EquipmentEntity.register(code, profile, now()));
         } catch (DataIntegrityViolationException raced) {
             // 같은 코드를 동시에 등록하면 UNIQUE 제약이 막는다. 길이 초과 같은 다른 DB 오류는 그대로 던진다.
-            if (equipment.existsByEquipCode(code)) {
+            if (UniqueViolations.isUniqueViolation(raced)) {
                 throw duplicateCode();
             }
             throw raced;
