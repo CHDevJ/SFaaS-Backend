@@ -15,6 +15,16 @@ import java.math.*;
 import java.util.*;
 
 public class V7SettingsService {
+    /** 변경 이력에 남기는 설정 이름. */
+    static final java.util.Map<String, String> SETTING_LABELS = java.util.Map.of(
+            "COMM_TIMEOUT_SEC", "통신 끊김 판정(초)",
+            "ALARM_STREAK_COUNT", "알람 연속 판정 횟수",
+            "STOCK_LEVEL_MIN", "재고 주의 기준(분)",
+            "STOCK_DANGER_MIN", "재고 위험 기준(분)",
+            "UNIT_PRICE", "개당 금액(원)",
+            "RATE_WINDOW_MIN", "속도 계산 구간(분)",
+            "HOURLY_OUTPUT", "시간당 생산량(개)");
+
     private final JdbcBDatabase db;
     private final V7Context context;
     private final UnitOfWork tx;
@@ -88,7 +98,13 @@ public class V7SettingsService {
                                 "speedWindowMinutes",
                                 context.integer("RATE_WINDOW_MIN", 10),
                                 "hourlyProduction",
-                                context.integer("HOURLY_OUTPUT", 360))),
+                                context.integer("HOURLY_OUTPUT", 360),
+                                // 입력 범위(CalculationSettingsUpdateRequest 검증과 같음). 2026-11-18 A 추가
+                                "ranges",
+                                List.of(
+                                        map("field", "unitPrice", "minimum", 0, "maximum", 100000000),
+                                        map("field", "speedWindowMinutes", "minimum", 5, "maximum", 60),
+                                        map("field", "hourlyProduction", "minimum", 1, "maximum", 1000)))),
                 CalculationSettingsResponse.class);
     }
 
@@ -96,7 +112,7 @@ public class V7SettingsService {
         if (s.inventoryDangerMinutes() >= s.inventoryWarningMinutes())
             throw new DomainException(
                     HttpStatus.UNPROCESSABLE_CONTENT,
-                    "SETTING_VALUE_OUT_OF_RANGE",
+                    "SETTING_OUT_OF_RANGE",
                     "위험 기준은 주의 기준보다 작아야 합니다.");
         return tx.execute(
                 () -> {
@@ -143,11 +159,12 @@ public class V7SettingsService {
                     key,
                     group,
                     next);
+        // 변경 이력(AUD-001) 화면에 그대로 보이므로 설정 키 대신 한글 이름을 남긴다. 2026-11-18 A 보완
         audit.record(
                 actor,
                 AuditTargetType.SETTING,
-                key,
-                "설정값",
+                "JUDGE".equals(group) ? "판정 설정" : "계산 기준값",
+                SETTING_LABELS.getOrDefault(key, key),
                 before == null ? null : Objects.toString(before.get("setting_value")),
                 next);
     }

@@ -471,7 +471,8 @@ public final class V7Contract {
     public record CalculationSettings(
             @NotNull @DecimalMin("0") @DecimalMax("100000000") BigDecimal unitPrice,
             @NotNull @DecimalMin("5") @DecimalMax("60") Integer speedWindowMinutes,
-            @NotNull @DecimalMin("1") @DecimalMax("1000") Integer hourlyProduction) {}
+            @NotNull @DecimalMin("1") @DecimalMax("1000") Integer hourlyProduction,
+            @Valid List<JudgementSettingRange> ranges) {}
 
     public record TelegramLink(
             @NotNull String linkUrl,

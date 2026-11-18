@@ -165,7 +165,8 @@ public class AuthFlowService {
         }
         if (currentPassword == null
                 || !passwords.matches(currentPassword, account.passwordHash())) {
-            throw invalidCredentials();
+            // AUTH-006: 코드와 401 은 로그인과 같고, 화면에 보일 문구만 비밀번호 변경에 맞춘다(2026-11-18).
+            throw error(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_CREDENTIALS", "현재 비밀번호를 확인해 주세요.");
         }
         try {
             policy.validatePassword(newPassword);
