@@ -3592,6 +3592,8 @@ components:
         lastReceivedAt:
           type: string
           format: date-time
+          nullable: true
+          description: 마지막 수신 시각. 값을 받은 적 없는 설비는 null(2026-11-18 A 보완)
         disconnectedSince:
           type: string
           format: date-time
@@ -3599,6 +3601,7 @@ components:
         todayDisconnectionCount:
           type: integer
           minimum: 0
+          description: 오늘(Asia/Seoul 0시~지금)과 겹치는 통신 끊김 횟수. 어제부터 이어진 끊김도 1회
         todayDisconnectionMinutes:
           type: integer
           minimum: 0

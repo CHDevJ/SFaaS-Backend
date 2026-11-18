@@ -1285,6 +1285,13 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - from>=to는 400 INVALID_PERIOD, dataItemIds 1~10개·중복 금지(400), 다른 설비·삭제한 항목은 404 DATA_ITEM_NOT_FOUND, 삭제한 설비는 404 EQUIPMENT_NOT_FOUND.
 - 추세 메타정보(프론트 요청): thresholdDirection·decimalPlaces·zeroDisplayName·oneDisplayName. STOMP MeasurementEvent는 B 발행 형식이라 이번 변경에 포함하지 않는다.
 
+### 11.4 2026-11-18 통신 현황 (A, COM-001/002)
+
+- 통신 끊김은 수집 쪽 스케줄러가 equipment_state에 남긴 COMMUNICATION_LOST(마지막 수신 후 COMM_TIMEOUT_SEC 초과)를 쓴다. 상태 줄이 없는 설비(값을 받은 적 없음)도 끊김으로 보고(EQP·OVW-001과 같음) lastReceivedAt은 null이다. disconnectedSince는 상태 시작 시각, 상태 줄이 없으면 설비 등록 시각이다.
+- 오늘 끊김 횟수·분은 오늘(Asia/Seoul 0시~지금)과 겹치는 COMMUNICATION_LOST 상태 이력이다. 어제부터 이어진 끊김도 1회로 세고 오늘 안의 길이만 더한다(분 미만 버림).
+- COM-001 summary는 lineId 조건만 따르고 status 조건·페이지와는 상관없다. 없는 lineId는 0대(ALL_NORMAL)다. COM-002는 사용 중인 라인의 사용 중인 설비 전체다.
+- 계약 보완: CommunicationEquipment.lastReceivedAt nullable.
+
 ## 12. 필드 사전
 
 Y=필수, N=선택. nullable은 명시된 경우만 허용한다. allOf는 참조와 추가 필드 모두 적용한다. 단계·금액·무이력 상태를 구분하며 null을0으로 변환하지 않는다.
@@ -1496,7 +1503,7 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | lineName | string | Y | N | 길이≤100 | - |
 | communicationMethod | string | Y | N | 길이≤100 | - |
 | status | CommunicationStatus | Y | N | - | - |
-| lastReceivedAt | string(date-time) | Y | N | - | - |
+| lastReceivedAt | string(date-time) | Y | Y | - | 값을 받은 적 없는 설비는 null. 2026-11-18 보완 |
 | disconnectedSince | string(date-time) | N | Y | - | - |
 | todayDisconnectionCount | integer | Y | N | 값≥0 | - |
 | todayDisconnectionMinutes | integer | Y | N | 값≥0 | 분 |
