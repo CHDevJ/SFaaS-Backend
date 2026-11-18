@@ -972,6 +972,8 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 
 ### TLG-006 텔레그램 전송 결과 조회
 
+2026-11-18 보완: 선택 query alarmId(integer/int64, 최소1)를 지원한다. KST date(생략 시 오늘)와 함께 이 알람만 목록·요약·수신자별 집계에 포함한다. result는 목록과 meta에 적용하고 요약/수신자별 집계는 같은 날짜·알람의 성공/실패 전체를 제공한다. ADMIN 전용이며 ALM-003 USER 권한으로 수신자 이력을 우회 제공하지 않는다.
+
 - 주소: GET /api/v1/system/telegram/deliveries
 - 소유자: B; 권한: ADMIN; 요구사항: FR0507
 - 처리: 비밀번호 초기화 발송 성공·실패도 포함한다. 해당 메시지는 임시 비밀번호 발송 결과(비밀정보 제외)라는 고정 문구로 제공하며 비밀번호 원문은 포함하지 않는다.
@@ -1118,6 +1120,12 @@ error.details는 필드별 검증을, traceId는 서버 로그 연계를 위한 
 | /user/queue/notifications | 변경 시 | eventId, sequence, type, alarmId, occurredAt |
 
 헤더 종 unread는 클라이언트 메모리에서 신규·등급상승 이벤트로 계산하며 새로고침하면0이다. 서버 읽음 저장 REST/DB 계약은 없다. 개인 큐는 본인만, 공용topic은 승인된 로그인 계정만 구독한다. stageThresholds는 현행 설정값이다.
+
+### 프론트 타입 생성과 순번 (2026-11-18 보완)
+
+OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEvent, AlarmCountEvent, InventoryEvent, UserNotificationEvent를 제공한다. x-websocket.topics의 인라인 스키마와 YAML 앵커로 동일한 정의를 공유한다. 실제 메시지 필드·Enum은 변경하지 않는다. UserNotificationEvent는 eventId·sequence·type·alarmId·occurredAt이며 userId·message·notificationId는 없다.
+
+순번은 발행 서비스 인스턴스의 AtomicLong을 공유한다. 클라이언트 비교 키는 destination과 설비 상태=equipmentId, 측정값=equipmentId+dataItemId, 알람/개인 알림=alarmId, 재고=lineId다. alarm-counts는 destination 하나다. 서로 다른 키나 토픽의 순번을 비교하지 않는다. 한 프로세스의 발행 서비스는 동작 중 카운터를 초기화하지 않으며 프로세스 재시작 시 초기화된다. 재연결마다 이전 비교값을 버리고 현재 화면 REST를 재조회한다. outbox의 지연된 과거 재시도는 낮은 순번일 수 있으며 eventId 중복 제거를 함께 적용한다. 다중 서버의 전역 순번은 이번 단일 서버 계약에 포함하지 않는다.
 
 ## 9. MQTT·수집·생산 기록
 
@@ -1784,8 +1792,13 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 
 ### AlarmPageData
 
+발생 중 전체·등급별 건수는 필터와 페이지에 무관한 메뉴 전체 집계다. 오늘/전일 발생은 lineId·equipmentId·grade 조건을 적용하고 KST 자정으로 구분한다. processStatus와 페이지는 items에 적용한다.
+
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
+| yesterdayOccurredCount | integer | Y | N | 값≥0 | KST 전일 발생 건수 |
+| activeCautionCount | integer | Y | N | 값≥0 | 전체 발생 중 CAUTION |
+| activeCriticalCount | integer | Y | N | 값≥0 | 전체 발생 중 CRITICAL. 두 등급 합은 activeCount |
 | activeCount | integer | Y | N | 값≥0 | - |
 | todayOccurredCount | integer | Y | N | 값≥0 | - |
 | todayClosedCount | integer | Y | N | 값≥0 | - |
@@ -1900,8 +1913,14 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 ### AlarmResponseStatistics
 
+종료 표본이 없으면 최장 시간·설비 ID·이름은 null이다. 같은 최장 시간이면 alarmId가 작은 이력의 설비를 선택한다. 발생 중 등급별 건수는 이 API의 기간·라인 조건 안의 수이며 기간 제한이 없는 ALM-001 메뉴 수와 구분한다.
+
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
+| activeCautionCount | integer | Y | N | 값≥0 | 조회 조건 내 ACTIVE CAUTION |
+| activeCriticalCount | integer | Y | N | 값≥0 | 조회 조건 내 ACTIVE CRITICAL |
+| longestActionEquipmentId | integer(int64) | Y | Y | 값≥1 | 최장 종료 이력의 설비 ID |
+| longestActionEquipmentName | string | Y | Y | - | 최장 종료 이력의 설비명 |
 | totalCount | integer | Y | N | 값≥0 | - |
 | cautionCount | integer | Y | N | 값≥0 | - |
 | criticalCount | integer | Y | N | 값≥0 | - |
@@ -2369,8 +2388,11 @@ communicationLossSeconds=COMM_TIMEOUT_SEC, alarmConsecutiveCount=ALARM_STREAK_CO
 
 ### TelegramTestMessageResult
 
+message는 실제 발송한 고정 테스트 문구다. 화면은 문구를 복제하지 않고 이 값을 표시한다. 연결 없음은422, 공급자 발송 실패는200의 result=FAILURE와 failureReason이다.
+
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
+| message | string | Y | N | - | 설비 통합관제 테스트 메시지. 연결 확인용 테스트 메시지입니다 |
 | userId | Identifier | Y | N | - | - |
 | result | DeliveryResult | Y | N | - | - |
 | failureReason | string | N | Y | - | - |
@@ -2481,10 +2503,24 @@ communicationLossSeconds=COMM_TIMEOUT_SEC, alarmConsecutiveCount=ALARM_STREAK_CO
 | success | boolean | Y | N | 허용 true | - |
 | data | IngestionAccepted | Y | N | - | - |
 
-### RecentAlarmListResponse
+### AlarmHourlyCount
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
+| from | string(date-time) | Y | N | - | 포함 경계 |
+| to | string(date-time) | Y | N | - | 제외 경계 |
+| cautionCount | integer | Y | N | 값≥0 | 이 구간의 CAUTION 발생 |
+| criticalCount | integer | Y | N | 값≥0 | 이 구간의 CRITICAL 발생 |
+
+### RecentAlarmListResponse
+
+data와 meta는 기존 페이지 목록이다. 차트는 페이지를 세지 않고 hourlyCounts를 사용한다. windowFrom=조회 시각-24시간, windowTo=조회 시각이며 [windowFrom,windowTo)의 1시간 구간24개를 순서대로 반환한다. 구간별 from 이상·to 미만으로 세며 빈 구간은0이다. data와 차트는 같은 기준 시각으로 계산한다.
+
+| 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
+|---|---|---|---|---|---|
+| windowFrom | string(date-time) | Y | N | - | 24시간 조회 시작 |
+| windowTo | string(date-time) | Y | N | - | 조회 종료. 해당 시각은 제외 |
+| hourlyCounts | array<AlarmHourlyCount> | Y | N | 정확히24개 | 전체 집계. page/size와 무관 |
 | success | boolean | Y | N | 허용 true | - |
 | data | array<AlarmSummary> | Y | N | - | - |
 | meta | PageMeta | Y | N | - | - |

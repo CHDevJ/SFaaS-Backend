@@ -1,6 +1,6 @@
 # 백엔드 v7 전환 검증
 
-현재 B 최종 보완은 [2026-11-18 완료 내역](BACKEND_B_COMPLETION_2026-11-18.md)을 따른다. 전체531건·MySQL12건 통과. 아래506건은 2026-11-17 전환 당시 검증 이력이다.
+현재 B 추가 보완은 [프론트 요청 응답](BACK_REQUESTS_B_RESPONSE.md)을 따른다. 전체539건·MySQL12건 통과. [조립 정지 보완531건](BACKEND_B_COMPLETION_2026-11-18.md)과 아래506건은 이전 검증 이력이다.
 
 2026-11-17, 기존 로컬 stf의 Back_B에서 구현했다. 기준은 approved-project-proposal인 openapi.yaml 7.0.0, API_SPEC.md, Confluence v7(3604594)·분배(1507330)·조립 정지 계산 최종 결정(4259864)이다. 기존 v5 구현 기록은 이번 완료 근거와 구분한다.
 
