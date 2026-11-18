@@ -33,7 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <ul>
  *   <li>lineType 을 등록에서 생략하면 PART, 수정에서 생략하면 기존 값을 유지한다(v7 LineWriteRequest).</li>
- *   <li>라인 이름은 v7 대로 100자까지 받는다. DB line.name 은 varchar(50) UNIQUE 다.
+ *   <li>라인 이름은 ERD line.name(varchar(50) UNIQUE)에 맞춰 50자까지 받는다(API_SPEC 11.0).
  *       삭제한 라인을 포함해 이름이 겹치면 LINE_NAME_DUPLICATE(409). v7 에 정의가 없어 기존 코드를 유지한다.</li>
  *   <li>배치 변경은 이 라인의 설비만, 이 라인에 이미 있는 공정 순서로만 옮긴다. 아니면 v7 MST-009 의 400.</li>
  * </ul>
@@ -41,8 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MasterLineService {
 
-    /** v7 LineWriteRequest.lineName 최대 길이. */
-    static final int NAME_MAX = 100;
+    /** ERD line.name 은 varchar(50) 이다(API_SPEC 11.0). */
+    static final int NAME_MAX = 50;
     /** equipment_state 줄이 없는 설비는 종합현황(OVW-001)과 같이 통신 끊김으로 보여 준다. */
     static final String STATUS_WITHOUT_STATE = "COMMUNICATION_LOST";
 

@@ -24,7 +24,6 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockMultipartFile;
@@ -104,9 +103,13 @@ class MySqlMasterLineTest {
         MasterLineView renamed = lines.update(created.lineId(), created.lineName() + "B", 92, "ASSEMBLY", actor);
         assertThat(renamed.displayOrder()).isEqualTo(92);
         assertThat(renamed.lineType()).isEqualTo("ASSEMBLY");
-        // v7 은 이름을 100자까지 받지만 DB line.name 은 varchar(50) 이다. 중복으로 잘못 알리지 않고 DB 오류를 그대로 낸다.
+        // 이름은 ERD line.name(varchar(50))에 맞춰 50자까지다. 50자는 실제 MySQL 에 저장된다.
         assertThatThrownBy(() -> lines.create("가".repeat(51), 93, null, actor))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "VALIDATION_ERROR");
+        MasterLineView longest = lines.create("가".repeat(49) + UUID.randomUUID().toString().charAt(0), 93, null,
+                actor);
+        assertThat(longest.lineName()).hasSize(50);
+        lines.delete(longest.lineId(), actor);
 
         lines.delete(created.lineId(), actor);
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM line WHERE line_id = ?", Boolean.class,
