@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import java.time.*;
 
 public class TelegramApplicationService {
+    public static final String TEST_MESSAGE = "설비 통합관제 테스트 메시지. 연결 확인용 테스트 메시지입니다";
     private final Telegram store;
     private final LinkTokens tokenStore;
     private final Users users;
@@ -75,10 +76,11 @@ public class TelegramApplicationService {
     }
 
     private TelegramTestMessageResponse test(long id) {
-        var result = send(id, null, "TEST", "설비통합관제 텔레그램 연결 확인 메시지입니다.");
+        var result = send(id, null, "TEST", TEST_MESSAGE);
         return new TelegramTestMessageResponse(
                 true,
                 new TelegramTestMessageResult(
+                        TEST_MESSAGE,
                         id,
                         result.successful() ? DeliveryResult.SUCCESS : DeliveryResult.FAILURE,
                         result.failureReason(),
@@ -118,9 +120,19 @@ public class TelegramApplicationService {
 
     public TelegramDeliveryPageResponse getTelegramDeliveries(
             LocalDate date, DeliveryResult result, Integer page, Integer size) {
+        return getTelegramDeliveries(date, result, page, size, null);
+    }
+
+    public TelegramDeliveryPageResponse getTelegramDeliveries(
+            LocalDate date, DeliveryResult result, Integer page, Integer size, Long alarmId) {
         BAccess.admin();
+        if (alarmId != null && alarmId <= 0) throw Checks.invalid("알람 번호는 양수여야 합니다.");
         Checks.range(page, 0, Integer.MAX_VALUE, "page");
         Checks.range(size, 1, 100, "size");
+        var day = date == null ? LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))) : date;
+        if (alarmId != null)
+            return store.deliveriesForAlarm(
+                    day, result, page == null ? 0 : page, size == null ? 20 : size, alarmId);
         return store.deliveries(
                 date == null ? LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul"))) : date,
                 result,

@@ -64,14 +64,26 @@ public class V7StatisticsService {
     public AlarmResponseStatisticsResponse response(
             OffsetDateTime from, OffsetDateTime to, Long line) {
         var p = period(from, to, db.now());
-        return dto(
-                com.sfaasproject.stf.operations.service.V7Support.map(
-                        "success",
-                        true,
-                        "data",
-                        metrics.response(
-                                samples(selected(p.from(), p.to(), line)), p.from(), p.to())),
-                AlarmResponseStatisticsResponse.class);
+        var result = metrics.response(samples(selected(p.from(), p.to(), line)), p.from(), p.to());
+        var equipmentName =
+                context.equipment().stream()
+                        .filter(e -> Objects.equals(e.id(), result.longestActionEquipmentId()))
+                        .map(V7Context.Equipment::name)
+                        .findFirst()
+                        .orElse(null);
+        return new AlarmResponseStatisticsResponse(
+                true,
+                new AlarmResponseStatistics(
+                        result.activeCautionCount(),
+                        result.activeCriticalCount(),
+                        result.longestActionEquipmentId(),
+                        equipmentName,
+                        result.totalCount(),
+                        result.cautionCount(),
+                        result.criticalCount(),
+                        result.activeCount(),
+                        result.averageActionMinutes(),
+                        result.longestActionMinutes()));
     }
 
     public DailyAlarmStatisticsResponse daily(OffsetDateTime from, OffsetDateTime to, Long line) {

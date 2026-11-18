@@ -332,7 +332,8 @@ class SystemUserApiTest extends AbstractAuthIntegrationTest {
             // 먼저 처리된 쪽만 성공한다. 나중 요청은 성공 직후의 상태(시스템관리자 1명)를 보고 거절되거나,
             // 강등된 사람이 보낸 요청이면 권한 검사에서 막힌다.
             assertThat(statuses.get(0)).isEqualTo(200);
-            assertThat(statuses.get(1)).isIn(403, 422);
+            // 이미 강등된 계정의 토큰이 폐기되면 인증 단계에서 401로 거절될 수도 있다.
+            assertThat(statuses.get(1)).isIn(401, 403, 422);
             assertThat(accounts.findAll()).filteredOn(a -> "ADMIN".equals(a.getRole()) && !a.isDeleted())
                     .as("시스템관리자는 한 명 남는다").hasSize(1);
         } finally {

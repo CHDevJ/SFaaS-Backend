@@ -277,6 +277,211 @@ class V7BackendIntegrationTest {
                 .andReturn();
     }
 
+    void requestAlarm(
+            long id,
+            long equipment,
+            long item,
+            String grade,
+            String state,
+            OffsetDateTime occurred,
+            Integer duration) {
+        jdbc.update(
+                "INSERT INTO alarm(alarm_id,equipment_id,data_item_id,grade,message,"
+                        + "trigger_value,limit_value,process_state,occurred_at,closed_at)"
+                        + " VALUES (?,?,?,?, '프론트 계약 검증',30,20,?,?,?)",
+                id,
+                equipment,
+                item,
+                grade,
+                state,
+                occurred.toLocalDateTime(),
+                duration == null ? null : occurred.plusMinutes(duration).toLocalDateTime());
+    }
+
+    @Test
+    void frontendAlarmCardsCountAllActiveRowsAndUseKoreanYesterdayBoundaries() throws Exception {
+        for (int n = 0; n < 105; n++) {
+            jdbc.update(
+                    "INSERT INTO data_item(data_item_id,equipment_id,item_code,name,item_kind)"
+                            + " VALUES (?,2,?,?,'MEASUREMENT')",
+                    1000 + n,
+                    "front_" + n,
+                    "표시 항목" + n);
+            requestAlarm(3000 + n, 2, 1000 + n, "CAUTION", "ACTIVE", now.minusMinutes(2), null);
+        }
+        var midnight = now.toLocalDate().atStartOfDay(ZoneId.of("Asia/Seoul")).toOffsetDateTime();
+        requestAlarm(9000, 1, 101, "CRITICAL", "CLOSED", midnight.minusDays(1), 1);
+        requestAlarm(9001, 1, 101, "CRITICAL", "CLOSED", midnight.minusSeconds(1), 1);
+        requestAlarm(9002, 1, 101, "CRITICAL", "CLOSED", midnight.minusDays(1).minusSeconds(1), 1);
+        mvc.perform(
+                        get("/api/v1/alarms")
+                                .param("size", "1")
+                                .param("lineId", "1")
+                                .param("grade", "CRITICAL")
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.activeCount").value(106))
+                .andExpect(jsonPath("$.data.activeCriticalCount").value(1))
+                .andExpect(jsonPath("$.data.activeCautionCount").value(105))
+                .andExpect(jsonPath("$.data.yesterdayOccurredCount").value(2));
+    }
+
+    @Test
+    void frontendHourlyChartAggregatesEveryPageAndUsesExactHalfOpenBoundaries() throws Exception {
+        var from = now.minusHours(24);
+        for (int n = 0; n < 123; n++)
+            requestAlarm(
+                    4000 + n,
+                    1,
+                    101,
+                    n % 2 == 0 ? "CRITICAL" : "CAUTION",
+                    "CLOSED",
+                    from.plusMinutes(n),
+                    1);
+        requestAlarm(5000, 1, 101, "CAUTION", "CLOSED", from.minusSeconds(1), 1);
+        requestAlarm(5001, 1, 101, "CAUTION", "CLOSED", now, 1);
+        var result = getOk("/api/v1/alarms/recent-24-hours?size=1");
+        var data = json.readTree(result.getResponse().getContentAsString());
+        assertEquals(1, data.get("data").size());
+        assertEquals(123, data.at("/meta/totalElements").asInt());
+        assertEquals(24, data.get("hourlyCounts").size());
+        int sum = 0;
+        for (var bucket : data.get("hourlyCounts"))
+            sum += bucket.get("cautionCount").asInt() + bucket.get("criticalCount").asInt();
+        assertEquals(123, sum);
+        assertEquals(
+                from.toInstant(),
+                OffsetDateTime.parse(data.get("windowFrom").asText()).toInstant());
+        assertEquals(
+                now.toInstant(), OffsetDateTime.parse(data.get("windowTo").asText()).toInstant());
+        assertEquals(
+                60,
+                data.get("hourlyCounts").get(0).get("cautionCount").asInt()
+                        + data.get("hourlyCounts").get(0).get("criticalCount").asInt());
+        var next =
+                json.readTree(
+                        getOk("/api/v1/alarms/recent-24-hours?size=1&page=1")
+                                .getResponse()
+                                .getContentAsString());
+        assertEquals(data.get("hourlyCounts"), next.get("hourlyCounts"));
+        assertNotEquals(data.get("data"), next.get("data"));
+    }
+
+    @Test
+    void frontendEmptyHourlyChartKeepsTwentyFourZeroBucketsAndRejectsInvalidPage()
+            throws Exception {
+        jdbc.update("DELETE FROM alarm_action");
+        jdbc.update("DELETE FROM alarm");
+        var data =
+                json.readTree(
+                        getOk("/api/v1/alarms/recent-24-hours").getResponse().getContentAsString());
+        assertEquals(0, data.get("data").size());
+        assertEquals(24, data.get("hourlyCounts").size());
+        for (var bucket : data.get("hourlyCounts")) {
+            assertEquals(0, bucket.get("criticalCount").asInt());
+            assertEquals(0, bucket.get("cautionCount").asInt());
+        }
+        mvc.perform(get("/api/v1/alarms/recent-24-hours?size=101").header("Authorization", user))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void frontendStatisticsExposeLongestEquipmentAndSeparateActiveGradesWithinFilter()
+            throws Exception {
+        requestAlarm(300, 2, 21, "CRITICAL", "CLOSED", now.minusHours(3), 180);
+        requestAlarm(301, 3, 31, "CRITICAL", "CLOSED", now.minusHours(3), 180);
+        requestAlarm(302, 4, 41, "CAUTION", "ACTIVE", now.minusMinutes(1), null);
+        mvc.perform(
+                        get("/api/v1/statistics/alarm-response")
+                                .param("from", now.minusHours(4).toString())
+                                .param("to", now.plusSeconds(1).toString())
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.longestActionEquipmentId").value(2))
+                .andExpect(jsonPath("$.data.longestActionEquipmentName").value("설비2"))
+                .andExpect(jsonPath("$.data.longestActionMinutes").value(180))
+                .andExpect(jsonPath("$.data.activeCount").value(2))
+                .andExpect(jsonPath("$.data.activeCriticalCount").value(1))
+                .andExpect(jsonPath("$.data.activeCautionCount").value(1));
+        mvc.perform(
+                        get("/api/v1/statistics/alarm-response?lineId=3")
+                                .param("from", now.minusHours(4).toString())
+                                .param("to", now.plusSeconds(1).toString())
+                                .header("Authorization", user))
+                .andExpect(jsonPath("$.data.longestActionEquipmentId").value(3))
+                .andExpect(jsonPath("$.data.longestActionEquipmentName").value("설비3"))
+                .andExpect(jsonPath("$.data.activeCount").value(0));
+    }
+
+    @Test
+    void frontendStatisticsWithoutClosedSampleKeepLongestValuesNull() throws Exception {
+        mvc.perform(
+                        get("/api/v1/statistics/alarm-response?lineId=1")
+                                .param("from", now.minusHours(4).toString())
+                                .param("to", now.plusSeconds(1).toString())
+                                .header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.longestActionMinutes").isEmpty())
+                .andExpect(jsonPath("$.data.longestActionEquipmentId").isEmpty())
+                .andExpect(jsonPath("$.data.longestActionEquipmentName").isEmpty())
+                .andExpect(jsonPath("$.data.activeCriticalCount").value(1));
+    }
+
+    @Test
+    void frontendTelegramTestDisplaysExactlyTheSentMessageAndReportsDeliveryFailure()
+            throws Exception {
+        when(delivery.sendWithOneRetry(anyString(), anyString()))
+                .thenReturn(new TelegramDeliveryService.DeliveryResult(false, 1, "전송 실패"));
+        String message =
+                com.sfaasproject.stf.operations.service.TelegramApplicationService.TEST_MESSAGE;
+        mvc.perform(post("/api/v1/telegram/me/test-messages").header("Authorization", user))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value(message))
+                .andExpect(jsonPath("$.data.result").value("FAILURE"))
+                .andExpect(jsonPath("$.data.failureReason").value("전송 실패"));
+        verify(delivery).sendWithOneRetry("102", message);
+        assertEquals(
+                message, jdbc.queryForObject("SELECT message FROM notification_log", String.class));
+    }
+
+    @Test
+    void frontendAlarmDeliveryFilterAppliesToRowsSummaryAndRecipientsAndKeepsAdminAccess()
+            throws Exception {
+        jdbc.update(
+                "INSERT INTO"
+                    + " notification_log(alarm_id,account_id,receiver_name,notify_type,message,send_result,sent_at)"
+                    + " VALUES (100,1,'관리자','ALARM','경보','SUCCESS',?),"
+                    + "(100,2,'사용자','ALARM','경보','FAILURE',?),(200,1,'관리자','ALARM','다른"
+                    + " 경보','SUCCESS',?)",
+                now.toLocalDateTime(),
+                now.toLocalDateTime(),
+                now.toLocalDateTime());
+        mvc.perform(
+                        get("/api/v1/system/telegram/deliveries?alarmId=100&result=SUCCESS&size=1")
+                                .header("Authorization", admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].alarmId").value(100))
+                .andExpect(jsonPath("$.data.summary.totalCount").value(2))
+                .andExpect(jsonPath("$.data.summary.successCount").value(1))
+                .andExpect(jsonPath("$.data.summary.failureCount").value(1))
+                .andExpect(jsonPath("$.data.recipientCounts.length()").value(2))
+                .andExpect(jsonPath("$.meta.totalElements").value(1));
+        mvc.perform(
+                        get("/api/v1/system/telegram/deliveries?alarmId=100")
+                                .header("Authorization", user))
+                .andExpect(status().isForbidden());
+        mvc.perform(
+                        get("/api/v1/system/telegram/deliveries?alarmId=0")
+                                .header("Authorization", admin))
+                .andExpect(status().isBadRequest());
+        mvc.perform(
+                        get("/api/v1/system/telegram/deliveries?alarmId=99999")
+                                .header("Authorization", admin))
+                .andExpect(jsonPath("$.data.summary.totalCount").value(0));
+    }
+
     @Test
     void goldenForecastAndAllDisplayMetadataMatchLatestDecision() throws Exception {
         mvc.perform(get("/api/v1/overview/assembly-stop-forecast").header("Authorization", user))
