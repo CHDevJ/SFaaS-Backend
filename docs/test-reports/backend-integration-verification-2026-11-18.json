@@ -1,0 +1,49 @@
+{
+  "verifiedAt": "2026-11-18T15:36:57.813127+09:00",
+  "originalBackBHead": "a8e78ef68d06bcebf2f7294d13cc0f3e27f8d24d",
+  "integratedBackendHead": "2e9d150b16914b2943c9cbd3ec7bfd5c690596f4",
+  "relatedRun": {
+    "id": "RUN-84E0976BE173",
+    "tests": 131,
+    "result": "PASS"
+  },
+  "fullRun": {
+    "id": "RUN-1732DDB7DCE4",
+    "classes": 95,
+    "tests": 626,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "mysqlTests": 17,
+    "mysqlClasses": {
+      "MySqlMasterLineTest": 5,
+      "MySqlBackendBTest": 6,
+      "V7MySqlMigrationTest": 6
+    },
+    "result": "PASS"
+  },
+  "ciReportGuardScenariosPassed": 7,
+  "runtimeBeforeSmokeFix": {
+    "passed": 13,
+    "failed": 7,
+    "cause": "Smoke requests omitted mandatory from/to dates; server correctly returned 400."
+  },
+  "runtimeAfterSmokeFix": {
+    "passed": 28,
+    "failed": 0
+  },
+  "cumulativeRuns": 29,
+  "cumulativeAttempts": 9398,
+  "previousRunRecordsPreserved": true,
+  "migrationFilesUnchanged": [
+    "src\\main\\resources\\db\\migration\\V1__init_schema.sql",
+    "src\\main\\resources\\db\\migration\\V2__seed_data.sql",
+    "src\\main\\resources\\db\\migration\\V3__backend_b_contract_and_jobs.sql",
+    "src\\main\\resources\\db\\migration\\V4__auth_session_columns.sql",
+    "src\\main\\resources\\db\\migration\\V5__forecast_settings_and_initial_stock.sql",
+    "src\\main\\resources\\db\\migration\\V6__v7_roles_alarm_actions_and_counter_quality.sql"
+  ],
+  "physicalNodeRedPeerVerifiedThisRun": false,
+  "troubleshootingUrl": "https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/5668865",
+  "note": "No credentials, response bodies, personal chat IDs, or failure stack traces are recorded."
+}

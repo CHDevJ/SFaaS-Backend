@@ -1,0 +1,19 @@
+{
+  "verifiedAt": "2026-11-18T12:44:33.4900737+09:00",
+  "url": "http://192.168.203.18:8081/internal/v1/measurements",
+  "boundAddress": "::",
+  "noKeyHttp": 401,
+  "wrongKeyHttp": 401,
+  "validBatchHttp": 202,
+  "duplicateRetryHttp": 202,
+  "duplicateRetryIgnored": true,
+  "invalidBatchHttp": 422,
+  "storedRowsAdded": 2,
+  "equipmentCode": "OR-01-1",
+  "equipmentStatusAtReceipt": "RUNNING",
+  "lastReceivedRecorded": true,
+  "physicalNodeRedPeerVerified": false,
+  "firewallVerified": true,
+  "firewallRule": "STF-NodeRed-Ingestion-8081",
+  "firewallRemoteAddress": "LocalSubnet"
+}

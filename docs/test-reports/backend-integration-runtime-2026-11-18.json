@@ -1,0 +1,204 @@
+{
+  "version": "7.0.0",
+  "executedAt": "2026-11-18T15:35:18.7359189+09:00",
+  "passed": 28,
+  "failed": 0,
+  "cases": [
+    {
+      "path": "/actuator/health",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0305009
+    },
+    {
+      "path": "/swagger-ui/index.html",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0049995
+    },
+    {
+      "path": "/v3/api-docs",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0107502
+    },
+    {
+      "path": "/api/v1/overview/equipment-layout",
+      "expected": 401,
+      "actual": 401,
+      "result": "PASS",
+      "seconds": 0.0046866
+    },
+    {
+      "path": "/api/v1/lines",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0216558
+    },
+    {
+      "path": "/api/v1/overview/equipment-layout",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0297423
+    },
+    {
+      "path": "/api/v1/overview/assembly-stop-forecast",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0459277
+    },
+    {
+      "path": "/api/v1/inventory",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0452173
+    },
+    {
+      "path": "/api/v1/alarms",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0673999
+    },
+    {
+      "path": "/api/v1/alarms/recent-24-hours",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0188958
+    },
+    {
+      "path": "/api/v1/telegram/me/connection",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0177568
+    },
+    {
+      "path": "/api/v1/communications",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0238995
+    },
+    {
+      "path": "/api/v1/communications/summary",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0201609
+    },
+    {
+      "path": "/api/v1/master/equipment",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0397105
+    },
+    {
+      "path": "/api/v1/master/lines",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0342545
+    },
+    {
+      "path": "/api/v1/alarm-histories?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0300556
+    },
+    {
+      "path": "/api/v1/statistics/availability?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0358698
+    },
+    {
+      "path": "/api/v1/statistics/daily-alarms?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.025126
+    },
+    {
+      "path": "/api/v1/statistics/alarm-response?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0324431
+    },
+    {
+      "path": "/api/v1/statistics/losses?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0391621
+    },
+    {
+      "path": "/api/v1/statistics/equipment-rankings?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00&sortBy=faultCount",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.1084077
+    },
+    {
+      "path": "/api/v1/statistics/stop-causes?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0508201
+    },
+    {
+      "path": "/api/v1/alarm-histories",
+      "expected": 400,
+      "actual": 400,
+      "result": "PASS",
+      "seconds": 0.0211012
+    },
+    {
+      "path": "/api/v1/statistics/availability",
+      "expected": 400,
+      "actual": 400,
+      "result": "PASS",
+      "seconds": 0.0186088
+    },
+    {
+      "path": "/api/v1/system/change-histories?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 403,
+      "actual": 403,
+      "result": "PASS",
+      "seconds": 0.0166234
+    },
+    {
+      "path": "/api/v1/system/change-histories?from=2026-11-18T00%3A00%3A00%2B09%3A00&to=2026-11-19T00%3A00%3A00%2B09%3A00",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0272862
+    },
+    {
+      "path": "/api/v1/system/telegram/deliveries",
+      "expected": 403,
+      "actual": 403,
+      "result": "PASS",
+      "seconds": 0.0171912
+    },
+    {
+      "path": "/api/v1/system/telegram/deliveries",
+      "expected": 200,
+      "actual": 200,
+      "result": "PASS",
+      "seconds": 0.0251092
+    }
+  ]
+}
