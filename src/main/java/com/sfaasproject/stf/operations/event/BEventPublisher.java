@@ -27,7 +27,9 @@ public class BEventPublisher {
                         public void afterCommit() {
                             try {
                                 if (pendingId == null) publisher.publishEvent(event);
-                                else outbox.dispatch(pendingId);
+                                // outbox 발행은 새 트랜잭션(두 번째 연결)을 연다. UnitOfWork 안이면 연결 반납 뒤로 미룬다.
+                                else if (!AfterTransactionDispatch.defer(() -> outbox.dispatch(pendingId)))
+                                    outbox.dispatch(pendingId);
                             } catch (RuntimeException failure) {
                                 org.slf4j.LoggerFactory.getLogger(BEventPublisher.class)
                                         .error(
