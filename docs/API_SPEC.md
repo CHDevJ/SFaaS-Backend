@@ -1110,6 +1110,8 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | LAST_ADMIN_REQUIRED | 422 | 마지막 관리자 삭제/강등 |
 | EQUIPMENT_CODE_DUPLICATE | 409 | 설비 코드 중복 |
 | EQUIPMENT_NOT_FOUND | 404 | 설비 없음 |
+| LINE_NOT_FOUND | 404 | 라인 없음·삭제됨(EQP-002, MST-007~009) |
+| PROCESS_NOT_FOUND | 404 | 공정 없음 또는 라인 삭제됨(EQP-003) |
 | EQUIPMENT_HAS_ACTIVE_ALARM | 422 | 발생 중 알람 설비 삭제 |
 | LINE_HAS_EQUIPMENT | 422 | 설비가 있는 라인 삭제 |
 | EQUIPMENT_PHOTO_NOT_FOUND | 404 | 사진 서명 불일치·만료·파일 없음(MST-018) |
@@ -1266,6 +1268,13 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - 테스트: MasterDataItemApiTest(H2), MySqlMasterLineTest의 데이터 항목 흐름(MySQL, STF_TEST_MYSQL_URL 필요).
 - 길이는 11.0 대로 ERD에 맞춘다(이름 50, 단위 20, 0/1 표시 20).
 - MST-012에서 measurementThreshold·stateAlarmCondition 칸을 아예 보내지 않으면 기존 기준을 유지하고, 명시적으로 null 을 보내면 지운다(2026-11-18 사용자 결정).
+
+### 11.2 2026-11-18 설비 현황 조회 (A, EQP-002~005)
+
+- 판정은 B의 OVW-001과 같다: 상태 줄이 없는 설비는 COMMUNICATION_LOST, 이상 설비는 FAULT·CAUTION·COMMUNICATION_LOST, 측정값 valueStatus는 지금 값과 기준 비교(경보 먼저, 기준 포함), 상태값은 알람 발생 값이면 그 등급, 누적값은 null.
+- 주요 측정값은 표시 순서가 앞선 측정값 3개다. CurrentDataItem은 value·measuredAt이 필수라 값을 받은 적 없는 항목은 목록에서 뺀다.
+- 추가 필드(프론트 요청): ProcessSummary.representativeStatus, AbnormalMeasurement의 displayValue·cautionThreshold·criticalThreshold·thresholdDirection·decimalPlaces. 모두 선택 필드라 B의 OVW-001 응답 형식에는 영향이 없다.
+- EquipmentDetailData.delayed는 의미가 정의되지 않아 아직 내보내지 않는다.
 
 ## 12. 필드 사전
 
@@ -1521,7 +1530,8 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | processId | Identifier | Y | N | - | - |
 | processName | string | Y | N | 길이≤100 | - |
 | processOrder | integer | Y | N | 값≥1 | - |
-| hasAbnormalEquipment | boolean | Y | N | - | - |
+| hasAbnormalEquipment | boolean | Y | N | - | FAULT·CAUTION·COMMUNICATION_LOST 설비가 있으면 true |
+| representativeStatus | EquipmentStatus | N | Y | - | 공정 설비 중 가장 나쁜 상태. 설비가 없으면 null. 2026-11-18 추가 |
 
 ### ProcessListResponse
 
@@ -1561,7 +1571,12 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | currentValue | number | Y | N | - | - |
 | unit | string | N | Y | - | - |
 | valueStatus | string | Y | N | 허용 CAUTION, CRITICAL | - |
-| threshold | number | N | N | - | - |
+| threshold | number | N | N | - | 벗어난 쪽 기준(상태값은 알람 발생 값) |
+| displayValue | string | N | Y | - | 표시 값. 2026-11-18 추가 |
+| cautionThreshold | number | N | Y | - | 주의 기준. 2026-11-18 추가 |
+| criticalThreshold | number | N | Y | - | 경보 기준. 2026-11-18 추가 |
+| thresholdDirection | string | N | Y | 허용 ABOVE, BELOW | 2026-11-18 추가 |
+| decimalPlaces | integer | N | N | 값≥0; 값≤10 | 2026-11-18 추가 |
 
 ### EquipmentSummary
 

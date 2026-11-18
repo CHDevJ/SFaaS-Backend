@@ -28,11 +28,14 @@ public class JdbcDataItemStatisticsQuery implements DataItemStatisticsQuery {
         if (dataItemIds.isEmpty()) {
             return result;
         }
-        jdbc.query("SELECT data_item_id, measured_value, received_at FROM measurement_latest WHERE data_item_id IN ("
+        jdbc.query("SELECT data_item_id, measured_value, measured_at, received_at FROM measurement_latest"
+                        + " WHERE data_item_id IN ("
                         + placeholders(dataItemIds) + ")",
                 rs -> {
+                    Timestamp measured = rs.getTimestamp("measured_at");
                     Timestamp received = rs.getTimestamp("received_at");
                     result.put(rs.getLong("data_item_id"), new Latest(rs.getDouble("measured_value"),
+                            measured == null ? null : measured.toLocalDateTime(),
                             received == null ? null : received.toLocalDateTime()));
                 }, dataItemIds.toArray());
         return result;
