@@ -60,6 +60,7 @@ class MasterLineApiTest {
     @Autowired PasswordEncoder passwords;
     @Autowired JwtAccessTokenService jwt;
     @Autowired Clock clock;
+    @Autowired com.sfaasproject.stf.equipment.service.MasterLineService lineService;
 
     AccountEntity manager;
     String token;
@@ -204,6 +205,19 @@ class MasterLineApiTest {
 
         mvc.perform(json(post(BASE), lineBody(fifty, 1)).header("Authorization", token))
                 .andExpect(status().isCreated());
+    }
+
+    @Test
+    void nameLongerThanDbColumnIsServerErrorNotDuplicate() throws Exception {
+        // v7 은 100자까지 받지만 DB line.name 은 varchar(50) 이다. 중복(409)으로 잘못 알리지 않는다.
+        mvc.perform(json(post(BASE), lineBody("가".repeat(51), 1)).header("Authorization", token))
+                .andExpect(status().isInternalServerError());
+        assertThat(count("line")).isZero();
+        assertThat(changes()).isEmpty();
+        // 실패한 flush 뒤에 다시 조회하지 않으므로 Hibernate AssertionFailure 가 아니라 DB 오류 그대로다.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> lineService.create("가".repeat(51), 1, null,
+                        manager.getId()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
     // ---------- MST-007 ----------
