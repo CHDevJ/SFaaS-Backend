@@ -1231,6 +1231,12 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - 단계 경계는 위험/주의 이하, 위험>=주의는422. 새 설정은 도움말·예측 응답·이벤트에 반영한다. 카운터 중복·리셋·1분집계, 계획생산량과 실측생산량 분리도 검증한다.
 - 기존 ADMIN/USER·ACTIVE/CLOSED·즉시종료·논리삭제·Telegram 장애격리 규칙은 유지한다. 각 API 정상/인증/권한/검증/충돌 테스트와 전체 검증 후 구현 완료로 표시한다.
 
+### 11.0 2026-11-18 기준정보 입력 길이를 ERD 에 맞춤 (A)
+
+- 이유: v7 요청 길이가 DB 컬럼보다 길어 그 사이 길이는 저장 시 500 이 났다(프론트·B 확인 요청). migration 없이 API 를 ERD 길이로 줄인다.
+- 기준: 라인 이름 50(line.name). 설비 코드 20·이름 100·종류 50·시리얼 50·통신 방식 20(equipment). 데이터 항목 이름 50·단위 20·0/1 표시 20(data_item).
+- 영향 API: MST-002/003/006/007/011/012. 넘으면 400 VALIDATION_ERROR. DB 담당 확인 대상.
+
 ## 12. 필드 사전
 
 Y=필수, N=선택. nullable은 명시된 경우만 허용한다. allOf는 참조와 추가 필드 모두 적용한다. 단계·금액·무이력 상태를 구분하며 null을0으로 변환하지 않는다.
@@ -1467,7 +1473,7 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | lineId | Identifier | Y | N | - | - |
-| lineName | string | Y | N | 길이≤100 | - |
+| lineName | string | Y | N | 길이≤50 | - |
 | displayOrder | integer | Y | N | 값≥1 | - |
 | lineType | LineType | Y | N | - | - |
 
@@ -2092,7 +2098,7 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| lineName | string | Y | N | 길이≥1; 길이≤100 | - |
+| lineName | string | Y | N | 길이≥1; 길이≤50 | ERD line.name varchar(50). 2026-11-18 조정 |
 | displayOrder | integer | Y | N | 값≥1 | - |
 | lineType | LineType | N | N | 기본 PART | 추가 계약 필드. 생략하면 PART(제안값); 기존 ASSEMBLY는 유지 |
 
