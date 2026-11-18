@@ -74,6 +74,7 @@ class MasterEquipmentApiTest {
     @Autowired PasswordEncoder passwords;
     @Autowired JwtAccessTokenService jwt;
     @Autowired Clock clock;
+    @Autowired com.sfaasproject.stf.equipment.service.MasterEquipmentService equipmentService;
 
     AccountEntity manager;
     String token;
@@ -269,6 +270,16 @@ class MasterEquipmentApiTest {
         }
         assertThat(count("equipment")).isZero();
         assertThat(photoFiles()).isEmpty();
+    }
+
+    @Test
+    void codeLongerThanDbColumnIsDbErrorNotDuplicate() {
+        // v7 은 코드를 100자까지 받지만 DB equip_code 는 varchar(20) 이다. 실패한 저장 뒤 다시 조회하지 않는다.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> equipmentService.create(
+                        new com.sfaasproject.stf.equipment.service.MasterEquipmentService.Command("X".repeat(21),
+                                "긴 코드", "시험기", null, outer, 1, "MQTT", null, null, false), manager.getId()))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(count("equipment")).isZero();
     }
 
     @Test
