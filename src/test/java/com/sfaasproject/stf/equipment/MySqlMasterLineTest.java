@@ -158,13 +158,11 @@ class MySqlMasterLineTest {
                 "MQTT", OffsetDateTime.parse("2026-11-17T08:30:00.789+09:00"),
                 new MockMultipartFile("photo", "p.png", "image/png", png), false), actor);
         assertThat(created.registeredAt()).isEqualTo(LocalDateTime.of(2026, 11, 17, 8, 30));
-        assertThat(created.photoUrl()).isNull();
-        assertThat(jdbc.queryForObject("SELECT photo_path FROM equipment WHERE equipment_id = ?", String.class,
-                created.equipmentId())).endsWith(".png");
-        // v7 은 코드를 100자까지 받지만 DB equip_code 는 varchar(20) 이다. 중복으로 잘못 알리지 않고 DB 오류를 그대로 낸다.
+        assertThat(created.photoUrl()).startsWith("/api/v1/equipment-photos/");
+        // 길이는 ERD 에 맞춘다. 코드 21자는 저장 전에 400 으로 막는다.
         assertThatThrownBy(() -> equipment.create(new Command("X".repeat(21), "긴 코드", "검증기", null, lineId, seq,
                 "MQTT", null, null, false), actor))
-                .isInstanceOf(DataIntegrityViolationException.class);
+                .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "VALIDATION_ERROR");
         assertThatThrownBy(() -> equipment.create(new Command(code, "중복", "검증기", null, lineId, seq, "MQTT", null,
                 null, false), actor))
                 .isInstanceOf(DomainException.class)

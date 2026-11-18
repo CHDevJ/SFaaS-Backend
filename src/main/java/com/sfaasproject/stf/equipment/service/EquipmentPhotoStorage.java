@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.Optional;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,7 +93,16 @@ public class EquipmentPhotoStorage {
         };
     }
 
-    static boolean isValidName(String name) {
+    /** 저장된 사진 파일. 이름 형식이 맞지 않으면(경로 조작 포함) 없는 것으로 본다. */
+    public Optional<Path> find(String name) {
+        if (!isValidName(name)) {
+            return Optional.empty();
+        }
+        Path path = root.resolve(name);
+        return Files.isRegularFile(path) ? Optional.of(path) : Optional.empty();
+    }
+
+    public static boolean isValidName(String name) {
         return name != null && FILE_NAME.matcher(name).matches();
     }
 

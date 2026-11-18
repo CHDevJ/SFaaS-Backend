@@ -49,7 +49,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 | 오류 | 400 형식/기간, 401 인증, 403 권한, 404 없음, 409 중복/상태충돌, 422 업무규칙 |
 | 빈 결과 | 200 + 빈 배열 및 totalElements=0. 입력 오류 details에 field/reason 반환 |
 | 삭제 | API DELETE, DB deletedAt/deletedBy. 지난 알람·조치·감사 기록 보존. 발생 중 알람 설비와 설비가 있는 라인은 삭제 거부 |
-| 사진 | JPG/PNG/WebP, 최대 5MB, multipart. signed URL 10분(제안값) |
+| 사진 | JPG/PNG/WebP, 최대 5MB, multipart. photoUrl은 MST-018의 10분 HMAC 서명 상대 주소(제안값, 2026-11-18 A 추가) |
 
 일반 표 헤더 정렬은 제공하지 않는다. 통계 순위의 sortBy는 화면에서 고르는 집계 기준이며 표 헤더 정렬과 구분한다. 모든 리스트는 동일 값의 마지막 비교로 ID를 사용해 페이지 결과를 안정화한다.
 
@@ -142,6 +142,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 | MST-011 | A | POST | /api/v1/master/equipment/{equipmentId}/data-items | 설비 데이터 항목 등록 | ADMIN, USER | FR1305, FR1306 |
 | MST-012 | A | PUT | /api/v1/master/data-items/{dataItemId} | 데이터 항목 수정 | ADMIN, USER | FR1305 |
 | MST-013 | A | PUT | /api/v1/master/data-items/{dataItemId}/threshold | 측정값 또는 상태값 알람 기준 수정 | ADMIN, USER | FR1306 |
+| MST-018 | A | GET | /api/v1/equipment-photos/{fileName} | 설비 사진 조회(10분 서명 주소) | 서명(로그인 불필요) | FR1302 |
 | SYS-001 | A | GET | /api/v1/system/settings/judgement | 판정 설정 조회 | ADMIN | FR1401 |
 | SYS-002 | A | PUT | /api/v1/system/settings/judgement | 판정 설정 수정 | ADMIN | FR1401 |
 | SYS-003 | A | GET | /api/v1/system/settings/calculation | 계산 기준값 조회 | ADMIN | FR1402 |
@@ -763,6 +764,21 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 - 응답: 200 ThresholdResponse; 401 Unauthorized; 404 NotFound; 422 BusinessRuleViolation
 - 규칙/테스트: BR-MST-013; TC-MST-013-01, TC-MST-013-02
 
+### MST-018 설비 사진 조회
+
+- 주소: GET /api/v1/equipment-photos/{fileName}?expires={epochSeconds}&signature={hmac}
+- 소유자: A; 권한: 로그인 불필요(서명 확인); 요구사항: FR1302. 2026-11-18 A 추가(제안값)
+- 처리: MST-001/002/003·EQP-004의 photoUrl이 주는 상대 주소다. 화면의 `<img>`가 토큰 없이 연다. 만료 10분, 서명은 JWT 키에서 용도별로 파생한 HMAC-SHA256이다. 서명 불일치·만료·파일 없음·이름 형식 오류는 모두 404 EQUIPMENT_PHOTO_NOT_FOUND로 같게 응답한다.
+
+| 위치 | 이름 | 필수 | 타입 | 제약 |
+|---|---|---|---|---|
+| path | fileName | Y | string | 패턴 `^[0-9a-f]{32}\.(jpg|png|webp)$` |
+| query | expires | Y | integer(int64) | - |
+| query | signature | Y | string | - |
+
+- 요청: 본문 없음
+- 응답: 200 image/jpeg·image/png·image/webp; 404 NotFound
+
 ### SYS-001 판정 설정 조회
 
 - 주소: GET /api/v1/system/settings/judgement
@@ -1093,6 +1109,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | EQUIPMENT_NOT_FOUND | 404 | 설비 없음 |
 | EQUIPMENT_HAS_ACTIVE_ALARM | 422 | 발생 중 알람 설비 삭제 |
 | LINE_HAS_EQUIPMENT | 422 | 설비가 있는 라인 삭제 |
+| EQUIPMENT_PHOTO_NOT_FOUND | 404 | 사진 서명 불일치·만료·파일 없음(MST-018) |
 | DATA_ITEM_NOT_FOUND | 404 | 수집/조회 항목 미등록 |
 | INVALID_THRESHOLD_ORDER | 422 | 주의/경보 방향 순서 오류 |
 | ALARM_NOT_FOUND | 404 | 알람 없음 |
@@ -1228,6 +1245,7 @@ error.details는 필드별 검증을, traceId는 서버 로그 연계를 위한 
 - 이유: v7 요청 길이가 DB 컬럼보다 길어 그 사이 길이는 저장 시 500 이 났다(프론트·B 확인 요청). migration 없이 API 를 ERD 길이로 줄인다.
 - 기준: 라인 이름 50(line.name). 설비 코드 20·이름 100·종류 50·시리얼 50·통신 방식 20(equipment). 데이터 항목 이름 50·단위 20·0/1 표시 20(data_item).
 - 영향 API: MST-002/003/006/007/011/012. 넘으면 400 VALIDATION_ERROR. DB 담당 확인 대상.
+- 사진 조회: v7에는 photoUrl(10분 서명 URL)만 있고 사진을 주는 API가 없어 MST-018을 추가했다. photoUrl은 상대 주소(uri-reference)다.
 
 ## 12. 필드 사전
 
@@ -1530,8 +1548,8 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | equipmentId | Identifier | Y | N | - | - |
-| equipmentCode | string | Y | N | 길이≤100 | - |
-| equipmentName | string | Y | N | 길이≤200 | - |
+| equipmentCode | string | Y | N | 길이≤20 | - |
+| equipmentName | string | Y | N | 길이≤100 | - |
 | lineId | Identifier | Y | N | - | - |
 | lineName | string | Y | N | - | - |
 | processId | Identifier | Y | N | - | - |
@@ -2020,13 +2038,13 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| equipmentCode | string | Y | N | 길이≥1; 길이≤100 | 등록 후 수정 불가 |
-| equipmentName | string | Y | N | 길이≥1; 길이≤200 | - |
-| equipmentType | string | Y | N | 길이≥1; 길이≤100 | - |
-| serialNumber | string | N | Y | 길이≤200 | - |
+| equipmentCode | string | Y | N | 길이≥1; 길이≤20 | 등록 후 수정 불가 |
+| equipmentName | string | Y | N | 길이≥1; 길이≤100 | - |
+| equipmentType | string | Y | N | 길이≥1; 길이≤50 | - |
+| serialNumber | string | N | Y | 길이≤50 | - |
 | lineId | Identifier | Y | N | - | - |
 | processOrder | integer | Y | N | 값≥1 | - |
-| communicationMethod | string | Y | N | 길이≥1; 길이≤100 | - |
+| communicationMethod | string | Y | N | 길이≥1; 길이≤20 | - |
 | photo | string(binary) | N | Y | - | - |
 | registeredAt | string(date-time) | N | N | - | 등록 화면 입력값. 등록 시 생략하면 서버 현재 시각. 수정 시 생략하면 기존 값 유지. |
 
@@ -2034,12 +2052,12 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| equipmentName | string | Y | N | 길이≥1; 길이≤200 | - |
-| equipmentType | string | Y | N | 길이≥1; 길이≤100 | - |
-| serialNumber | string | N | Y | 길이≤200 | - |
+| equipmentName | string | Y | N | 길이≥1; 길이≤100 | - |
+| equipmentType | string | Y | N | 길이≥1; 길이≤50 | - |
+| serialNumber | string | N | Y | 길이≤50 | - |
 | lineId | Identifier | Y | N | - | - |
 | processOrder | integer | Y | N | 값≥1 | - |
-| communicationMethod | string | Y | N | 길이≥1; 길이≤100 | - |
+| communicationMethod | string | Y | N | 길이≥1; 길이≤20 | - |
 | photo | string(binary) | N | Y | - | - |
 | removePhoto | boolean | N | N | 기본 false | - |
 | registeredAt | string(date-time) | N | N | - | 등록 화면 입력값. 등록 시 생략하면 서버 현재 시각. 수정 시 생략하면 기존 값 유지. |
