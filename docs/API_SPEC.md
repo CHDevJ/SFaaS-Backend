@@ -90,7 +90,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 
 ### 4.4 분석·정렬·통계
 
-- MEAS-001은 같은 설비 최대10개 항목을 받는다. 24시간 이하 원본, 7일 이하 1분, 그 이상 1시간 간격(제안값). 측정값 평균, 상태값 마지막값, 누적값 마지막값을 사용하고 통신 미수신 구간은 null로 분리한다.
+- MEAS-001은 같은 설비 최대10개 항목을 받는다. 24시간 이하 원본, 7일 이하 1분, 그 이상 1시간 간격(제안값). 측정값 평균, 상태값 마지막값, 누적값 마지막값을 사용하고 통신 미수신 구간은 null로 분리한다. 항목당 2000점을 넘으면 1분·5분·10분·15분·30분·1시간·2시간·3시간·6시간·12시간·1일 순으로 간격을 올린다(2026-11-18 A 제안값, 11.3).
 - 알람 상세는 전후 각30분이며 미래 구간에는 값을 만들지 않는다. 임계값·등급별 이탈 구간·알람 마커와 동일 설비 최근 종료20건을 제공한다.
 - 평균/최장 조치시간은 CLOSED 표본에서 계산, 표본 없으면 null. 고장 이력은 종료 CRITICAL만 제공한다. MTBF는 인접 발생시각 차의 평균이며 2건 미만이면 null이다.
 - 가동률=RUNNING 시간/계획시간 ×100, 최대100. 계획시간 미정 시 조회 구간 길이를 사용하는 것은 제안값이며 영업 달력 확정 시 교체한다.
@@ -1276,6 +1276,15 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - 추가 필드(프론트 요청): ProcessSummary.representativeStatus, AbnormalMeasurement의 displayValue·cautionThreshold·criticalThreshold·thresholdDirection·decimalPlaces. 모두 선택 필드라 B의 OVW-001 응답 형식에는 영향이 없다.
 - EquipmentDetailData.delayed는 의미가 정의되지 않아 아직 내보내지 않는다.
 
+### 11.3 2026-11-18 측정 추세 조회 (A, MEAS-001)
+
+- 집계 간격: 24시간 이하는 원본(모든 항목이 2000점 이하일 때), 7일 이하는 1분, 그보다 길면 1시간에서 시작하고 칸 수가 2000을 넘으면 다음 간격으로 올린다. 3초 수집이면 24시간 원본이 28,800점이라 v7 기본값만으로는 2000점 제한을 지킬 수 없기 때문이다. 모든 항목에 같은 간격을 쓴다.
+- 칸 시각은 칸의 시작이며 Asia/Seoul 자정 기준으로 맞춘다. 측정값 평균, 상태값·누적값은 칸의 마지막 값이다.
+- 통신 끊김은 equipment_status_history의 COMMUNICATION_LOST 구간을 조회 구간으로 자르고 합친다. 아직 끊겨 있으면 endedAt은 null이고, 각 끊김 시작 시각에 value=null 점을 넣는다.
+- alarmMarkers는 구간 안에서 발생한 알람(발생 때 값), abnormalIntervals는 구간과 겹치는 알람의 발생~종료다.
+- from>=to는 400 INVALID_PERIOD, dataItemIds 1~10개·중복 금지(400), 다른 설비·삭제한 항목은 404 DATA_ITEM_NOT_FOUND, 삭제한 설비는 404 EQUIPMENT_NOT_FOUND.
+- 추세 메타정보(프론트 요청): thresholdDirection·decimalPlaces·zeroDisplayName·oneDisplayName. STOMP MeasurementEvent는 B 발행 형식이라 이번 변경에 포함하지 않는다.
+
 ## 12. 필드 사전
 
 Y=필수, N=선택. nullable은 명시된 경우만 허용한다. allOf는 참조와 추가 필드 모두 적용한다. 단계·금액·무이력 상태를 구분하며 null을0으로 변환하지 않는다.
@@ -1699,12 +1708,16 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | unit | string | N | Y | - | - |
 | cautionThreshold | number | N | Y | - | - |
 | criticalThreshold | number | N | Y | - | - |
-| points | array<MeasurementPoint> | Y | N | - | - |
+| thresholdDirection | string | N | Y | 허용 ABOVE, BELOW | 2026-11-18 추가 |
+| decimalPlaces | integer | N | N | 값≥0; 값≤10 | 2026-11-18 추가 |
+| zeroDisplayName | string | N | Y | - | 상태값 0 표시. 2026-11-18 추가 |
+| oneDisplayName | string | N | Y | - | 상태값 1 표시. 2026-11-18 추가 |
+| points | array<MeasurementPoint> | Y | N | - | 시각순. 끊김 시작마다 value=null 점 |
 | alarmMarkers | array<AlarmMarker> | Y | N | - | - |
 | disconnections | array<DisconnectionInterval> | Y | N | - | - |
 | currentlyConnected | boolean | Y | N | - | - |
-| abnormalIntervals | array<object> | N | N | - | - |
-| bucketSeconds | integer | N | N | 값≥1 | - |
+| abnormalIntervals | array<object> | N | N | - | 구간과 겹치는 알람의 발생~종료(미종료면 endedAt null) |
+| bucketSeconds | integer | N | N | 값≥1 | 원본이면 항목 수집 주기, 집계면 적용한 칸 크기(초) |
 
 ### InventoryLine
 
