@@ -11,3 +11,5 @@ STF_BackendB_단위테스트_보고서_2026-11-17.xlsx를 계속 갱신한다. �
 2026-11-18 Telegram 로컬 설정 변경 후 RUN-BABD49DE4130을 추가했다. 전체 Gradle 539건(MySQL 12건 포함)이 통과했다. 모의 Telegram 응답을 사용하는 로컬 설정 도우미의 안전 동작 11개와 실제 Spring 설정 import·프로필·명시적 덮어쓰기 검증은 별도 확인이며 Gradle 건수에 더하지 않는다. 기존 자동 테스트 실행·실패 이력과 v5 수동 확인 시트는 유지한다.
 
 별도 실제 검증: `telegram-live-verification-2026-11-18.json`에 공용 봇 getMe 확인, badmin01 연결, 시험 발송 SUCCESS와 사용자 기기 수신 확인을 기록했다. 이 결과는 Gradle 테스트 수에 합산하지 않는다. 토큰·JWT·chat ID·개인별 연결 URL은 기록하지 않는다.
+
+2026-11-18 Node-RED 수집 활성화: 관련 회귀 RUN-5D7178C37624 50건, 전체 회귀 RUN-445C9460B687 539건(MySQL 12건 포함)이 통과했다. 누적 27회·8641건이며 기존 기록을 유지했다. LAN 주소로 키 누락/불일치 401, 신규 202, 중복 202·duplicate=true, 잘못된 배치 422·원자 거절, 측정 2행 저장·통신 복귀를 별도 확인했다. 실제 담당 PC의 Node-RED/PLC 전송은 미검증이다. 근거는 node-red-receiver-verification-2026-11-18.json이며 인증값은 기록하지 않았다.

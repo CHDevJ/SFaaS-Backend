@@ -1,4 +1,4 @@
-﻿param([switch]$SkipBuild)
+﻿param([switch]$SkipBuild, [switch]$EnableIngestion)
 . (Join-Path $PSScriptRoot 'Common.ps1')
 $previousDirectory = Get-Location
 try {
@@ -11,6 +11,11 @@ try {
         [IO.File]::WriteAllText((Join-Path $ManualRoot '.env.manual-test'),$content,[Text.UTF8Encoding]::new($false))
     }
     $config = Read-ManualEnv
+    $profiles='backend-b,manual-test'
+    if($EnableIngestion){
+        & (Join-Path $ManualRoot 'scripts/Setup-LocalIngestion.ps1')
+        $profiles+=',node-red-local'
+    }
     if (-not $config.ContainsKey('MANUAL_LOGIN_PASSWORD')) {
         $loginPassword='T7!'+[guid]::NewGuid().ToString('N')
         [IO.File]::AppendAllText((Join-Path $ManualRoot '.env.manual-test'),[Environment]::NewLine+'MANUAL_LOGIN_PASSWORD='+$loginPassword,[Text.UTF8Encoding]::new($false))
@@ -41,7 +46,7 @@ MANUAL_LOGIN_PASSWORD="+$config.MANUAL_LOGIN_PASSWORD+"
         $jar = Get-Item -LiteralPath $runtimeJar
         $jdk = Get-ChildItem -LiteralPath 'C:\Program Files\Java' -Directory -Filter 'jdk-21*' -ErrorAction SilentlyContinue | Select-Object -First 1
         $javaCommand = if ($jdk) { Join-Path $jdk.FullName 'bin/java.exe' } else { (Get-Command java.exe).Source }
-        $process = Start-Process -FilePath $javaCommand -ArgumentList @('-jar',('"'+$jar.FullName+'"'),'--spring.profiles.active=backend-b,manual-test') -WorkingDirectory $ManualRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $ManualRoot 'logs/manual-test-server.log') -RedirectStandardError (Join-Path $ManualRoot 'logs/manual-test-server-error.log') -PassThru
+        $process = Start-Process -FilePath $javaCommand -ArgumentList @('-jar',('"'+$jar.FullName+'"'),('--spring.profiles.active='+$profiles)) -WorkingDirectory $ManualRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $ManualRoot 'logs/manual-test-server.log') -RedirectStandardError (Join-Path $ManualRoot 'logs/manual-test-server-error.log') -PassThru
         @{ ProcessId=$process.Id; StartTimeUtc=$process.StartTime.ToUniversalTime().ToString('o'); Jar=$jar.FullName } | ConvertTo-Json | Set-Content -LiteralPath secrets/manual-test-process.json -Encoding UTF8
         $ready = $false
         for ($attempt=0; $attempt -lt 120; $attempt++) {
@@ -59,6 +64,9 @@ MANUAL_LOGIN_PASSWORD="+$config.MANUAL_LOGIN_PASSWORD+"
     }
     $docs = Invoke-ManualHttp '/v3/api-docs' -TimeoutSeconds 30
     if ($docs.Status -ne 200) { throw 'Swagger schema failed. See server log.' }
+    if($EnableIngestion -and -not (($docs.Body | ConvertFrom-Json).paths.PSObject.Properties.Name -contains '/internal/v1/measurements')){
+        throw 'The running server has no ingestion endpoint. Restart it with Start-NodeRedReceiver.ps1.'
+    }
     $token = & (Join-Path $PSScriptRoot 'Get-ManualTestToken.ps1')
     $check = Invoke-ManualHttp '/api/v1/overview/equipment-layout' $token
     if ($check.Status -ne 200) { throw "Authenticated API failed: $($check.Status)." }
