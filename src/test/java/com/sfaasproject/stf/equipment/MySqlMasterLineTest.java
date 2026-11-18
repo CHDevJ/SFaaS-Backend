@@ -50,6 +50,7 @@ class MySqlMasterLineTest {
 
     @Autowired MasterLineService lines;
     @Autowired MasterDataItemService dataItems;
+    @Autowired com.sfaasproject.stf.measurement.service.MeasurementTrendService trends;
     @Autowired MasterEquipmentService equipment;
     @Autowired JdbcTemplate jdbc;
 
@@ -225,5 +226,34 @@ class MySqlMasterLineTest {
                 .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "VALIDATION_ERROR");
         assertThat(dataItems.update(state.dataItemId(), new MasterDataItemService.Command(null, "가".repeat(50),
                 "STATE", null, 3, null, "닫힘", "열림", null, null), actor).dataItemName()).hasSize(50);
+    }
+
+    @Test
+    void measurementTrendBucketsWorkOnMySql() {
+        long actor = jdbc.queryForObject("SELECT MIN(account_id) FROM account", Long.class);
+        long equipmentId = jdbc.queryForObject(
+                "SELECT MIN(equipment_id) FROM equipment WHERE deleted_at IS NULL", Long.class);
+        MasterDataItemView temp = dataItems.create(equipmentId, new MasterDataItemService.Command(
+                "vt_" + UUID.randomUUID().toString().substring(0, 8), "추세 온도", "MEASUREMENT", null, 3, null, null,
+                null, null, null), actor);
+        MasterDataItemView door = dataItems.create(equipmentId, new MasterDataItemService.Command(
+                "vs_" + UUID.randomUUID().toString().substring(0, 8), "추세 문", "STATE", null, 3, null, null, null,
+                null, null), actor);
+        LocalDateTime t = LocalDateTime.of(2026, 11, 18, 9, 0);
+        for (Object[] row : new Object[][] {{temp.dataItemId(), t.plusMinutes(1), 10.0},
+                {temp.dataItemId(), t.plusMinutes(9), 30.0}, {temp.dataItemId(), t.plusMinutes(11), 50.0},
+                {door.dataItemId(), t.plusMinutes(1), 0.0}, {door.dataItemId(), t.plusMinutes(8), 1.0}}) {
+            jdbc.update("INSERT INTO measurement(data_item_id, measured_at, measured_value) VALUES (?, ?, ?)", row);
+        }
+        OffsetDateTime from = t.atOffset(java.time.ZoneOffset.ofHours(9));
+        var trend = trends.trend(equipmentId, from, from.plusDays(7), List.of(temp.dataItemId(), door.dataItemId()));
+        assertThat(trend.raw()).isFalse();
+        assertThat(trend.bucketSeconds()).isEqualTo(600);
+        assertThat(trend.series().get(0).points()).extracting(p -> p.value()).containsExactly(20.0, 50.0);
+        assertThat(trend.series().get(1).points()).extracting(p -> p.value()).containsExactly(1.0);
+
+        var raw = trends.trend(equipmentId, from, from.plusHours(1), List.of(temp.dataItemId()));
+        assertThat(raw.raw()).isTrue();
+        assertThat(raw.series().get(0).points()).hasSize(3);
     }
 }
