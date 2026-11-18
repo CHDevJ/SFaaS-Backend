@@ -48,6 +48,19 @@ class JdbcBFlowTest {
     ApplicationEventPublisher publisher;
     BEventPublisher events;
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "UNACKNOWLEDGED,1", "ACKNOWLEDGED,1", "ACTION,1", "CLOSED,0"
+    })
+    void activeCountIncludesEveryNonClosedStateAndExcludesDeletedEquipment(String state, int expected) {
+        jdbc.update("UPDATE alarm SET process_state=? WHERE alarm_id=1", state);
+        assertEquals(expected, alarms.activeCount());
+        assertEquals(expected, commands.activeCount());
+        jdbc.update("UPDATE equipment SET deleted_at=? WHERE equipment_id=1",
+                java.sql.Timestamp.valueOf(now.toLocalDateTime()));
+        assertEquals(0, alarms.activeCount());
+    }
+
     @BeforeEach
     void setup() throws Exception {
         var source =
@@ -129,10 +142,10 @@ class JdbcBFlowTest {
                         clock);
         dutyCommands =
                 new DutyApplicationService(
-                        duties, users, tx, new DutyScheduleDecisionService(), clock);
+                        duties, users, tx, new DutyScheduleDecisionService(), clock, this::recordAudit);
         jdbc.update(
                 "INSERT INTO account(account_id,login_id,name,role,approval_status) VALUES"
-                    + " (1,'admin','관리자','SYSTEM_ADMIN','APPROVED'),(2,'maint','보전','MAINTENANCE','APPROVED'),(3,'manager','라인','LINE_MANAGER','APPROVED')");
+                    + " (1,'admin','관리자','ADMIN','APPROVED'),(2,'maint','보전','USER','APPROVED'),(3,'manager','라인','USER','APPROVED')");
         jdbc.update(
                 "INSERT INTO line(line_id,name,line_type,sort_order) VALUES"
                         + " (1,'부품','PART',1),(2,'조립','ASSEMBLY',2)");
@@ -165,7 +178,7 @@ class JdbcBFlowTest {
                 "INSERT INTO alarm_log(alarm_id,event_type,content,created_at) VALUES"
                         + " (1,'OCCUR','온도 경보',?)",
                 java.sql.Timestamp.valueOf(now.minusMinutes(20).toLocalDateTime()));
-        login("SYSTEM_ADMIN");
+        login("ADMIN");
     }
 
     @AfterEach
@@ -604,7 +617,7 @@ class JdbcBFlowTest {
         var result = telegram.deliveries(now.toLocalDate(), null, 0, 20);
         assertEquals(2, result.data().summary().totalCount());
         assertEquals(1, result.data().summary().successCount());
-        assertEquals(Position.LINE_MANAGER, result.data().items().get(0).recipient().position());
+        assertEquals(Position.USER, result.data().items().get(0).recipient().position());
         telegram.unlink(3);
         assertNull(telegram.connection(3));
     }
@@ -711,4 +724,10 @@ class JdbcBFlowTest {
         assertEquals(0, line.availabilityRate().compareTo(new java.math.BigDecimal("50")));
         assertEquals(0, line.plannedMinutes().compareTo(new java.math.BigDecimal("60")));
     }
+    void recordAudit(long actor, com.sfaasproject.stf.system.entity.AuditTargetType type,
+            String target, String field, String before, String after) {
+        jdbc.update("INSERT INTO change_log(changed_by,target_type,target_name,field_name,old_value,new_value,changed_at)"
+                + " VALUES (?,?,?,?,?,?,?)",actor,type.name(),target,field,before,after,LocalDateTime.now(clock));
+    }
+
 }

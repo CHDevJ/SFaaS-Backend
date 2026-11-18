@@ -30,7 +30,7 @@ public class DutyScheduleDecisionService {
                     || schedule.assigneeIds() == null || schedule.assigneeIds().isEmpty()
                     || !activeMaintenanceIds.containsAll(schedule.assigneeIds())) {
                 throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT,
-                        "ASSIGNEE_NOT_MAINTENANCE", "사용 중인 보전 담당자를 선택해 주세요.");
+                        "ASSIGNEE_NOT_USER", "사용 중인 보전 담당자를 선택해 주세요.");
             }
         }
         LocalDate coveredThrough = requiredFrom.minusDays(1);

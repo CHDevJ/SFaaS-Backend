@@ -21,11 +21,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class LineEntity {
 
-    /**
-     * MST-006 요청에는 라인 종류가 없다. 조립 라인은 초기 데이터의 한 줄뿐이므로 새 라인은 부품 라인으로 만든다
-     * (프로젝트 제안값, 2026-11-17 사용자 결정).
-     */
+    /** v7 LineType. MST-006 에서 lineType 을 생략하면 부품 라인(PART)으로 만든다(v7 제안값). */
     public static final String TYPE_PART = "PART";
+    public static final String TYPE_ASSEMBLY = "ASSEMBLY";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -50,20 +48,21 @@ public class LineEntity {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    private LineEntity(String name, int sortOrder, LocalDateTime now) {
+    private LineEntity(String name, String lineType, int sortOrder, LocalDateTime now) {
         this.name = name;
-        this.lineType = TYPE_PART;
+        this.lineType = lineType;
         this.sortOrder = sortOrder;
         this.createdAt = now;
         this.updatedAt = now;
     }
 
-    public static LineEntity create(String name, int sortOrder, LocalDateTime now) {
-        return new LineEntity(name, sortOrder, now);
+    public static LineEntity create(String name, String lineType, int sortOrder, LocalDateTime now) {
+        return new LineEntity(name, lineType, sortOrder, now);
     }
 
-    public void update(String name, int sortOrder, LocalDateTime now) {
+    public void update(String name, String lineType, int sortOrder, LocalDateTime now) {
         this.name = name;
+        this.lineType = lineType;
         this.sortOrder = sortOrder;
         this.updatedAt = now;
     }

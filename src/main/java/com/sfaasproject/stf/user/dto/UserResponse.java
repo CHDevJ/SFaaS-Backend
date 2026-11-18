@@ -3,7 +3,6 @@ package com.sfaasproject.stf.user.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import com.sfaasproject.stf.common.time.KstTime;
 import com.sfaasproject.stf.user.service.UserView;
 import java.time.OffsetDateTime;
@@ -18,7 +17,6 @@ public record UserResponse(
         String name,
         boolean telegramConnected,
         OffsetDateTime telegramLinkedAt,
-        Position position,
         Permission permission,
         AccountStatus accountStatus,
         @JsonInclude(JsonInclude.Include.NON_NULL) OffsetDateTime lastLoginAt,
@@ -36,7 +34,7 @@ public record UserResponse(
 
     private static UserResponse of(UserView user, OffsetDateTime lastLoginAt) {
         return new UserResponse(user.userId(), user.loginId(), user.name(), user.telegramConnected(),
-                KstTime.toOffset(user.telegramLinkedAt()), user.position(), user.permission(),
+                KstTime.toOffset(user.telegramLinkedAt()), user.permission(),
                 user.accountStatus(), lastLoginAt, KstTime.toOffset(user.createdAt()),
                 KstTime.toOffset(user.updatedAt()));
     }

@@ -39,6 +39,10 @@ public class AlarmApplicationService {
         this.clock = clock;
     }
 
+    public int activeCount() {
+        return alarms.activeCount();
+    }
+
     public AlarmAcknowledgementResponse acknowledgeAlarm(
             Long id, AlarmAcknowledgementRequest request) {
         var actor = BAccess.current();

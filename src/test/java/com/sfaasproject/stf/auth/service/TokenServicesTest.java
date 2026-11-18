@@ -2,7 +2,7 @@ package com.sfaasproject.stf.auth.service;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.common.DomainException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -17,10 +17,10 @@ class TokenServicesTest {
     @Test
     void jwtHasThirtyMinuteExpiryAndRejectsTamperingAndExpiry() {
         var service = new JwtAccessTokenService(SECRET, "stf");
-        var issued = service.issue(7, Position.MAINTENANCE, now);
+        var issued = service.issue(7, Permission.USER, now);
         var claims = service.verify(issued.value(), now);
         assertEquals(7, claims.userId());
-        assertEquals(Position.MAINTENANCE, claims.position());
+        assertEquals(Permission.USER, claims.permission());
         assertEquals(issued.jti(), claims.jti());
         assertEquals(now.plus(30, ChronoUnit.MINUTES), issued.expiresAt());
         assertEquals("Issued[redacted]", issued.toString());

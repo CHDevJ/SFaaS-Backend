@@ -64,7 +64,7 @@ class AuthSignupApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void duplicate_login_id_returns_409_and_creates_nothing() throws Exception {
-        approvedAccount("newuser1", "MAINTENANCE");
+        approvedAccount("newuser1", "USER");
 
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON)
                         .content(body("newuser1", PASSWORD, "홍길동")))
@@ -78,7 +78,7 @@ class AuthSignupApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void login_id_of_a_deleted_account_cannot_be_reused() throws Exception {
-        AccountEntity account = approvedAccount("newuser1", "MAINTENANCE");
+        AccountEntity account = approvedAccount("newuser1", "USER");
         account.markDeleted(LocalDateTime.now(clock));
         accounts.save(account);
 
@@ -100,7 +100,7 @@ class AuthSignupApiTest extends AbstractAuthIntegrationTest {
                 body("newuser1", "password!!", "홍길동"),        // 숫자 없음
                 body("newuser1", PASSWORD, ""),                 // 이름 비어 있음
                 body("newuser1", PASSWORD, "   "),              // 이름이 공백뿐
-                body("newuser1", PASSWORD, "가".repeat(51)),     // ERD 이름 길이(50) 초과
+                body("newuser1", PASSWORD, "가".repeat(101)),     // ERD 이름 길이(50) 초과
                 "{\"loginId\":\"newuser1\",\"password\":\"" + PASSWORD + "\"}", // 이름 없음
                 "{}",
                 "{not-json"

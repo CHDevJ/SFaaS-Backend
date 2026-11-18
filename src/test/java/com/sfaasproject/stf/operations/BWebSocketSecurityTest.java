@@ -45,7 +45,7 @@ class BWebSocketSecurityTest {
         var registration = new Registration();
         config.configureClientInboundChannel(registration);
         interceptor = registration.all().get(0);
-        when(users.active(1)).thenReturn(new UserBrief(1L, "사용자", Position.LINE_MANAGER));
+        when(users.active(1)).thenReturn(new UserBrief(1L, "사용자", Position.USER));
     }
 
     Message<byte[]> message(StompHeaderAccessor headers) {
@@ -61,8 +61,8 @@ class BWebSocketSecurityTest {
                 "Bearer "
                         + jwt.issue(
                                         1,
-                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Position
-                                                .LINE_MANAGER,
+                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Permission
+                                                .USER,
                                         clock.instant())
                                 .value());
         assertNotNull(interceptor.preSend(message(headers), mock(MessageChannel.class)));
@@ -77,7 +77,7 @@ class BWebSocketSecurityTest {
     void privateQueueCannotSubscribeAsAnotherUser() {
         var own = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         own.setUser(new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,
-                com.sfaasproject.stf.auth.service.AuthPolicyService.Position.LINE_MANAGER,
+                com.sfaasproject.stf.auth.service.AuthPolicyService.Permission.USER,
                 "stomp-test",clock.instant(),clock.instant().plusSeconds(1800))));
         own.setDestination("/user/queue/notifications");
         assertNotNull(interceptor.preSend(message(own), mock(MessageChannel.class)));
@@ -106,7 +106,7 @@ class BWebSocketSecurityTest {
     @Test void logoutAfterConnectPreventsNewSubscription() {
         var headers=StompHeaderAccessor.create(StompCommand.CONNECT);
         headers.setNativeHeader("Authorization","Bearer "+jwt.issue(1,
-                com.sfaasproject.stf.auth.service.AuthPolicyService.Position.LINE_MANAGER,clock.instant()).value());
+                com.sfaasproject.stf.auth.service.AuthPolicyService.Permission.USER,clock.instant()).value());
         interceptor.preSend(message(headers),mock(MessageChannel.class));
         var subscribe=StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         subscribe.setUser(headers.getUser()); subscribe.setDestination("/topic/alarms");
@@ -116,9 +116,16 @@ class BWebSocketSecurityTest {
     @Test void expiredConnectedPrincipalCannotSubscribe() {
         var subscribe=StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
         subscribe.setUser(new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,
-                com.sfaasproject.stf.auth.service.AuthPolicyService.Position.LINE_MANAGER,"expired",
+                com.sfaasproject.stf.auth.service.AuthPolicyService.Permission.USER,"expired",
                 clock.instant().minusSeconds(1800),clock.instant())));
         subscribe.setDestination("/user/queue/notifications");
         assertThrows(MessageDeliveryException.class,()->interceptor.preSend(message(subscribe),mock(MessageChannel.class)));
+    }
+
+    @Test void effectTopicAndPasswordRequiredBusinessSubscriptionAreRejected(){
+        var own=StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        own.setUser(new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,com.sfaasproject.stf.auth.service.AuthPolicyService.Permission.USER,"v7-socket",clock.instant(),clock.instant().plusSeconds(1800))));
+        own.setDestination("/topic/alarm-effects/1");assertThrows(MessageDeliveryException.class,()->interceptor.preSend(message(own),mock(MessageChannel.class)));
+        own.setDestination("/topic/alarms");when(users.passwordChangeRequired(1)).thenReturn(true);assertThrows(MessageDeliveryException.class,()->interceptor.preSend(message(own),mock(MessageChannel.class)));
     }
 }

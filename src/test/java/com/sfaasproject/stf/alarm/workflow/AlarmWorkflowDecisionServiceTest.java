@@ -23,22 +23,22 @@ class AlarmWorkflowDecisionServiceTest {
     @Test
     void acknowledgementRecordsDistinctActorAndMaintenanceAssigneeOnce() {
         var decision = service.acknowledge(AlarmWorkflowState.initial(), 10, 20,
-                true, "MAINTENANCE", t);
+                true, "USER", t);
         assertEquals(ProcessStatus.ACKNOWLEDGED, decision.state().processStatus());
         assertEquals(10L, decision.state().acknowledgedBy());
         assertEquals(20L, decision.state().assigneeId());
         assertEquals(List.of(Event.CONFIRM), decision.events());
         assertEquals("ALARM_ALREADY_ACKNOWLEDGED", assertThrows(DomainException.class,
-                () -> service.acknowledge(decision.state(), 10, 20, true, "MAINTENANCE", t)).code());
+                () -> service.acknowledge(decision.state(), 10, 20, true, "USER", t)).code());
     }
 
     @Test
     void onlyActiveMaintenanceAccountCanBeAssigned() {
-        assertEquals("ASSIGNEE_NOT_MAINTENANCE", assertThrows(DomainException.class,
+        assertEquals("ASSIGNEE_NOT_USER", assertThrows(DomainException.class,
                 () -> service.acknowledge(AlarmWorkflowState.initial(), 10, 20,
-                        true, "LINE_MANAGER", t)).code());
+                        true, "ADMIN", t)).code());
         assertThrows(DomainException.class, () -> service.acknowledge(
-                AlarmWorkflowState.initial(), 10, 20, false, "MAINTENANCE", t));
+                AlarmWorkflowState.initial(), 10, 20, false, "USER", t));
     }
 
     @Test
@@ -112,6 +112,6 @@ class AlarmWorkflowDecisionServiceTest {
 
     private AlarmWorkflowState acknowledged() {
         return service.acknowledge(AlarmWorkflowState.initial(), 10, 20,
-                true, "MAINTENANCE", t.minusMinutes(1)).state();
+                true, "USER", t.minusMinutes(1)).state();
     }
 }

@@ -36,7 +36,7 @@ public class AccountEntity {
     @Column(name = "password_hash", length = 100)
     private String passwordHash;
 
-    @Column(name = "name", length = 50, nullable = false)
+    @Column(name = "name", length = 100, nullable = false)
     private String name;
 
     @Column(name = "telegram_chat_id", length = 30, unique = true)
@@ -45,7 +45,7 @@ public class AccountEntity {
     @Column(name = "telegram_linked_at")
     private LocalDateTime telegramLinkedAt;
 
-    /** 직책(SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE). 가입을 승인할 때 정하므로 승인 전에는 비어 있다. */
+    /** 직책(ADMIN, USER, USER). 가입을 승인할 때 정하므로 승인 전에는 비어 있다. */
     @Column(name = "role", length = 20)
     private String role;
 
@@ -137,6 +137,11 @@ public class AccountEntity {
         this.telegramLinkedAt = now;
         this.updatedAt = now;
     }
+
+    @jakarta.persistence.Column(name="deleted_by")
+    private Long deletedBy;
+
+    public void markDeletedBy(long actor, LocalDateTime now) { this.deletedBy=actor; markDeleted(now); }
 
     public void markDeleted(LocalDateTime now) {
         this.passwordHash = null;
