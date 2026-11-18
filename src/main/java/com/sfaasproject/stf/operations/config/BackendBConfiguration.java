@@ -96,7 +96,9 @@ public class BackendBConfiguration {
             private final TransactionTemplate tx = new TransactionTemplate(manager);
 
             public <T> T execute(Supplier<T> work) {
-                return tx.execute(status -> work.get());
+                // 커밋 후 outbox 발행은 이 트랜잭션의 연결을 반납한 뒤에 한다(AfterTransactionDispatch).
+                return com.sfaasproject.stf.operations.event.AfterTransactionDispatch.around(
+                        () -> tx.execute(status -> work.get()));
             }
         };
     }
