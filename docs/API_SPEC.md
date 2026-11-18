@@ -49,7 +49,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 | 오류 | 400 형식/기간, 401 인증, 403 권한, 404 없음, 409 중복/상태충돌, 422 업무규칙 |
 | 빈 결과 | 200 + 빈 배열 및 totalElements=0. 입력 오류 details에 field/reason 반환 |
 | 삭제 | API DELETE, DB deletedAt/deletedBy. 지난 알람·조치·감사 기록 보존. 발생 중 알람 설비와 설비가 있는 라인은 삭제 거부 |
-| 사진 | JPG/PNG/WebP, 최대 5MB, multipart. signed URL 10분(제안값) |
+| 사진 | JPG/PNG/WebP, 최대 5MB, multipart. photoUrl은 MST-018의 10분 HMAC 서명 상대 주소(제안값, 2026-11-18 A 추가) |
 
 일반 표 헤더 정렬은 제공하지 않는다. 통계 순위의 sortBy는 화면에서 고르는 집계 기준이며 표 헤더 정렬과 구분한다. 모든 리스트는 동일 값의 마지막 비교로 ID를 사용해 페이지 결과를 안정화한다.
 
@@ -59,6 +59,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 
 - 미종료 동일 equipmentId+dataItemId 한 건만 허용한다. 3회 연속 이탈 발생, 3회 정상 복귀가 초기 제안값이다. 정상 복귀 횟수는 alarmConsecutiveCount와 동일하게 적용한다.
 - 측정값 임계값은 ABOVE면 caution < critical, BELOW면 caution > critical. 상태값은 alarmValue 0 또는 1과 등급을 사용한다. 누적값은 알람 임계값을 두지 않는다.
+- 데이터 항목(MST-010~013, 2026-11-18 A 제안값): 등록 요청의 dataItemCode는 INT-001 dataItemCode와 같은 값으로 필수이며 설비 안에서 중복할 수 없다(삭제한 항목 포함, 409 DATA_ITEM_CODE_DUPLICATE). 등록한 뒤 코드와 valueType은 바꿀 수 없다(valueType 변경은 422 DATA_ITEM_VALUE_TYPE_IMMUTABLE, MST-012의 코드는 무시). MST-012에서 기준 칸을 보내지 않으면 기존 기준을 유지하고 null을 보내면 지운다. MST-013은 MEASUREMENT에 MeasurementThreshold, STATE에 StateAlarmCondition만 받고 CUMULATIVE는 422 THRESHOLD_NOT_SUPPORTED다. 저장한 기준은 다음 판정부터 적용된다. 통계 참고값은 최근 7일(오늘 포함) 측정값의 최소·평균·최대로 MEASUREMENT 항목만 계산한다.
 - ACTIVE 알람에 조치를 입력하면 조치·처리자·종료시각·상태를 한 트랜잭션으로 저장한다. 처리자는 토큰에서 정하고 클라이언트가 보내지 않는다. 중복 종료는 409 ALARM_STATE_CONFLICT다.
 - CLOSED 알람이 같은 항목에 있어도 새 이탈이면 새 알람이다. 별도 재발 상태나 효과 확인 단계는 없다.
 - 설비 상태 우선순위는 COMMUNICATION_LOST → FAULT → CAUTION → IDLE → RUNNING이다. 복귀한 값 자체는 고장으로 판정하지 않고, 미종료 알람은 조치 전까지 화면 목록에 남는다.
@@ -89,7 +90,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 
 ### 4.4 분석·정렬·통계
 
-- MEAS-001은 같은 설비 최대10개 항목을 받는다. 24시간 이하 원본, 7일 이하 1분, 그 이상 1시간 간격(제안값). 측정값 평균, 상태값 마지막값, 누적값 마지막값을 사용하고 통신 미수신 구간은 null로 분리한다.
+- MEAS-001은 같은 설비 최대10개 항목을 받는다. 24시간 이하 원본, 7일 이하 1분, 그 이상 1시간 간격(제안값). 측정값 평균, 상태값 마지막값, 누적값 마지막값을 사용하고 통신 미수신 구간은 null로 분리한다. 항목당 2000점을 넘으면 1분·5분·10분·15분·30분·1시간·2시간·3시간·6시간·12시간·1일 순으로 간격을 올린다(2026-11-18 A 제안값, 11.3).
 - 알람 상세는 전후 각30분이며 미래 구간에는 값을 만들지 않는다. 임계값·등급별 이탈 구간·알람 마커와 동일 설비 최근 종료20건을 제공한다.
 - 평균/최장 조치시간은 CLOSED 표본에서 계산, 표본 없으면 null. 고장 이력은 종료 CRITICAL만 제공한다. MTBF는 인접 발생시각 차의 평균이며 2건 미만이면 null이다.
 - 가동률=RUNNING 시간/계획시간 ×100, 최대100. 계획시간 미정 시 조회 구간 길이를 사용하는 것은 제안값이며 영업 달력 확정 시 교체한다.
@@ -142,6 +143,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 | MST-011 | A | POST | /api/v1/master/equipment/{equipmentId}/data-items | 설비 데이터 항목 등록 | ADMIN, USER | FR1305, FR1306 |
 | MST-012 | A | PUT | /api/v1/master/data-items/{dataItemId} | 데이터 항목 수정 | ADMIN, USER | FR1305 |
 | MST-013 | A | PUT | /api/v1/master/data-items/{dataItemId}/threshold | 측정값 또는 상태값 알람 기준 수정 | ADMIN, USER | FR1306 |
+| MST-018 | A | GET | /api/v1/equipment-photos/{fileName} | 설비 사진 조회(10분 서명 주소) | 서명(로그인 불필요) | FR1302 |
 | SYS-001 | A | GET | /api/v1/system/settings/judgement | 판정 설정 조회 | ADMIN | FR1401 |
 | SYS-002 | A | PUT | /api/v1/system/settings/judgement | 판정 설정 수정 | ADMIN | FR1401 |
 | SYS-003 | A | GET | /api/v1/system/settings/calculation | 계산 기준값 조회 | ADMIN | FR1402 |
@@ -732,7 +734,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | path | equipmentId | Y | Identifier | - |
 
 - 요청: application/json / DataItemWriteRequest
-- 응답: 201 MasterDataItemResponse; 400 ValidationError; 401 Unauthorized; 422 BusinessRuleViolation
+- 응답: 201 MasterDataItemResponse; 400 ValidationError; 401 Unauthorized; 404 NotFound(EQUIPMENT_NOT_FOUND); 409 Conflict(DATA_ITEM_CODE_DUPLICATE); 422 BusinessRuleViolation(INVALID_THRESHOLD_ORDER)
 - 규칙/테스트: BR-MST-011; TC-MST-011-01, TC-MST-011-02
 
 ### MST-012 데이터 항목 수정
@@ -746,7 +748,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | path | dataItemId | Y | Identifier | - |
 
 - 요청: application/json / DataItemWriteRequest
-- 응답: 200 MasterDataItemResponse; 401 Unauthorized; 404 NotFound; 422 BusinessRuleViolation
+- 응답: 200 MasterDataItemResponse; 400 ValidationError; 401 Unauthorized; 404 NotFound(DATA_ITEM_NOT_FOUND); 422 BusinessRuleViolation(INVALID_THRESHOLD_ORDER, DATA_ITEM_VALUE_TYPE_IMMUTABLE)
 - 규칙/테스트: BR-MST-012; TC-MST-012-01, TC-MST-012-02
 
 ### MST-013 측정값 또는 상태값 알람 기준 수정
@@ -760,8 +762,23 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | path | dataItemId | Y | Identifier | - |
 
 - 요청: application/json / ThresholdWriteRequest
-- 응답: 200 ThresholdResponse; 401 Unauthorized; 404 NotFound; 422 BusinessRuleViolation
+- 응답: 200 ThresholdResponse; 400 ValidationError; 401 Unauthorized; 404 NotFound(DATA_ITEM_NOT_FOUND); 422 BusinessRuleViolation(INVALID_THRESHOLD_ORDER, THRESHOLD_NOT_SUPPORTED)
 - 규칙/테스트: BR-MST-013; TC-MST-013-01, TC-MST-013-02
+
+### MST-018 설비 사진 조회
+
+- 주소: GET /api/v1/equipment-photos/{fileName}?expires={epochSeconds}&signature={hmac}
+- 소유자: A; 권한: 로그인 불필요(서명 확인); 요구사항: FR1302. 2026-11-18 A 추가(제안값)
+- 처리: MST-001/002/003·EQP-004의 photoUrl이 주는 상대 주소다. 화면의 `<img>`가 토큰 없이 연다. 만료 10분, 서명은 JWT 키에서 용도별로 파생한 HMAC-SHA256이다. 서명 불일치·만료·파일 없음·이름 형식 오류는 모두 404 EQUIPMENT_PHOTO_NOT_FOUND로 같게 응답한다.
+
+| 위치 | 이름 | 필수 | 타입 | 제약 |
+|---|---|---|---|---|
+| path | fileName | Y | string | 패턴 `^[0-9a-f]{32}\.(jpg|png|webp)$` |
+| query | expires | Y | integer(int64) | - |
+| query | signature | Y | string | - |
+
+- 요청: 본문 없음
+- 응답: 200 image/jpeg·image/png·image/webp; 404 NotFound
 
 ### SYS-001 판정 설정 조회
 
@@ -1005,7 +1022,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | query | size | N | integer | 값≥1; 값≤100; 기본 20 |
 
 - 요청: 본문 없음
-- 응답: 200 ChangeHistoryPageResponse; 401 Unauthorized; 403 Forbidden
+- 응답: 200 ChangeHistoryPageResponse; 400 ValidationError(INVALID_PERIOD, VALIDATION_ERROR); 401 Unauthorized; 403 Forbidden
 - 규칙/테스트: BR-AUD-001; TC-AUD-001-01, TC-AUD-001-02
 
 ### INT-001 Node-RED 설비 데이터 수집
@@ -1080,10 +1097,12 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | 코드 | HTTP | 발생조건 |
 |---|---|---|
 | VALIDATION_ERROR | 400 | 필수·형식·범위 입력 오류 |
+| PASSWORD_POLICY_VIOLATION | 400 | 새 비밀번호 규칙 위반(AUTH-006). 2026-11-18 표에 추가 |
 | INVALID_PERIOD | 400 | from≥to 또는 기간 입력 오류 |
 | AUTH_INVALID_CREDENTIALS | 401 | 아이디/비밀번호 불일치 |
 | AUTH_TOKEN_INVALID | 401 | 만료·폐기 토큰 |
 | AUTH_REFRESH_TOKEN_INVALID | 401 | 갱신 토큰 오류/재사용 |
+| INTERNAL_API_KEY_INVALID | 401 | 내부 수집·Webhook 인증 실패. 2026-11-18 표에 추가 |
 | AUTH_PERMISSION_DENIED | 403 | ADMIN 필요 또는 비밀번호 변경 전 업무 접근 |
 | AUTH_APPROVAL_PENDING | 403 | 미승인 로그인 |
 | USER_LOGIN_ID_DUPLICATE | 409 | 로그인 ID 중복 |
@@ -1093,14 +1112,22 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | LAST_ADMIN_REQUIRED | 422 | 마지막 관리자 삭제/강등 |
 | EQUIPMENT_CODE_DUPLICATE | 409 | 설비 코드 중복 |
 | EQUIPMENT_NOT_FOUND | 404 | 설비 없음 |
+| LINE_NOT_FOUND | 404 | 라인 없음·삭제됨(EQP-002, MST-007~009) |
+| PROCESS_NOT_FOUND | 404 | 공정 없음 또는 라인 삭제됨(EQP-003) |
 | EQUIPMENT_HAS_ACTIVE_ALARM | 422 | 발생 중 알람 설비 삭제 |
 | LINE_HAS_EQUIPMENT | 422 | 설비가 있는 라인 삭제 |
+| EQUIPMENT_PHOTO_NOT_FOUND | 404 | 사진 서명 불일치·만료·파일 없음(MST-018) |
 | DATA_ITEM_NOT_FOUND | 404 | 수집/조회 항목 미등록 |
 | INVALID_THRESHOLD_ORDER | 422 | 주의/경보 방향 순서 오류 |
+| DATA_ITEM_CODE_DUPLICATE | 409 | 설비 안 항목 코드 중복(삭제한 항목 포함). 2026-11-18 추가 |
+| DATA_ITEM_VALUE_TYPE_IMMUTABLE | 422 | 등록한 항목의 valueType 변경. 2026-11-18 추가 |
+| THRESHOLD_NOT_SUPPORTED | 422 | 누적값 항목의 알람 기준 수정. 2026-11-18 추가 |
 | ALARM_NOT_FOUND | 404 | 알람 없음 |
 | ALARM_STATE_CONFLICT | 409 | 이미 종료된 알람에 조치 |
 | ACTION_CONTENT_REQUIRED | 400 | 조치 상세 공백 |
-| SETTING_OUT_OF_RANGE | 422 | 설정값 범위·관계 오류 |
+| SETTING_OUT_OF_RANGE | 422 | 설정값 범위·관계 오류(위험≥주의 포함) |
+| LINE_NAME_DUPLICATE | 409 | 라인 이름 중복(삭제한 라인 포함, MST-006/007). 2026-11-18 표에 추가 |
+| INTERNAL_SERVER_ERROR | 500 | 처리하지 못한 서버 오류 |
 | TELEGRAM_NOT_CONNECTED | 422 | 미연결 테스트/초기화 |
 | TELEGRAM_DELIVERY_FAILED | 422 | 재시도 발송 실패 |
 
@@ -1230,6 +1257,60 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - 계산 예시: 재고300, 고장공급0, 소비6/분 →50분 소진. 동일항목 종료경보5건 평균70분이면 부족20분. HOURLY_OUTPUT360, UNIT_PRICE50000 →6000000원. 예시금액은 실제단가가 아니다.
 - 단계 경계는 위험/주의 이하, 위험>=주의는422. 새 설정은 도움말·예측 응답·이벤트에 반영한다. 카운터 중복·리셋·1분집계, 계획생산량과 실측생산량 분리도 검증한다.
 - 기존 ADMIN/USER·ACTIVE/CLOSED·즉시종료·논리삭제·Telegram 장애격리 규칙은 유지한다. 각 API 정상/인증/권한/검증/충돌 테스트와 전체 검증 후 구현 완료로 표시한다.
+
+### 11.0 2026-11-18 기준정보 입력 길이를 ERD 에 맞춤 (A)
+
+- 이유: v7 요청 길이가 DB 컬럼보다 길어 그 사이 길이는 저장 시 500 이 났다(프론트·B 확인 요청). migration 없이 API 를 ERD 길이로 줄인다.
+- 기준: 라인 이름 50(line.name). 설비 코드 20·이름 100·종류 50·시리얼 50·통신 방식 20(equipment). 데이터 항목 이름 50·단위 20·0/1 표시 20(data_item).
+- 영향 API: MST-002/003/006/007/011/012. 넘으면 400 VALIDATION_ERROR. DB 담당 확인 대상.
+- 사진 조회: v7에는 photoUrl(10분 서명 URL)만 있고 사진을 주는 API가 없어 MST-018을 추가했다. photoUrl은 상대 주소(uri-reference)다.
+
+### 11.1 2026-11-18 데이터 항목 계약 보완 (A)
+
+- 이유: v7 MST-011 요청에 항목 코드가 없어 등록한 항목이 INT-001 dataItemCode(data_item.item_code, NOT NULL·설비별 UNIQUE)와 연결되지 않았다. 통계 참고값의 "최근" 구간도 정의가 없었다.
+- 영향 API: MST-010~013(요청·응답 dataItemCode, MST-011 404/409, MST-012/013 400, 새 오류코드 3개, 통계 구간 7일). 다른 API와 DB migration 변경은 없다.
+- 테스트: MasterDataItemApiTest(H2), MySqlMasterLineTest의 데이터 항목 흐름(MySQL, STF_TEST_MYSQL_URL 필요).
+- 길이는 11.0 대로 ERD에 맞춘다(이름 50, 단위 20, 0/1 표시 20).
+- MST-012에서 measurementThreshold·stateAlarmCondition 칸을 아예 보내지 않으면 기존 기준을 유지하고, 명시적으로 null 을 보내면 지운다(2026-11-18 사용자 결정).
+
+### 11.2 2026-11-18 설비 현황 조회 (A, EQP-002~005)
+
+- 판정은 B의 OVW-001과 같다: 상태 줄이 없는 설비는 COMMUNICATION_LOST, 이상 설비는 FAULT·CAUTION·COMMUNICATION_LOST, 측정값 valueStatus는 지금 값과 기준 비교(경보 먼저, 기준 포함), 상태값은 알람 발생 값이면 그 등급, 누적값은 null.
+- 주요 측정값은 표시 순서가 앞선 측정값 3개다. CurrentDataItem은 value·measuredAt이 필수라 값을 받은 적 없는 항목은 목록에서 뺀다.
+- 추가 필드(프론트 요청): ProcessSummary.representativeStatus, AbnormalMeasurement의 displayValue·cautionThreshold·criticalThreshold·thresholdDirection·decimalPlaces. 모두 선택 필드라 B의 OVW-001 응답 형식에는 영향이 없다.
+- EquipmentDetailData.delayed는 의미가 정의되지 않아 아직 내보내지 않는다.
+
+### 11.3 2026-11-18 측정 추세 조회 (A, MEAS-001)
+
+- 집계 간격: 24시간 이하는 원본(모든 항목이 2000점 이하일 때), 7일 이하는 1분, 그보다 길면 1시간에서 시작하고 칸 수가 2000을 넘으면 다음 간격으로 올린다. 3초 수집이면 24시간 원본이 28,800점이라 v7 기본값만으로는 2000점 제한을 지킬 수 없기 때문이다. 모든 항목에 같은 간격을 쓴다.
+- 칸 시각은 칸의 시작이며 Asia/Seoul 자정 기준으로 맞춘다. 측정값 평균, 상태값·누적값은 칸의 마지막 값이다.
+- 통신 끊김은 equipment_status_history의 COMMUNICATION_LOST 구간을 조회 구간으로 자르고 합친다. 아직 끊겨 있으면 endedAt은 null이고, 각 끊김 시작 시각에 value=null 점을 넣는다.
+- alarmMarkers는 구간 안에서 발생한 알람(발생 때 값), abnormalIntervals는 구간과 겹치는 알람의 발생~종료다.
+- from>=to는 400 INVALID_PERIOD, dataItemIds 1~10개·중복 금지(400), 다른 설비·삭제한 항목은 404 DATA_ITEM_NOT_FOUND, 삭제한 설비는 404 EQUIPMENT_NOT_FOUND.
+- 추세 메타정보(프론트 요청): thresholdDirection·decimalPlaces·zeroDisplayName·oneDisplayName. STOMP MeasurementEvent는 B 발행 형식이라 이번 변경에 포함하지 않는다.
+
+### 11.4 2026-11-18 통신 현황 (A, COM-001/002)
+
+- 통신 끊김은 수집 쪽 스케줄러가 equipment_state에 남긴 COMMUNICATION_LOST(마지막 수신 후 COMM_TIMEOUT_SEC 초과)를 쓴다. 상태 줄이 없는 설비(값을 받은 적 없음)도 끊김으로 보고(EQP·OVW-001과 같음) lastReceivedAt은 null이다. disconnectedSince는 상태 시작 시각, 상태 줄이 없으면 설비 등록 시각이다.
+- 오늘 끊김 횟수·분은 오늘(Asia/Seoul 0시~지금)과 겹치는 COMMUNICATION_LOST 상태 이력이다. 어제부터 이어진 끊김도 1회로 세고 오늘 안의 길이만 더한다(분 미만 버림).
+- COM-001 summary는 lineId 조건만 따르고 status 조건·페이지와는 상관없다. 없는 lineId는 0대(ALL_NORMAL)다. COM-002는 사용 중인 라인의 사용 중인 설비 전체다.
+- 계약 보완: CommunicationEquipment.lastReceivedAt nullable.
+
+### 11.5 2026-11-18 설정 변경 이력 (A, AUD-001)
+
+- 기간은 from 이상 to 미만이고 최근 변경부터다(changedAt DESC, historyId DESC). from>=to는 400 INVALID_PERIOD다.
+- itemType은 change_log.target_type 코드(EQUIPMENT·LINE·DATA_ITEM·THRESHOLD·PART·SETTING·ACCOUNT·DUTY)이고 한글 표시는 화면이 바꾼다. 다른 값은 400이다.
+- keyword(최대 100자)는 대상·바꾼 항목·이전 값·변경 값에서 대소문자 없이 찾고 %와 _는 글자 그대로 찾는다.
+- 계약 보완: ChangeHistory.fieldName(바꾼 항목), 400 응답. 변경자가 나중에 삭제된 계정이어도 이름·권한을 보여 준다.
+
+### 11.6 2026-11-18 계약 정리 (A)
+
+- ErrorDetail.code에 오류코드 enum(34개)을 넣었다. 표에 없던 v7 코드(PASSWORD_POLICY_VIOLATION, INTERNAL_API_KEY_INVALID, LINE_NAME_DUPLICATE, INTERNAL_SERVER_ERROR)를 추가했다. 예전 v5 기능 전용 코드(당번·부품·확인·오경보)는 기본 실행에서 꺼져 있어 넣지 않는다.
+- SYS-002의 위험≥주의 오류코드가 구현에서 SETTING_VALUE_OUT_OF_RANGE였다. 계약대로 SETTING_OUT_OF_RANGE로 고쳤다.
+- SYS-003 응답에 ranges(unitPrice 0~100000000, speedWindowMinutes 5~60, hourlyProduction 1~1000)를 추가했다. 서버 검증 범위와 같다.
+- 설정 변경 이력의 대상·항목을 설정 키 대신 한글로 남긴다(판정 설정/계산 기준값, 통신 끊김 판정(초) 등). 이미 쌓인 이력은 바꾸지 않는다.
+- AUTH-006에서 현재 비밀번호가 틀리면 코드·상태(401 AUTH_INVALID_CREDENTIALS)는 그대로 두고 문구만 "현재 비밀번호를 확인해 주세요."로 바꿨다.
+- OpenApiErrorCodeContractTest가 서버 코드와 enum의 일치, openapi 중복 키 없음을 확인한다.
 
 ## 12. 필드 사전
 
@@ -1442,7 +1523,7 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | lineName | string | Y | N | 길이≤100 | - |
 | communicationMethod | string | Y | N | 길이≤100 | - |
 | status | CommunicationStatus | Y | N | - | - |
-| lastReceivedAt | string(date-time) | Y | N | - | - |
+| lastReceivedAt | string(date-time) | Y | Y | - | 값을 받은 적 없는 설비는 null. 2026-11-18 보완 |
 | disconnectedSince | string(date-time) | N | Y | - | - |
 | todayDisconnectionCount | integer | Y | N | 값≥0 | - |
 | todayDisconnectionMinutes | integer | Y | N | 값≥0 | 분 |
@@ -1467,7 +1548,7 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | lineId | Identifier | Y | N | - | - |
-| lineName | string | Y | N | 길이≤100 | - |
+| lineName | string | Y | N | 길이≤50 | - |
 | displayOrder | integer | Y | N | 값≥1 | - |
 | lineType | LineType | Y | N | - | - |
 
@@ -1485,7 +1566,8 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | processId | Identifier | Y | N | - | - |
 | processName | string | Y | N | 길이≤100 | - |
 | processOrder | integer | Y | N | 값≥1 | - |
-| hasAbnormalEquipment | boolean | Y | N | - | - |
+| hasAbnormalEquipment | boolean | Y | N | - | FAULT·CAUTION·COMMUNICATION_LOST 설비가 있으면 true |
+| representativeStatus | EquipmentStatus | N | Y | - | 공정 설비 중 가장 나쁜 상태. 설비가 없으면 null. 2026-11-18 추가 |
 
 ### ProcessListResponse
 
@@ -1525,15 +1607,20 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | currentValue | number | Y | N | - | - |
 | unit | string | N | Y | - | - |
 | valueStatus | string | Y | N | 허용 CAUTION, CRITICAL | - |
-| threshold | number | N | N | - | - |
+| threshold | number | N | N | - | 벗어난 쪽 기준(상태값은 알람 발생 값) |
+| displayValue | string | N | Y | - | 표시 값. 2026-11-18 추가 |
+| cautionThreshold | number | N | Y | - | 주의 기준. 2026-11-18 추가 |
+| criticalThreshold | number | N | Y | - | 경보 기준. 2026-11-18 추가 |
+| thresholdDirection | string | N | Y | 허용 ABOVE, BELOW | 2026-11-18 추가 |
+| decimalPlaces | integer | N | N | 값≥0; 값≤10 | 2026-11-18 추가 |
 
 ### EquipmentSummary
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | equipmentId | Identifier | Y | N | - | - |
-| equipmentCode | string | Y | N | 길이≤100 | - |
-| equipmentName | string | Y | N | 길이≤200 | - |
+| equipmentCode | string | Y | N | 길이≤20 | - |
+| equipmentName | string | Y | N | 길이≤100 | - |
 | lineId | Identifier | Y | N | - | - |
 | lineName | string | Y | N | - | - |
 | processId | Identifier | Y | N | - | - |
@@ -1648,12 +1735,16 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | unit | string | N | Y | - | - |
 | cautionThreshold | number | N | Y | - | - |
 | criticalThreshold | number | N | Y | - | - |
-| points | array<MeasurementPoint> | Y | N | - | - |
+| thresholdDirection | string | N | Y | 허용 ABOVE, BELOW | 2026-11-18 추가 |
+| decimalPlaces | integer | N | N | 값≥0; 값≤10 | 2026-11-18 추가 |
+| zeroDisplayName | string | N | Y | - | 상태값 0 표시. 2026-11-18 추가 |
+| oneDisplayName | string | N | Y | - | 상태값 1 표시. 2026-11-18 추가 |
+| points | array<MeasurementPoint> | Y | N | - | 시각순. 끊김 시작마다 value=null 점 |
 | alarmMarkers | array<AlarmMarker> | Y | N | - | - |
 | disconnections | array<DisconnectionInterval> | Y | N | - | - |
 | currentlyConnected | boolean | Y | N | - | - |
-| abnormalIntervals | array<object> | N | N | - | - |
-| bucketSeconds | integer | N | N | 값≥1 | - |
+| abnormalIntervals | array<object> | N | N | - | 구간과 겹치는 알람의 발생~종료(미종료면 endedAt null) |
+| bucketSeconds | integer | N | N | 값≥1 | 원본이면 항목 수집 주기, 집계면 적용한 칸 크기(초) |
 
 ### InventoryLine
 
@@ -2033,13 +2124,13 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| equipmentCode | string | Y | N | 길이≥1; 길이≤100 | 등록 후 수정 불가 |
-| equipmentName | string | Y | N | 길이≥1; 길이≤200 | - |
-| equipmentType | string | Y | N | 길이≥1; 길이≤100 | - |
-| serialNumber | string | N | Y | 길이≤200 | - |
+| equipmentCode | string | Y | N | 길이≥1; 길이≤20 | 등록 후 수정 불가 |
+| equipmentName | string | Y | N | 길이≥1; 길이≤100 | - |
+| equipmentType | string | Y | N | 길이≥1; 길이≤50 | - |
+| serialNumber | string | N | Y | 길이≤50 | - |
 | lineId | Identifier | Y | N | - | - |
 | processOrder | integer | Y | N | 값≥1 | - |
-| communicationMethod | string | Y | N | 길이≥1; 길이≤100 | - |
+| communicationMethod | string | Y | N | 길이≥1; 길이≤20 | - |
 | photo | string(binary) | N | Y | - | - |
 | registeredAt | string(date-time) | N | N | - | 등록 화면 입력값. 등록 시 생략하면 서버 현재 시각. 수정 시 생략하면 기존 값 유지. |
 
@@ -2047,12 +2138,12 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| equipmentName | string | Y | N | 길이≥1; 길이≤200 | - |
-| equipmentType | string | Y | N | 길이≥1; 길이≤100 | - |
-| serialNumber | string | N | Y | 길이≤200 | - |
+| equipmentName | string | Y | N | 길이≥1; 길이≤100 | - |
+| equipmentType | string | Y | N | 길이≥1; 길이≤50 | - |
+| serialNumber | string | N | Y | 길이≤50 | - |
 | lineId | Identifier | Y | N | - | - |
 | processOrder | integer | Y | N | 값≥1 | - |
-| communicationMethod | string | Y | N | 길이≥1; 길이≤100 | - |
+| communicationMethod | string | Y | N | 길이≥1; 길이≤20 | - |
 | photo | string(binary) | N | Y | - | - |
 | removePhoto | boolean | N | N | 기본 false | - |
 | registeredAt | string(date-time) | N | N | - | 등록 화면 입력값. 등록 시 생략하면 서버 현재 시각. 수정 시 생략하면 기존 값 유지. |
@@ -2092,7 +2183,7 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| lineName | string | Y | N | 길이≥1; 길이≤100 | - |
+| lineName | string | Y | N | 길이≥1; 길이≤50 | ERD line.name varchar(50). 2026-11-18 조정 |
 | displayOrder | integer | Y | N | 값≥1 | - |
 | lineType | LineType | N | N | 기본 PART | 추가 계약 필드. 생략하면 PART(제안값); 기존 ASSEMBLY는 유지 |
 
@@ -2148,24 +2239,27 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 ### DataItemWriteRequest
 
-valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다.
+valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다. MEASUREMENT는 0/1 표시·stateAlarmCondition을 받지 않고 decimalPlaces를 비우면 1이다. STATE는 unit·measurementThreshold를 받지 않고 decimalPlaces는 0이다. CUMULATIVE는 두 기준과 0/1 표시를 받지 않고 decimalPlaces는 0이다. 맞지 않으면 400이다.
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| dataItemName | string | Y | N | 길이≥1; 길이≤100 | - |
+| dataItemCode | string | N | N | 길이≥1; 길이≤50; 패턴 `^[a-z][a-z0-9_]*$` | INT-001 dataItemCode. MST-011 필수, MST-012 무시. 2026-11-18 추가 |
+| dataItemName | string | Y | N | 길이≥1; 길이≤50 | ERD data_item.name |
 | valueType | DataValueType | Y | N | - | - |
-| unit | string | N | Y | 길이≤30 | - |
+| unit | string | N | Y | 길이≤20 | - |
 | collectionIntervalSeconds | integer | Y | N | 값≥1 | - |
-| decimalPlaces | integer | N | Y | 값≥0 | - |
-| zeroDisplayName | string | N | Y | 길이≤100 | - |
-| oneDisplayName | string | N | Y | 길이≤100 | - |
-| measurementThreshold | MeasurementThreshold | N | Y | - | - |
-| stateAlarmCondition | StateAlarmCondition | N | Y | - | - |
+| decimalPlaces | integer | N | Y | 값≥0; 값≤10 | - |
+| zeroDisplayName | string | N | Y | 길이≤20 | - |
+| oneDisplayName | string | N | Y | 길이≤20 | - |
+| measurementThreshold | MeasurementThreshold | N | Y | - | MST-012에서 생략하면 유지, null이면 삭제 |
+| stateAlarmCondition | StateAlarmCondition | N | Y | - | MST-012에서 생략하면 유지, null이면 삭제 |
 
 ### ThresholdWriteRequest
 
 
 ### ThresholdStatistics
+
+최근 값 범위는 최근 7일(오늘 포함, Asia/Seoul) 측정값이며 MEASUREMENT 항목만 값이 있다. 알람 수는 지금부터 30일 전 이후 발생 건수다(2026-11-18 A 제안값).
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
@@ -2179,6 +2273,7 @@ valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다.
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | dataItemId | Identifier | Y | N | - | - |
+| dataItemCode | string | Y | N | - | INT-001 dataItemCode. 2026-11-18 추가 |
 | dataItemName | string | Y | N | - | - |
 | valueType | DataValueType | Y | N | - | - |
 | unit | string | N | Y | - | - |
@@ -2271,6 +2366,7 @@ communicationLossSeconds=COMM_TIMEOUT_SEC, alarmConsecutiveCount=ALARM_STREAK_CO
 | unitPrice | number | Y | N | 값≥0; 값≤100000000; 기본 0 | UNIT_PRICE, 원/개. 초기0, 0이면 화면에 개당 금액 설정 안내. 상한은 프로젝트 제안값 |
 | speedWindowMinutes | integer | Y | N | 값≥5; 값≤60; 기본 10 | RATE_WINDOW_MIN. production_log 속도 계산 구간(분) |
 | hourlyProduction | integer | Y | N | 값≥1; 값≤1000; 기본 360 | HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간) |
+| ranges | array<JudgementSettingRange> | N | N | - | 각 칸의 입력 범위(응답만). 2026-11-18 추가 |
 
 ### CalculationSettingsResponse
 
@@ -2458,8 +2554,9 @@ message는 실제 발송한 고정 테스트 문구다. 화면은 문구를 복�
 | historyId | Identifier | Y | N | - | - |
 | changedAt | string(date-time) | Y | N | - | - |
 | changer | UserBrief | Y | N | - | - |
-| itemType | string | Y | N | - | - |
-| itemName | string | Y | N | - | - |
+| itemType | string | Y | N | 허용 EQUIPMENT, LINE, DATA_ITEM, THRESHOLD, PART, SETTING, ACCOUNT, DUTY | change_log.target_type 코드 |
+| itemName | string | Y | N | - | 바꾼 대상 |
+| fieldName | string | N | N | - | 바꾼 항목(field_name). 2026-11-18 추가 |
 | previousValue | string | Y | Y | - | 비밀번호와 토큰 제외 |
 | changedValue | string | Y | Y | - | 비밀번호와 토큰 제외 |
 
