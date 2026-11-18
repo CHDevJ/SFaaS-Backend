@@ -8,7 +8,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.common.DomainException;
 import java.text.ParseException;
 import java.time.Duration;
@@ -27,8 +27,10 @@ public class JwtAccessTokenService {
     public record Issued(String value, String jti, Instant expiresAt) {
         @Override public String toString() { return "Issued[redacted]"; }
     }
-    public record Claims(long userId, Position position, String jti,
-            Instant issuedAt, Instant expiresAt) { }
+    public record Claims(long userId, Permission permission, String jti,
+            Instant issuedAt, Instant expiresAt) {
+        @Override public String toString() { return "Claims[redacted]"; }
+    }
 
     public JwtAccessTokenService(byte[] secret, String issuer) {
         if (secret == null || secret.length < 32 || issuer == null || issuer.isBlank()) {
@@ -38,15 +40,15 @@ public class JwtAccessTokenService {
         this.issuer = issuer;
     }
 
-    public Issued issue(long userId, Position position, Instant now) {
-        if (userId <= 0 || position == null || now == null) {
-            throw new IllegalArgumentException("User, position and time are required");
+    public Issued issue(long userId, Permission permission, Instant now) {
+        if (userId <= 0 || permission == null || now == null) {
+            throw new IllegalArgumentException("User, permission and time are required");
         }
         String jti = UUID.randomUUID().toString();
         Instant expires = now.plus(LIFETIME);
         var claims = new JWTClaimsSet.Builder().issuer(issuer).subject(Long.toString(userId))
                 .jwtID(jti).issueTime(Date.from(now)).expirationTime(Date.from(expires))
-                .claim("position", position.name()).build();
+                .claim("permission", permission.name()).claim("issuedAt", now.toString()).build();
         try {
             var jwt = new SignedJWT(new JWSHeader.Builder(JWSAlgorithm.HS256)
                     .type(JOSEObjectType.JWT).build(), claims);
@@ -66,18 +68,21 @@ public class JwtAccessTokenService {
             JWTClaimsSet claims = jwt.getJWTClaimsSet();
             Date issued = claims.getIssueTime();
             Date expires = claims.getExpirationTime();
+            Instant exactIssued = claims.getStringClaim("issuedAt") == null ? issued == null ? null : issued.toInstant()
+                    : Instant.parse(claims.getStringClaim("issuedAt"));
+            if (exactIssued != null && (issued == null || exactIssued.getEpochSecond() != issued.toInstant().getEpochSecond())) throw invalid();
             long userId = Long.parseLong(claims.getSubject());
             String jti = claims.getJWTID();
-            String role = claims.getStringClaim("position");
+            String role = claims.getStringClaim("permission");
             if (role == null) throw invalid();
-            Position position = Position.valueOf(role);
+            Permission permission = Permission.valueOf(role);
             if (!issuer.equals(claims.getIssuer()) || userId <= 0
                     || jti == null || jti.isBlank() || issued == null || expires == null
-                    || issued.toInstant().isAfter(now) || !expires.toInstant().isAfter(now)) {
+                    || exactIssued == null || exactIssued.isAfter(now) || !expires.toInstant().isAfter(now)) {
                 throw invalid();
             }
-            return new Claims(userId, position, jti, issued.toInstant(), expires.toInstant());
-        } catch (ParseException | JOSEException | IllegalArgumentException ex) {
+            return new Claims(userId, permission, jti, exactIssued, expires.toInstant());
+        } catch (ParseException | JOSEException | IllegalArgumentException | java.time.DateTimeException ex) {
             throw invalid();
         }
     }

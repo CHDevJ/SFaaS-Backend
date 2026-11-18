@@ -20,7 +20,7 @@ class SignupApprovalListApiTest extends AbstractAuthIntegrationTest {
 
     @BeforeEach
     void admin() {
-        adminBearer = bearerFor(approvedAccount("admin001", "SYSTEM_ADMIN"));
+        adminBearer = bearerFor(approvedAccount("admin001", "ADMIN"));
     }
 
     @Test
@@ -40,7 +40,7 @@ class SignupApprovalListApiTest extends AbstractAuthIntegrationTest {
         AccountEntity first = pendingAccount("first001");
         AccountEntity second = pendingAccount("second01");
         AccountEntity third = pendingAccount("third001");
-        approvedAccount("approved1", "MAINTENANCE");
+        approvedAccount("approved1", "USER");
         AccountEntity deleted = pendingAccount("deleted01");
         deleted.markDeleted(LocalDateTime.now(clock));
         accounts.save(deleted);
@@ -113,8 +113,8 @@ class SignupApprovalListApiTest extends AbstractAuthIntegrationTest {
 
     @Test
     void only_the_system_admin_can_list_requests() throws Exception {
-        String manager = bearerFor(approvedAccount("manager1", "LINE_MANAGER"));
-        String maintainer = bearerFor(approvedAccount("maint001", "MAINTENANCE"));
+        String manager = bearerFor(approvedAccount("manager1", "USER"));
+        String maintainer = bearerFor(approvedAccount("maint001", "USER"));
 
         for (String bearer : new String[] {manager, maintainer}) {
             mockMvc.perform(get(URL).header("Authorization", bearer))

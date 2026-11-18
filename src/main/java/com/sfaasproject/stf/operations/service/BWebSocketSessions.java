@@ -69,7 +69,8 @@ public class BWebSocketSessions {
             Claims claims = client.claims;
             return client.socket.isOpen() && claims != null
                     && claims.expiresAt().isAfter(clock.instant())
-                    && users.active(claims.userId()) != null && !tokens.revoked(claims);
+                    && users.active(claims.userId()) != null && !users.passwordChangeRequired(claims.userId())
+                    && users.active(claims.userId()).position().name().equals(claims.permission().name()) && !tokens.revoked(claims);
         } catch (RuntimeException unavailable) {
             return false;
         }

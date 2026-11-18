@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.sfaasproject.stf.auth.AuthTestConfig;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.telegram.service.RedisTelegramLinkTokenStore;
 import com.sfaasproject.stf.user.entity.AccountEntity;
@@ -70,7 +70,7 @@ class MasterLineApiTest {
                 "change_log", "auth_token", "account")) {
             jdbc.update("DELETE FROM " + table);
         }
-        manager = approved("linemanager", Position.LINE_MANAGER);
+        manager = approved("lineuser", Permission.USER);
         token = bearer(manager);
     }
 
@@ -91,9 +91,10 @@ class MasterLineApiTest {
         LocalDateTime since = LocalDateTime.of(2026, 11, 17, 9, 30);
         jdbc.update("INSERT INTO equipment_state(equipment_id, status, status_since) VALUES (?, 'RUNNING', ?)",
                 forgingEq, since);
-        long item = dataItem(forgingEq);
-        alarm(forgingEq, item, "UNACKNOWLEDGED");
-        alarm(forgingEq, item, "ACTION_TAKEN");
+        long item = dataItem(forgingEq, "coolant_flow");
+        long other = dataItem(forgingEq, "spindle_temp");
+        alarm(forgingEq, item, "ACTIVE");
+        alarm(forgingEq, other, "ACTIVE");
         alarm(forgingEq, item, "CLOSED");
 
         mvc.perform(get(BASE).header("Authorization", token))
@@ -103,7 +104,9 @@ class MasterLineApiTest {
                 .andExpect(jsonPath("$.data[0].lineId").value(first))
                 .andExpect(jsonPath("$.data[0].lineName").value("외륜"))
                 .andExpect(jsonPath("$.data[0].displayOrder").value(1))
+                .andExpect(jsonPath("$.data[0].lineType").value("PART"))
                 .andExpect(jsonPath("$.data[0].equipment.length()").value(2))
+                .andExpect(jsonPath("$.data[0].equipment[0].lineType").value("PART"))
                 .andExpect(jsonPath("$.data[0].equipment[0].equipmentId").value(forgingEq))
                 .andExpect(jsonPath("$.data[0].equipment[0].equipmentCode").value("OR-01-1"))
                 .andExpect(jsonPath("$.data[0].equipment[0].lineName").value("외륜"))
@@ -140,6 +143,7 @@ class MasterLineApiTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.lineName").value("샤프트"))
                 .andExpect(jsonPath("$.data.displayOrder").value(4))
+                .andExpect(jsonPath("$.data.lineType").value("PART"))
                 .andExpect(jsonPath("$.data.equipment.length()").value(0));
 
         Map<String, Object> row = jdbc.queryForMap("SELECT name, line_type, sort_order, deleted_at FROM line");
@@ -151,10 +155,18 @@ class MasterLineApiTest {
     }
 
     @Test
-    void everyPositionMayWriteMasterData() throws Exception {
-        String maintenance = bearer(approved("maintainer", Position.MAINTENANCE));
-        String admin = bearer(approved("sysadmin", Position.SYSTEM_ADMIN));
-        mvc.perform(json(post(BASE), lineBody("보전 라인", 1)).header("Authorization", maintenance))
+    void createStoresGivenLineType() throws Exception {
+        mvc.perform(json(post(BASE), "{\"lineName\":\"조립\",\"displayOrder\":5,\"lineType\":\"ASSEMBLY\"}")
+                        .header("Authorization", token))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.lineType").value("ASSEMBLY"));
+        assertThat(jdbc.queryForObject("SELECT line_type FROM line", String.class)).isEqualTo("ASSEMBLY");
+    }
+
+    @Test
+    void adminAndUserMayWriteMasterData() throws Exception {
+        String admin = bearer(approved("sysadmin", Permission.ADMIN));
+        mvc.perform(json(post(BASE), lineBody("사용자 라인", 1)).header("Authorization", token))
                 .andExpect(status().isCreated());
         mvc.perform(json(post(BASE), lineBody("관리 라인", 2)).header("Authorization", admin))
                 .andExpect(status().isCreated());
@@ -180,7 +192,8 @@ class MasterLineApiTest {
     void createValidatesNameLengthAndDisplayOrder() throws Exception {
         String fifty = "가".repeat(50);
         for (String body : List.of(
-                lineBody("", 1), lineBody("   ", 1), lineBody(fifty + "나", 1), lineBody("라인", 0),
+                lineBody("", 1), lineBody("   ", 1), lineBody("가".repeat(101), 1), lineBody("라인", 0),
+                "{\"lineName\":\"라인\",\"displayOrder\":1,\"lineType\":\"OTHER\"}",
                 "{\"lineName\":\"라인\"}", "{\"displayOrder\":1}", "{\"lineName\":\"라인\",\"displayOrder\":\"x\"}",
                 "not-json")) {
             mvc.perform(json(post(BASE), body).header("Authorization", token))
@@ -241,6 +254,21 @@ class MasterLineApiTest {
         }
         mvc.perform(json(put(BASE + "/" + deleted), lineBody("", 1)).header("Authorization", token))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void updateKeepsLineTypeWhenOmittedAndRecordsTypeChange() throws Exception {
+        long id = insert("INSERT INTO line(name, line_type, sort_order) VALUES ('조립', 'ASSEMBLY', 1)");
+
+        mvc.perform(json(put(BASE + "/" + id), lineBody("조립", 2)).header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lineType").value("ASSEMBLY"));
+
+        mvc.perform(json(put(BASE + "/" + id), "{\"lineName\":\"조립\",\"displayOrder\":2,\"lineType\":\"PART\"}")
+                        .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lineType").value("PART"));
+        assertThat(changes()).hasSize(2).last().isEqualTo("LINE|조립|라인 종류|ASSEMBLY|PART|" + manager.getId());
     }
 
     // ---------- MST-008 ----------
@@ -332,8 +360,8 @@ class MasterLineApiTest {
         long b = equipment("OR-01-2", "선삭기", forging);
 
         mvc.perform(json(patch(BASE + "/" + id + "/layout"), layout(a, 2, b, 7)).header("Authorization", token))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.error.code").value("PROCESS_NOT_FOUND"));
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
         assertThat(processOf(a)).isEqualTo(forging);
         assertThat(processOf(b)).isEqualTo(forging);
         assertThat(turning).isNotEqualTo(forging);
@@ -384,15 +412,15 @@ class MasterLineApiTest {
 
     // ---------- helpers ----------
 
-    private AccountEntity approved(String loginId, Position position) {
+    private AccountEntity approved(String loginId, Permission permission) {
         LocalDateTime now = LocalDateTime.now(clock);
         AccountEntity account = AccountEntity.signup(loginId, passwords.encode("MasterLine123!"), loginId, now);
-        account.approve(position.name(), null, now);
+        account.approve(permission.name(), null, now);
         return accounts.save(account);
     }
 
     private String bearer(AccountEntity account) {
-        return "Bearer " + jwt.issue(account.getId(), Position.valueOf(account.getRole()), clock.instant()).value();
+        return "Bearer " + jwt.issue(account.getId(), Permission.valueOf(account.getRole()), clock.instant()).value();
     }
 
     private static MockHttpServletRequestBuilder json(MockHttpServletRequestBuilder request, String body) {
@@ -428,9 +456,9 @@ class MasterLineApiTest {
                 + " VALUES (?, ?, '시험', ?, 'MODBUS_TCP')", code, name, processId);
     }
 
-    private long dataItem(long equipmentId) {
-        return insert("INSERT INTO data_item(equipment_id, item_code, name) VALUES (?, 'coolant_flow', '냉각수 유량')",
-                equipmentId);
+    private long dataItem(long equipmentId, String code) {
+        return insert("INSERT INTO data_item(equipment_id, item_code, name) VALUES (?, ?, ?)",
+                equipmentId, code, code);
     }
 
     private void alarm(long equipmentId, long dataItemId, String state) {

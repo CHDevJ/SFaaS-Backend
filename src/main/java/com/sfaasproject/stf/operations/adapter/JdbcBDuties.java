@@ -36,7 +36,7 @@ public class JdbcBDuties implements Duties {
             var replacement = db.one(
                     "SELECT m.account_id FROM duty_member m JOIN account a ON a.account_id=m.account_id"
                             + " WHERE m.duty_id=? AND m.account_id<>? AND a.deleted_at IS NULL"
-                            + " AND a.approval_status='APPROVED' AND a.role='MAINTENANCE'", id, userId);
+                            + " AND a.approval_status='APPROVED' AND a.role='USER'", id, userId);
             if (replacement == null)
                 throw new DomainException(HttpStatus.UNPROCESSABLE_CONTENT, "DUTY_REPLACEMENT_REQUIRED",
                         "현재·예정 당번의 대체 보전 담당자를 먼저 지정해 주세요.");

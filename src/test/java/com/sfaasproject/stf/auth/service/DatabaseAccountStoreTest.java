@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.sfaasproject.stf.auth.AbstractAuthIntegrationTest;
 import com.sfaasproject.stf.auth.service.AuthFlowService.Account;
 import com.sfaasproject.stf.auth.service.AuthPolicyService.AccountStatus;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.user.entity.AccountEntity;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -19,12 +19,12 @@ class DatabaseAccountStoreTest extends AbstractAuthIntegrationTest {
 
     @Test
     void an_approved_account_is_active_with_its_position() {
-        AccountEntity entity = approvedAccount("admin01", "SYSTEM_ADMIN");
+        AccountEntity entity = approvedAccount("admin01", "ADMIN");
 
         Account account = store.findByLoginId("admin01");
 
         assertThat(account.userId()).isEqualTo(entity.getId());
-        assertThat(account.position()).isEqualTo(Position.SYSTEM_ADMIN);
+        assertThat(account.permission()).isEqualTo(Permission.ADMIN);
         assertThat(account.status()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(account.passwordHash()).isEqualTo(entity.getPasswordHash());
         assertThat(account.lastLoginAt()).isNull();
@@ -38,12 +38,12 @@ class DatabaseAccountStoreTest extends AbstractAuthIntegrationTest {
         Account account = store.findByLoginId("waiting1");
 
         assertThat(account.status()).isEqualTo(AccountStatus.PENDING_APPROVAL);
-        assertThat(account.position()).isNull();
+        assertThat(account.permission()).isNull();
     }
 
     @Test
     void a_temporary_password_makes_the_status_password_change_required() {
-        AccountEntity entity = approvedAccount("worker01", "MAINTENANCE");
+        AccountEntity entity = approvedAccount("worker01", "USER");
         entity.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(entity);
 
@@ -52,7 +52,7 @@ class DatabaseAccountStoreTest extends AbstractAuthIntegrationTest {
 
     @Test
     void deleted_and_unknown_accounts_are_not_found() {
-        AccountEntity entity = approvedAccount("gone0001", "MAINTENANCE");
+        AccountEntity entity = approvedAccount("gone0001", "USER");
         entity.markDeleted(LocalDateTime.now(clock));
         accounts.save(entity);
 
@@ -66,12 +66,12 @@ class DatabaseAccountStoreTest extends AbstractAuthIntegrationTest {
     void an_unknown_role_value_is_treated_as_no_position() {
         approvedAccount("odd00001", "NOT_A_ROLE");
 
-        assertThat(store.findByLoginId("odd00001").position()).isNull();
+        assertThat(store.findByLoginId("odd00001").permission()).isNull();
     }
 
     @Test
     void recording_a_login_stores_the_time_in_korean_local_time_and_reads_it_back_as_the_same_instant() {
-        AccountEntity entity = approvedAccount("admin01", "SYSTEM_ADMIN");
+        AccountEntity entity = approvedAccount("admin01", "ADMIN");
         Instant at = Instant.parse("2026-11-17T01:30:00Z");
 
         store.recordSuccessfulLogin(entity.getId(), at);
@@ -83,7 +83,7 @@ class DatabaseAccountStoreTest extends AbstractAuthIntegrationTest {
 
     @Test
     void changing_the_password_replaces_the_hash_and_clears_the_change_required_flag() {
-        AccountEntity entity = approvedAccount("worker01", "MAINTENANCE");
+        AccountEntity entity = approvedAccount("worker01", "USER");
         entity.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(entity);
 

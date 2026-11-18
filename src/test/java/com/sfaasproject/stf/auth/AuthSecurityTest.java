@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.user.entity.AccountEntity;
 import java.time.Duration;
@@ -28,7 +28,7 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
     private static final String DUTY_LIST = "/api/v1/system/alarm-duty-schedules";
     private static final String DUTY_CURRENT = "/api/v1/system/alarm-duty-schedules/current";
 
-    private JwtAccessTokenService.Issued tokenOf(AccountEntity account, Position tokenPosition) {
+    private JwtAccessTokenService.Issued tokenOf(AccountEntity account, Permission tokenPosition) {
         return jwt.issue(account.getId(), tokenPosition, clock.instant());
     }
 
@@ -59,10 +59,10 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_token_signed_with_another_key_returns_401() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         JwtAccessTokenService other = new JwtAccessTokenService(
                 "another-secret-key-another-secret-key-1234".getBytes(), "stf");
-        String forged = other.issue(admin.getId(), Position.SYSTEM_ADMIN, clock.instant()).value();
+        String forged = other.issue(admin.getId(), Permission.ADMIN, clock.instant()).value();
 
         mockMvc.perform(get(SYSTEM_ONLY).header("Authorization", bearer(forged)))
                 .andExpect(status().isUnauthorized())
@@ -71,8 +71,8 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void an_expired_token_returns_401() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
-        String expired = jwt.issue(admin.getId(), Position.SYSTEM_ADMIN,
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
+        String expired = jwt.issue(admin.getId(), Permission.ADMIN,
                 clock.instant().minus(Duration.ofHours(2))).value();
 
         mockMvc.perform(get(PROTECTED).header("Authorization", bearer(expired)))
@@ -82,7 +82,7 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_valid_token_passes_authentication() throws Exception {
-        AccountEntity maintainer = approvedAccount("maint001", "MAINTENANCE");
+        AccountEntity maintainer = approvedAccount("maint001", "USER");
 
         mockMvc.perform(get(PROTECTED).header("Authorization", bearerFor(maintainer)))
                 .andExpect(status().isNotFound());
@@ -90,10 +90,10 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void the_bearer_scheme_is_case_insensitive() throws Exception {
-        AccountEntity maintainer = approvedAccount("maint001", "MAINTENANCE");
+        AccountEntity maintainer = approvedAccount("maint001", "USER");
 
         mockMvc.perform(get(PROTECTED).header("Authorization",
-                        "bearer " + tokenOf(maintainer, Position.MAINTENANCE).value()))
+                        "bearer " + tokenOf(maintainer, Permission.USER).value()))
                 .andExpect(status().isNotFound());
     }
 
@@ -101,9 +101,9 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void system_apis_are_only_open_to_the_system_admin() throws Exception {
-        String admin = bearerFor(approvedAccount("admin001", "SYSTEM_ADMIN"));
-        String manager = bearerFor(approvedAccount("manager1", "LINE_MANAGER"));
-        String maintainer = bearerFor(approvedAccount("maint001", "MAINTENANCE"));
+        String admin = bearerFor(approvedAccount("admin001", "ADMIN"));
+        String manager = bearerFor(approvedAccount("manager1", "USER"));
+        String maintainer = bearerFor(approvedAccount("maint001", "USER"));
 
         mockMvc.perform(get(SYSTEM_ONLY).header("Authorization", admin)).andExpect(status().isNotFound());
         for (String bearer : new String[] {manager, maintainer}) {
@@ -114,34 +114,18 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
     }
 
     @Test
-    void the_duty_schedule_can_be_read_by_every_position_but_changed_only_by_the_system_admin()
-            throws Exception {
-        String admin = bearerFor(approvedAccount("admin001", "SYSTEM_ADMIN"));
-        String manager = bearerFor(approvedAccount("manager1", "LINE_MANAGER"));
-        String maintainer = bearerFor(approvedAccount("maint001", "MAINTENANCE"));
-
-        for (String bearer : new String[] {admin, manager, maintainer}) {
-            for (String readPath : new String[] {DUTY_LIST, DUTY_CURRENT}) {
-                assertThat(statusOf(get(readPath).header("Authorization", bearer)))
-                        .as("GET %s", readPath).isNotIn(401, 403);
-            }
-        }
-        for (String bearer : new String[] {manager, maintainer}) {
-            assertThat(statusOf(post(DUTY_LIST).header("Authorization", bearer))).isEqualTo(403);
-            assertThat(statusOf(put(DUTY_LIST + "/1").header("Authorization", bearer))).isEqualTo(403);
-            assertThat(statusOf(delete(DUTY_LIST + "/1").header("Authorization", bearer))).isEqualTo(403);
-        }
-        assertThat(statusOf(post(DUTY_LIST).header("Authorization", admin))).isNotIn(401, 403);
-        assertThat(statusOf(get(DUTY_LIST))).as("토큰이 없으면 401").isEqualTo(401);
+    void removed_duty_paths_have_no_general_user_exemption() throws Exception {
+        String user = bearerFor(approvedAccount("user0001", "USER"));
+        mockMvc.perform(get(DUTY_LIST).header("Authorization", user)).andExpect(status().isForbidden());
     }
 
     @Test
     void the_current_position_in_the_database_decides_not_the_one_inside_the_token() throws Exception {
-        AccountEntity promoted = approvedAccount("promoted", "SYSTEM_ADMIN");
-        AccountEntity demoted = approvedAccount("demoted1", "LINE_MANAGER");
+        AccountEntity promoted = approvedAccount("promoted", "ADMIN");
+        AccountEntity demoted = approvedAccount("demoted1", "USER");
         // 토큰은 이전 직책으로 발급되었다.
-        String staleLowToken = bearer(tokenOf(promoted, Position.MAINTENANCE).value());
-        String staleHighToken = bearer(tokenOf(demoted, Position.SYSTEM_ADMIN).value());
+        String staleLowToken = bearer(tokenOf(promoted, Permission.USER).value());
+        String staleHighToken = bearer(tokenOf(demoted, Permission.ADMIN).value());
 
         mockMvc.perform(get(SYSTEM_ONLY).header("Authorization", staleLowToken))
                 .andExpect(status().isNotFound());
@@ -153,7 +137,7 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void a_token_of_a_deleted_account_is_rejected_at_once() throws Exception {
-        AccountEntity account = approvedAccount("gone0001", "SYSTEM_ADMIN");
+        AccountEntity account = approvedAccount("gone0001", "ADMIN");
         String bearer = bearerFor(account);
         mockMvc.perform(get(PROTECTED).header("Authorization", bearer)).andExpect(status().isNotFound());
 
@@ -168,8 +152,8 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
     @Test
     void a_token_for_an_account_that_is_not_approved_or_does_not_exist_is_rejected() throws Exception {
         AccountEntity pending = pendingAccount("waiting1");
-        String forPending = bearer(tokenOf(pending, Position.SYSTEM_ADMIN).value());
-        String forMissing = bearer(jwt.issue(987654321L, Position.SYSTEM_ADMIN, clock.instant()).value());
+        String forPending = bearer(tokenOf(pending, Permission.ADMIN).value());
+        String forMissing = bearer(jwt.issue(987654321L, Permission.ADMIN, clock.instant()).value());
 
         mockMvc.perform(get(PROTECTED).header("Authorization", forPending)).andExpect(status().isUnauthorized());
         mockMvc.perform(get(PROTECTED).header("Authorization", forMissing)).andExpect(status().isUnauthorized());
@@ -177,20 +161,20 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void an_account_that_must_change_its_password_can_still_use_its_token() throws Exception {
-        AccountEntity account = approvedAccount("worker01", "MAINTENANCE");
+        AccountEntity account = approvedAccount("worker01", "USER");
         account.requirePasswordChange(LocalDateTime.now(clock));
         accounts.save(account);
 
         mockMvc.perform(get(PROTECTED).header("Authorization", bearerFor(account)))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isForbidden());
     }
 
     // ---- 폐기 ----
 
     @Test
     void a_revoked_access_token_is_rejected() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
-        JwtAccessTokenService.Issued issued = tokenOf(admin, Position.SYSTEM_ADMIN);
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
+        JwtAccessTokenService.Issued issued = tokenOf(admin, Permission.ADMIN);
         revocations.revokeAccess(issued.jti(), issued.expiresAt());
 
         mockMvc.perform(get(PROTECTED).header("Authorization", bearer(issued.value())))
@@ -200,8 +184,8 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void tokens_issued_before_a_users_cutoff_are_rejected_but_other_users_are_not() throws Exception {
-        AccountEntity mine = approvedAccount("admin001", "SYSTEM_ADMIN");
-        AccountEntity others = approvedAccount("admin002", "SYSTEM_ADMIN");
+        AccountEntity mine = approvedAccount("admin001", "ADMIN");
+        AccountEntity others = approvedAccount("admin002", "ADMIN");
         String mineToken = bearerFor(mine);
         String othersToken = bearerFor(others);
         revocations.revokeUserTokensIssuedUntil(mine.getId(), Instant.now().plusSeconds(5));
@@ -212,7 +196,7 @@ class AuthSecurityTest extends AbstractAuthIntegrationTest {
 
     @Test
     void tokens_are_rejected_when_the_revocation_store_is_unavailable() throws Exception {
-        String token = bearerFor(approvedAccount("admin001", "SYSTEM_ADMIN"));
+        String token = bearerFor(approvedAccount("admin001", "ADMIN"));
         revocations.setFailing(true);
 
         mockMvc.perform(get(PROTECTED).header("Authorization", token))

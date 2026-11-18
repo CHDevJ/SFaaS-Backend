@@ -4,10 +4,10 @@ import java.time.Duration;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 
-/** Browser refresh cookie policy from OpenAPI v5. */
+/** Browser refresh cookie policy from OpenAPI v6. */
 @Service
 public class RefreshCookieService {
-    public static final String NAME = "refreshToken";
+    public static final String NAME = "stfRefreshToken";
     private static final String PATH = "/api/v1/auth";
 
     public ResponseCookie issue(String token) {

@@ -3,7 +3,6 @@ package com.sfaasproject.stf.auth.service;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
 import org.junit.jupiter.api.Test;
 
 class AuthPolicyServiceTest {
@@ -21,9 +20,7 @@ class AuthPolicyServiceTest {
     }
 
     @Test
-    void derivesReadOnlyPermissionFromPosition() {
-        assertEquals(Permission.ADMIN, policy.permission(Position.SYSTEM_ADMIN));
-        assertEquals(Permission.GENERAL, policy.permission(Position.LINE_MANAGER));
-        assertEquals(Permission.GENERAL, policy.permission(Position.MAINTENANCE));
+    void permissionsAreTwoDirectStoredValues() {
+        assertArrayEquals(new Permission[]{Permission.ADMIN,Permission.USER},Permission.values());
     }
 }
