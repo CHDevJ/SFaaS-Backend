@@ -10,8 +10,8 @@ import java.util.Map;
  */
 public interface DataItemStatisticsQuery {
 
-    /** measurement_latest 의 마지막 값. 받은 적이 없는 항목은 결과에 없다. */
-    record Latest(double value, LocalDateTime receivedAt) { }
+    /** measurement_latest 의 마지막 값과 측정·수신 시각. 받은 적이 없는 항목은 결과에 없다. */
+    record Latest(double value, LocalDateTime measuredAt, LocalDateTime receivedAt) { }
 
     /** from 이후 측정값의 최솟값·평균·최댓값. 값이 없으면 결과에 없다. */
     record Range(double minimum, double average, double maximum) { }
