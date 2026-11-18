@@ -24,9 +24,18 @@ foreach($suite in $suites){
 $identity=$Version+'|'+(($stamps|Sort-Object -Unique)-join '|')+'|'+(($cases|ForEach-Object{$_.class+'#'+$_.method+'='+$_.result})-join '|')
 $hash=[Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($identity))
 $runId='RUN-'+[Convert]::ToHexString($hash).Substring(0,12)
-$history=if(Test-Path -LiteralPath $file){Get-Content -Raw -LiteralPath $file|ConvertFrom-Json}else{[pscustomobject]@{formatVersion=1;runs=@()}}
+$historyText=if(Test-Path -LiteralPath $file){[IO.File]::ReadAllText($file)}else{'{"formatVersion":1,"runs":[]}'}
+$history=$historyText|ConvertFrom-Json
 if(@($history.runs|Where-Object id -eq $runId).Count){Write-Host "Already recorded: $runId";return}
 $run=[ordered]@{id=$runId;version=$Version;label=$Label;recordedAt=[DateTimeOffset]::Now.ToString('o');suiteTimestamps=@($stamps|Sort-Object -Unique);command=$Command;buildExitCode=$BuildExitCode;classes=$suites.Count;gitCommit=((& git -C $root rev-parse HEAD) -join "");cases=@($cases);note='JUnit XML 판정. 요청 본문·인증값·실패 스택 원문 제외.'}
-$history.runs=@($history.runs)+$run
-[IO.File]::WriteAllText($file,($history|ConvertTo-Json -Depth 10),[Text.UTF8Encoding]::new($false))
+# Append without reserializing old records: ConvertFrom-Json may normalize ISO fractions.
+$closing=[regex]::Match($historyText,'\]\s*\}\s*$')
+if(-not $closing.Success){throw 'Unexpected test-history JSON layout; original file retained.'}
+$prefix=$historyText.Substring(0,$closing.Index).TrimEnd()
+$separator=if(@($history.runs).Count){','}else{''}
+$newRun=(($run|ConvertTo-Json -Depth 10)-split '\r?\n'|ForEach-Object{'    '+$_})-join "`n"
+$updated=$prefix+$separator+"`n"+$newRun+"`n  ]`n}`n"
+# Validate before writing so a malformed append never replaces the history.
+$null=$updated|ConvertFrom-Json
+[IO.File]::WriteAllText($file,$updated,[Text.UTF8Encoding]::new($false))
 Write-Host "Accumulated: $runId / $($cases.Count) tests"

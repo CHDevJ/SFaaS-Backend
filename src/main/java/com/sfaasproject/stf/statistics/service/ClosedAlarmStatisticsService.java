@@ -24,6 +24,9 @@ public class ClosedAlarmStatisticsService {
             OffsetDateTime closedAt) {}
 
     public record Response(
+            int activeCautionCount,
+            int activeCriticalCount,
+            Long longestActionEquipmentId,
             int totalCount,
             int cautionCount,
             int criticalCount,
@@ -38,7 +41,21 @@ public class ClosedAlarmStatisticsService {
         var durations = selected.stream().filter(this::closed).map(this::durationMinutes).toList();
         int critical =
                 (int) selected.stream().filter(a -> a.grade() == AlarmGrade.CRITICAL).count();
+        var active =
+                selected.stream().filter(a -> a.processStatus() == ProcessStatus.ACTIVE).toList();
+        var longest =
+                selected.stream()
+                        .filter(this::closed)
+                        .sorted(
+                                Comparator.comparing(this::durationMinutes)
+                                        .reversed()
+                                        .thenComparingLong(Alarm::alarmId))
+                        .findFirst()
+                        .orElse(null);
         return new Response(
+                (int) active.stream().filter(a -> a.grade() == AlarmGrade.CAUTION).count(),
+                (int) active.stream().filter(a -> a.grade() == AlarmGrade.CRITICAL).count(),
+                longest == null ? null : longest.equipmentId(),
                 selected.size(),
                 selected.size() - critical,
                 critical,
