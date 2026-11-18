@@ -101,9 +101,27 @@ paths:
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
-          $ref: "#/components/responses/Unauthorized"
+          description: 아이디 또는 비밀번호 오류, 또는 삭제된 계정
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: AUTH_INVALID_CREDENTIALS
+                  message: 아이디 또는 비밀번호를 확인해 주세요.
         "403":
-          $ref: "#/components/responses/Forbidden"
+          description: 가입 승인 대기 중인 계정
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: AUTH_APPROVAL_PENDING
+                  message: 가입 승인 대기 중입니다.
   /auth/refresh:
     post:
       tags:
