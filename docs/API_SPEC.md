@@ -59,6 +59,7 @@ V5는 DB 담당의 V5__forecast_settings_and_initial_stock.sql에 예약되어 �
 
 - 미종료 동일 equipmentId+dataItemId 한 건만 허용한다. 3회 연속 이탈 발생, 3회 정상 복귀가 초기 제안값이다. 정상 복귀 횟수는 alarmConsecutiveCount와 동일하게 적용한다.
 - 측정값 임계값은 ABOVE면 caution < critical, BELOW면 caution > critical. 상태값은 alarmValue 0 또는 1과 등급을 사용한다. 누적값은 알람 임계값을 두지 않는다.
+- 데이터 항목(MST-010~013, 2026-11-18 A 제안값): 등록 요청의 dataItemCode는 INT-001 dataItemCode와 같은 값으로 필수이며 설비 안에서 중복할 수 없다(삭제한 항목 포함, 409 DATA_ITEM_CODE_DUPLICATE). 등록한 뒤 코드와 valueType은 바꿀 수 없다(valueType 변경은 422 DATA_ITEM_VALUE_TYPE_IMMUTABLE, MST-012의 코드는 무시). MST-012에서 기준 칸을 보내지 않으면 기존 기준을 유지하고 null을 보내면 지운다. MST-013은 MEASUREMENT에 MeasurementThreshold, STATE에 StateAlarmCondition만 받고 CUMULATIVE는 422 THRESHOLD_NOT_SUPPORTED다. 저장한 기준은 다음 판정부터 적용된다. 통계 참고값은 최근 7일(오늘 포함) 측정값의 최소·평균·최대로 MEASUREMENT 항목만 계산한다.
 - ACTIVE 알람에 조치를 입력하면 조치·처리자·종료시각·상태를 한 트랜잭션으로 저장한다. 처리자는 토큰에서 정하고 클라이언트가 보내지 않는다. 중복 종료는 409 ALARM_STATE_CONFLICT다.
 - CLOSED 알람이 같은 항목에 있어도 새 이탈이면 새 알람이다. 별도 재발 상태나 효과 확인 단계는 없다.
 - 설비 상태 우선순위는 COMMUNICATION_LOST → FAULT → CAUTION → IDLE → RUNNING이다. 복귀한 값 자체는 고장으로 판정하지 않고, 미종료 알람은 조치 전까지 화면 목록에 남는다.
@@ -733,7 +734,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | path | equipmentId | Y | Identifier | - |
 
 - 요청: application/json / DataItemWriteRequest
-- 응답: 201 MasterDataItemResponse; 400 ValidationError; 401 Unauthorized; 422 BusinessRuleViolation
+- 응답: 201 MasterDataItemResponse; 400 ValidationError; 401 Unauthorized; 404 NotFound(EQUIPMENT_NOT_FOUND); 409 Conflict(DATA_ITEM_CODE_DUPLICATE); 422 BusinessRuleViolation(INVALID_THRESHOLD_ORDER)
 - 규칙/테스트: BR-MST-011; TC-MST-011-01, TC-MST-011-02
 
 ### MST-012 데이터 항목 수정
@@ -747,7 +748,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | path | dataItemId | Y | Identifier | - |
 
 - 요청: application/json / DataItemWriteRequest
-- 응답: 200 MasterDataItemResponse; 401 Unauthorized; 404 NotFound; 422 BusinessRuleViolation
+- 응답: 200 MasterDataItemResponse; 400 ValidationError; 401 Unauthorized; 404 NotFound(DATA_ITEM_NOT_FOUND); 422 BusinessRuleViolation(INVALID_THRESHOLD_ORDER, DATA_ITEM_VALUE_TYPE_IMMUTABLE)
 - 규칙/테스트: BR-MST-012; TC-MST-012-01, TC-MST-012-02
 
 ### MST-013 측정값 또는 상태값 알람 기준 수정
@@ -761,7 +762,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | path | dataItemId | Y | Identifier | - |
 
 - 요청: application/json / ThresholdWriteRequest
-- 응답: 200 ThresholdResponse; 401 Unauthorized; 404 NotFound; 422 BusinessRuleViolation
+- 응답: 200 ThresholdResponse; 400 ValidationError; 401 Unauthorized; 404 NotFound(DATA_ITEM_NOT_FOUND); 422 BusinessRuleViolation(INVALID_THRESHOLD_ORDER, THRESHOLD_NOT_SUPPORTED)
 - 규칙/테스트: BR-MST-013; TC-MST-013-01, TC-MST-013-02
 
 ### MST-018 설비 사진 조회
@@ -1114,6 +1115,9 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | EQUIPMENT_PHOTO_NOT_FOUND | 404 | 사진 서명 불일치·만료·파일 없음(MST-018) |
 | DATA_ITEM_NOT_FOUND | 404 | 수집/조회 항목 미등록 |
 | INVALID_THRESHOLD_ORDER | 422 | 주의/경보 방향 순서 오류 |
+| DATA_ITEM_CODE_DUPLICATE | 409 | 설비 안 항목 코드 중복(삭제한 항목 포함). 2026-11-18 추가 |
+| DATA_ITEM_VALUE_TYPE_IMMUTABLE | 422 | 등록한 항목의 valueType 변경. 2026-11-18 추가 |
+| THRESHOLD_NOT_SUPPORTED | 422 | 누적값 항목의 알람 기준 수정. 2026-11-18 추가 |
 | ALARM_NOT_FOUND | 404 | 알람 없음 |
 | ALARM_STATE_CONFLICT | 409 | 이미 종료된 알람에 조치 |
 | ACTION_CONTENT_REQUIRED | 400 | 조치 상세 공백 |
@@ -1254,6 +1258,14 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - 기준: 라인 이름 50(line.name). 설비 코드 20·이름 100·종류 50·시리얼 50·통신 방식 20(equipment). 데이터 항목 이름 50·단위 20·0/1 표시 20(data_item).
 - 영향 API: MST-002/003/006/007/011/012. 넘으면 400 VALIDATION_ERROR. DB 담당 확인 대상.
 - 사진 조회: v7에는 photoUrl(10분 서명 URL)만 있고 사진을 주는 API가 없어 MST-018을 추가했다. photoUrl은 상대 주소(uri-reference)다.
+
+### 11.1 2026-11-18 데이터 항목 계약 보완 (A)
+
+- 이유: v7 MST-011 요청에 항목 코드가 없어 등록한 항목이 INT-001 dataItemCode(data_item.item_code, NOT NULL·설비별 UNIQUE)와 연결되지 않았다. 통계 참고값의 "최근" 구간도 정의가 없었다.
+- 영향 API: MST-010~013(요청·응답 dataItemCode, MST-011 404/409, MST-012/013 400, 새 오류코드 3개, 통계 구간 7일). 다른 API와 DB migration 변경은 없다.
+- 테스트: MasterDataItemApiTest(H2), MySqlMasterLineTest의 데이터 항목 흐름(MySQL, STF_TEST_MYSQL_URL 필요).
+- 길이는 11.0 대로 ERD에 맞춘다(이름 50, 단위 20, 0/1 표시 20).
+- MST-012에서 measurementThreshold·stateAlarmCondition 칸을 아예 보내지 않으면 기존 기준을 유지하고, 명시적으로 null 을 보내면 지운다(2026-11-18 사용자 결정).
 
 ## 12. 필드 사전
 
@@ -2172,24 +2184,27 @@ equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설�
 
 ### DataItemWriteRequest
 
-valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다.
+valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다. MEASUREMENT는 0/1 표시·stateAlarmCondition을 받지 않고 decimalPlaces를 비우면 1이다. STATE는 unit·measurementThreshold를 받지 않고 decimalPlaces는 0이다. CUMULATIVE는 두 기준과 0/1 표시를 받지 않고 decimalPlaces는 0이다. 맞지 않으면 400이다.
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
-| dataItemName | string | Y | N | 길이≥1; 길이≤100 | - |
+| dataItemCode | string | N | N | 길이≥1; 길이≤50; 패턴 `^[a-z][a-z0-9_]*$` | INT-001 dataItemCode. MST-011 필수, MST-012 무시. 2026-11-18 추가 |
+| dataItemName | string | Y | N | 길이≥1; 길이≤50 | ERD data_item.name |
 | valueType | DataValueType | Y | N | - | - |
-| unit | string | N | Y | 길이≤30 | - |
+| unit | string | N | Y | 길이≤20 | - |
 | collectionIntervalSeconds | integer | Y | N | 값≥1 | - |
-| decimalPlaces | integer | N | Y | 값≥0 | - |
-| zeroDisplayName | string | N | Y | 길이≤100 | - |
-| oneDisplayName | string | N | Y | 길이≤100 | - |
-| measurementThreshold | MeasurementThreshold | N | Y | - | - |
-| stateAlarmCondition | StateAlarmCondition | N | Y | - | - |
+| decimalPlaces | integer | N | Y | 값≥0; 값≤10 | - |
+| zeroDisplayName | string | N | Y | 길이≤20 | - |
+| oneDisplayName | string | N | Y | 길이≤20 | - |
+| measurementThreshold | MeasurementThreshold | N | Y | - | MST-012에서 생략하면 유지, null이면 삭제 |
+| stateAlarmCondition | StateAlarmCondition | N | Y | - | MST-012에서 생략하면 유지, null이면 삭제 |
 
 ### ThresholdWriteRequest
 
 
 ### ThresholdStatistics
+
+최근 값 범위는 최근 7일(오늘 포함, Asia/Seoul) 측정값이며 MEASUREMENT 항목만 값이 있다. 알람 수는 지금부터 30일 전 이후 발생 건수다(2026-11-18 A 제안값).
 
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
@@ -2203,6 +2218,7 @@ valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다.
 | 필드 | 타입 | 필수 | Nullable | 제약 | 설명 |
 |---|---|---|---|---|---|
 | dataItemId | Identifier | Y | N | - | - |
+| dataItemCode | string | Y | N | - | INT-001 dataItemCode. 2026-11-18 추가 |
 | dataItemName | string | Y | N | - | - |
 | valueType | DataValueType | Y | N | - | - |
 | unit | string | N | Y | - | - |
