@@ -39,7 +39,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void refreshing_rotates_the_refresh_token_and_issues_a_new_access_token() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         MvcResult result = mockMvc.perform(withRefresh(post(REFRESH), session.refresh()))
@@ -76,7 +76,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void a_client_without_cookies_can_send_the_refresh_token_in_the_body() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         mockMvc.perform(post(REFRESH).contentType(MediaType.APPLICATION_JSON)
@@ -87,7 +87,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void the_cookie_is_used_when_both_the_cookie_and_the_body_are_sent() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         mockMvc.perform(withRefresh(post(REFRESH), session.refresh()).contentType(MediaType.APPLICATION_JSON)
@@ -97,7 +97,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void reusing_a_rotated_token_is_refused_and_revokes_the_whole_family() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
         MvcResult first = refresh(session.refresh());
         String rotated = refreshCookieValue(first);
@@ -120,7 +120,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void a_missing_unknown_or_malformed_token_is_refused_and_the_cookie_is_cleared() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
 
         MvcResult none = mockMvc.perform(post(REFRESH)).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("AUTH_REFRESH_TOKEN_INVALID")).andReturn();
@@ -137,7 +137,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void an_expired_refresh_token_is_refused() throws Exception {
-        AccountEntity admin = approvedAccount("admin001", "SYSTEM_ADMIN");
+        AccountEntity admin = approvedAccount("admin001", "ADMIN");
         RefreshTokenService.Issued issued = refreshTokens.issue(clock.instant());
         sessions.create(admin.getId(), "family-expired", issued.hash(), clock.instant().minusSeconds(1));
 
@@ -148,7 +148,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void a_deleted_account_cannot_refresh_and_its_family_is_revoked() throws Exception {
-        AccountEntity account = approvedAccount("gone0001", "MAINTENANCE");
+        AccountEntity account = approvedAccount("gone0001", "USER");
         Session session = login("gone0001");
         account.markDeleted(LocalDateTime.now(clock));
         accounts.save(account);
@@ -162,7 +162,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void refreshing_needs_no_access_token_and_ignores_a_stale_authorization_header() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         mockMvc.perform(withRefresh(post(REFRESH), session.refresh())
@@ -172,7 +172,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void sessions_of_the_same_user_rotate_independently() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session first = login("admin001");
         Session second = login("admin001");
 
@@ -185,7 +185,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
     @Test
     void two_simultaneous_refreshes_of_the_same_token_let_only_one_win_and_then_revoke_the_family()
             throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
         ExecutorService pool = Executors.newFixedThreadPool(2);
         CountDownLatch start = new CountDownLatch(1);
@@ -217,7 +217,7 @@ class AuthRefreshApiTest extends AbstractSessionApiTest {
 
     @Test
     void refresh_tokens_are_never_written_to_the_response_body() throws Exception {
-        approvedAccount("admin001", "SYSTEM_ADMIN");
+        approvedAccount("admin001", "ADMIN");
         Session session = login("admin001");
 
         MvcResult result = refresh(session.refresh());

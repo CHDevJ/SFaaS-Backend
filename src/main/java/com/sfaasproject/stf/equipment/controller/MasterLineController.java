@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * MST-005~009 라인과 설비 배치 기준정보. 권한 매트릭스상 설비관리 기준정보는 모든 직책이 쓸 수 있으므로
+ * MST-005~009 라인과 설비 배치 기준정보. v7 권한은 ADMIN, USER 모두이므로
  * 로그인만 확인한다(SecurityConfig 의 anyRequest().authenticated()).
  */
 @RestController
@@ -44,7 +44,7 @@ public class MasterLineController {
     public ResponseEntity<ApiResponse<MasterLineResponse>> create(@Valid @RequestBody LineWriteRequest request,
             @AuthenticationPrincipal JwtAccessTokenService.Claims actor) {
         MasterLineResponse body = MasterLineResponse.from(
-                lines.create(request.lineName(), request.displayOrder(), actor.userId()));
+                lines.create(request.lineName(), request.displayOrder(), request.lineType(), actor.userId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok(body));
     }
 
@@ -53,7 +53,8 @@ public class MasterLineController {
             @Valid @RequestBody LineWriteRequest request,
             @AuthenticationPrincipal JwtAccessTokenService.Claims actor) {
         return ApiResponse.ok(MasterLineResponse.from(
-                lines.update(lineId, request.lineName(), request.displayOrder(), actor.userId())));
+                lines.update(lineId, request.lineName(), request.displayOrder(), request.lineType(),
+                        actor.userId())));
     }
 
     @DeleteMapping("/{lineId}")

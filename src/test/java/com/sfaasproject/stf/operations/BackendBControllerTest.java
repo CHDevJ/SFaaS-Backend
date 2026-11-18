@@ -95,7 +95,7 @@ class BackendBControllerTest {
                         .setControllerAdvice(new ApiExceptionHandler())
                         .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                         .build();
-        login("SYSTEM_ADMIN");
+        login("ADMIN");
     }
 
     @AfterEach
@@ -107,7 +107,7 @@ class BackendBControllerTest {
         SecurityContextHolder.getContext()
                 .setAuthentication(
                         new AccessTokenAuthentication(new JwtAccessTokenService.Claims(1,
-                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Position.valueOf(role),
+                                        com.sfaasproject.stf.auth.service.AuthPolicyService.Permission.valueOf(role),
                                         "controller-test", java.time.Instant.now(), java.time.Instant.now().plusSeconds(1800))));
     }
 
@@ -141,7 +141,7 @@ class BackendBControllerTest {
 
     @Test
     void administrationRejectsMaintenance() throws Exception {
-        login("MAINTENANCE");
+        login("USER");
         for (var c : cases())
             if (List.of("DUT-002", "DUT-004", "DUT-005", "TLG-005", "TLG-006").contains(c.id()))
                 mvc.perform(request(c)).andExpect(status().isForbidden());

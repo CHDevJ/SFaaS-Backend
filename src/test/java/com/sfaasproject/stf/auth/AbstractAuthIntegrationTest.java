@@ -1,7 +1,7 @@
 package com.sfaasproject.stf.auth;
 
 import com.sfaasproject.stf.auth.repository.AuthTokenRepository;
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService;
 import com.sfaasproject.stf.system.repository.ChangeLogRepository;
 import com.sfaasproject.stf.telegram.service.RedisTelegramLinkTokenStore;
@@ -65,7 +65,7 @@ public abstract class AbstractAuthIntegrationTest {
         temporaryPasswords.reset();
     }
 
-    /** 승인된 계정을 만든다. role 은 SYSTEM_ADMIN, LINE_MANAGER, MAINTENANCE 중 하나. */
+    /** 승인된 계정을 만든다. role 은 ADMIN, USER, USER 중 하나. */
     protected AccountEntity approvedAccount(String loginId, String role) {
         LocalDateTime now = LocalDateTime.now(clock);
         AccountEntity account = AccountEntity.signup(loginId, passwordEncoder.encode(PASSWORD), "테스터", now);
@@ -85,7 +85,7 @@ public abstract class AbstractAuthIntegrationTest {
 
     /** 이 계정으로 로그인한 것과 같은 Authorization 헤더 값. */
     protected String bearerFor(AccountEntity account) {
-        Position position = Position.valueOf(account.getRole());
+        Permission position = Permission.valueOf(account.getRole());
         return "Bearer " + jwt.issue(account.getId(), position, clock.instant()).value();
     }
 }

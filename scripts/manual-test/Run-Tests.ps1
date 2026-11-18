@@ -11,6 +11,9 @@ try {
     $env:STF_TEST_MYSQL_URL='jdbc:mysql://127.0.0.1:3308/stf_b_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Seoul'
     $env:STF_TEST_MYSQL_PASSWORD=$config.MANUAL_DB_ROOT_PASSWORD
     Set-Location -LiteralPath $ManualRoot
+    $testStarted=Get-Date
     & .\gradlew.bat clean test --no-daemon
-    if ($LASTEXITCODE -ne 0) { throw 'Gradle tests failed.' }
+    $testExitCode=$LASTEXITCODE
+    & (Join-Path $ManualRoot 'scripts/test-report/Update-TestHistory.ps1') -BuildExitCode $testExitCode -StartedAfter $testStarted
+    if ($testExitCode -ne 0) { throw 'Gradle tests failed.' }
 } finally { $env:STF_TEST_MYSQL_URL=$oldUrl; $env:STF_TEST_MYSQL_PASSWORD=$oldPassword; $env:MYSQL_PWD=$oldMysql; Set-Location -LiteralPath $previousDirectory }

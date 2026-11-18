@@ -63,8 +63,8 @@ class RedisAccessRevocationStoreTest {
     void a_user_cutoff_is_kept_for_longer_than_an_access_token_lives() {
         store.revokeUserTokensIssuedUntil(7, NOW);
 
-        verify(values).set(eq("auth:user:revoked-until:7"), eq(Long.toString(NOW.getEpochSecond())),
-                eq(JwtAccessTokenService.LIFETIME.plusMinutes(1)));
+        verify(redis).execute(any(org.springframework.data.redis.core.script.RedisScript.class),
+                eq(java.util.List.of("auth:user:revoked-at:v7:7")),eq("2026-11-17T01:00:00.000000000Z"),eq("1860"));
     }
 
     @Test

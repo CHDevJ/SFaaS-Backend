@@ -35,19 +35,10 @@ class EquipmentPhotoValidationServiceTest {
     }
 
     @Test
-    void rejectsWebpBecauseOnlyJpgAndPngAreAllowed() {
+    void acceptsWebpSignature() {
         byte[] webp = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'};
-        assertThrows(DomainException.class,
-                () -> service.validate(new MockMultipartFile("photo", "part.webp",
+        assertEquals(EquipmentPhotoValidationService.Format.WEBP,
+                service.validate(new MockMultipartFile("photo", "part.webp",
                         "image/webp", webp)));
-        assertThrows(DomainException.class,
-                () -> service.validate(new MockMultipartFile("photo", "part.webp", null, webp)));
-    }
-
-    @Test
-    void acceptsJpegWithoutDeclaredContentType() {
-        byte[] jpeg = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xe0};
-        assertEquals(EquipmentPhotoValidationService.Format.JPEG,
-                service.validate(new MockMultipartFile("photo", "part.jpg", null, jpeg)));
     }
 }

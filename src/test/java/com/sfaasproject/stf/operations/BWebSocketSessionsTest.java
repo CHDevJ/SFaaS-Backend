@@ -3,7 +3,7 @@ package com.sfaasproject.stf.operations;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.sfaasproject.stf.auth.service.AuthPolicyService.Position;
+import com.sfaasproject.stf.auth.service.AuthPolicyService.Permission;
 import com.sfaasproject.stf.auth.service.JwtAccessTokenService.Claims;
 import com.sfaasproject.stf.operations.config.BWebSocketConfiguration;
 import com.sfaasproject.stf.operations.dto.BContract.UserBrief;
@@ -26,10 +26,10 @@ class BWebSocketSessionsTest {
     final Users users = mock(Users.class);
     final BTokenGuard tokens = mock(BTokenGuard.class);
     final BWebSocketSessions sessions = new BWebSocketSessions(users, tokens, clock);
-    final Claims first = new Claims(1, Position.MAINTENANCE, "one", now, now.plusSeconds(1800));
+    final Claims first = new Claims(1, Permission.USER, "one", now, now.plusSeconds(1800));
 
     @BeforeEach void setup() {
-        when(users.active(1)).thenReturn(new UserBrief(1L, "보전", com.sfaasproject.stf.operations.dto.BContract.Position.MAINTENANCE));
+        when(users.active(1)).thenReturn(new UserBrief(1L, "보전", com.sfaasproject.stf.operations.dto.BContract.Position.USER));
     }
 
     WebSocketSession open(String id, Claims claims) {
@@ -57,7 +57,7 @@ class BWebSocketSessionsTest {
     }
 
     @Test void expiryAtBoundaryClosesConnection() throws Exception {
-        var socket = open("s", new Claims(1, Position.MAINTENANCE, "expired", now.minusSeconds(1800), now));
+        var socket = open("s", new Claims(1, Permission.USER, "expired", now.minusSeconds(1800), now));
         assertFalse(sessions.permitDelivery("s"));
         verify(socket).close(CloseStatus.POLICY_VIOLATION);
     }
@@ -85,7 +85,7 @@ class BWebSocketSessionsTest {
 
     @Test void logoutOfOneSessionKeepsOtherLoginOfSameUserOpen() throws Exception {
         var one = open("one", first);
-        var second = new Claims(1, Position.MAINTENANCE, "two", now, now.plusSeconds(1800));
+        var second = new Claims(1, Permission.USER, "two", now, now.plusSeconds(1800));
         var two = open("two", second);
         when(tokens.revoked(first)).thenReturn(true);
         sessions.checkSessions();

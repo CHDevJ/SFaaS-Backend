@@ -24,6 +24,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.mock.web.MockMultipartFile;
@@ -32,7 +33,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
- * 실제 MySQL 8.4 에서 V1~V4 를 Flyway 로 적용한 뒤 운영과 같은 {@code ddl-auto=validate} 로 컨텍스트를 띄운다.
+ * 실제 MySQL 8.4 에서 V1~V6 을 Flyway 로 적용한 뒤 운영과 같은 {@code ddl-auto=validate} 로 컨텍스트를 띄운다.
  * 라인·공정·설비 엔티티가 실제 스키마와 맞는지와, 잠금·조회 SQL 이 MySQL 에서 동작하는지를 확인한다.
  *
  * <p>MySqlBackendBTest 와 같은 격리 컨테이너 규칙을 쓴다. STF_TEST_MYSQL_URL 이 없으면 건너뛰고,
@@ -72,7 +73,7 @@ class MySqlMasterLineTest {
     @Test
     void entitiesMatchFlywaySchemaAndSeededLinesAreListedInOrder() {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE success = 1",
-                Integer.class)).isEqualTo(4);
+                Integer.class)).isEqualTo(6);
 
         List<MasterLineView> listed = lines.list();
         List<String> expectedNames = jdbc.queryForList(
@@ -93,14 +94,19 @@ class MySqlMasterLineTest {
     void writeFlowWorksOnMySql() {
         long actor = jdbc.queryForObject("SELECT MIN(account_id) FROM account", Long.class);
 
-        MasterLineView created = lines.create("검증 라인 " + UUID.randomUUID().toString().substring(0, 8), 90, actor);
+        MasterLineView created = lines.create("검증 라인 " + UUID.randomUUID().toString().substring(0, 8), 90, null,
+                actor);
         assertThat(jdbc.queryForObject("SELECT line_type FROM line WHERE line_id = ?", String.class,
                 created.lineId())).isEqualTo("PART");
-        assertThatThrownBy(() -> lines.create(created.lineName(), 91, actor))
+        assertThatThrownBy(() -> lines.create(created.lineName(), 91, null, actor))
                 .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "LINE_NAME_DUPLICATE");
 
-        MasterLineView renamed = lines.update(created.lineId(), created.lineName() + "B", 92, actor);
+        MasterLineView renamed = lines.update(created.lineId(), created.lineName() + "B", 92, "ASSEMBLY", actor);
         assertThat(renamed.displayOrder()).isEqualTo(92);
+        assertThat(renamed.lineType()).isEqualTo("ASSEMBLY");
+        // v7 은 이름을 100자까지 받지만 DB line.name 은 varchar(50) 이다. 중복으로 잘못 알리지 않고 DB 오류를 그대로 낸다.
+        assertThatThrownBy(() -> lines.create("가".repeat(51), 93, null, actor))
+                .isInstanceOf(DataIntegrityViolationException.class);
 
         lines.delete(created.lineId(), actor);
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM line WHERE line_id = ?", Boolean.class,
@@ -127,7 +133,7 @@ class MySqlMasterLineTest {
         assertThatThrownBy(() -> lines.delete(lineId, actor))
                 .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "LINE_HAS_EQUIPMENT");
         assertThatThrownBy(() -> lines.updateLayout(lineId, List.of(new LayoutItem(equipmentId, 999)), actor))
-                .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "PROCESS_NOT_FOUND");
+                .isInstanceOf(DomainException.class).hasFieldOrPropertyWithValue("code", "VALIDATION_ERROR");
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM change_log WHERE target_type = 'EQUIPMENT' AND field_name = '공정 배치'
                   AND target_name = (SELECT equip_code FROM equipment WHERE equipment_id = ?)""",
@@ -149,7 +155,13 @@ class MySqlMasterLineTest {
                 "MQTT", OffsetDateTime.parse("2026-11-17T08:30:00.789+09:00"),
                 new MockMultipartFile("photo", "p.png", "image/png", png), false), actor);
         assertThat(created.registeredAt()).isEqualTo(LocalDateTime.of(2026, 11, 17, 8, 30));
-        assertThat(created.photoUrl()).startsWith("/api/v1/equipment-photos/");
+        assertThat(created.photoUrl()).isNull();
+        assertThat(jdbc.queryForObject("SELECT photo_path FROM equipment WHERE equipment_id = ?", String.class,
+                created.equipmentId())).endsWith(".png");
+        // v7 은 코드를 100자까지 받지만 DB equip_code 는 varchar(20) 이다. 중복으로 잘못 알리지 않고 DB 오류를 그대로 낸다.
+        assertThatThrownBy(() -> equipment.create(new Command("X".repeat(21), "긴 코드", "검증기", null, lineId, seq,
+                "MQTT", null, null, false), actor))
+                .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> equipment.create(new Command(code, "중복", "검증기", null, lineId, seq, "MQTT", null,
                 null, false), actor))
                 .isInstanceOf(DomainException.class)
@@ -162,15 +174,15 @@ class MySqlMasterLineTest {
 
         jdbc.update("INSERT INTO data_item(equipment_id, item_code, name) VALUES (?, 'vx_temp', '검증 온도')",
                 created.equipmentId());
-        MasterEquipmentService.EquipmentPage page = equipment.list(lineId, created.equipmentId(), false,
-                PageQuery.of(0, 20));
+        MasterEquipmentService.EquipmentPage page = equipment.list(lineId, created.equipmentId(), PageQuery.of(0, 20));
         assertThat(page.items().getContent()).singleElement()
                 .extracting(MasterEquipmentView::equipmentName).isEqualTo("검증 설비 2");
 
         equipment.delete(created.equipmentId(), actor);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM data_item WHERE equipment_id = ? AND deleted_at IS NULL",
                 Integer.class, created.equipmentId())).isZero();
-        assertThat(equipment.list(lineId, created.equipmentId(), true, PageQuery.of(0, 20)).items().getContent())
-                .singleElement().extracting(MasterEquipmentView::deletedAt).isNotNull();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM equipment WHERE equipment_id = ?",
+                Boolean.class, created.equipmentId())).isTrue();
+        assertThat(equipment.list(lineId, created.equipmentId(), PageQuery.of(0, 20)).items().getContent()).isEmpty();
     }
 }

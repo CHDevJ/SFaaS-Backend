@@ -27,7 +27,7 @@ public class ManualTestAccountConfiguration {
             if (!"stf_b_manual".equals(jdbc.queryForObject("SELECT DATABASE()", String.class)))
                 throw new IllegalStateException("Manual accounts require the dedicated stf_b_manual database");
             new TransactionTemplate(transactions).executeWithoutResult(status -> {
-                Map<String,String> roles=Map.of("badmin01","SYSTEM_ADMIN","bmaint01","MAINTENANCE","bline01","LINE_MANAGER");
+                Map<String,String> roles=Map.of("badmin01","ADMIN","bmaint01","USER","bline01","USER");
                 roles.forEach((login,role)-> {
                     if (accounts.existsByLoginId(login)) return;
                     var now=LocalDateTime.now(clock);

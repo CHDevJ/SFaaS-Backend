@@ -52,9 +52,11 @@ class MySqlBackendBTest {
                         baseUrl.replace("/stf_b_test?", "/" + database + "?"),
                         "root",
                         System.getenv("STF_TEST_MYSQL_PASSWORD"));
-        flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").load();
+        flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").target("4").load();
         flyway.migrate();
         jdbc = new JdbcTemplate(source);
+        // Explicit v5 workflow regression fixture. Current v7 migrations are verified separately.
+        jdbc.update("UPDATE account SET role=CASE WHEN role='SYSTEM_ADMIN' THEN 'ADMIN' ELSE 'USER' END WHERE role IS NOT NULL");
         var template = new TransactionTemplate(new DataSourceTransactionManager(source));
         tx =
                 new UnitOfWork() {
@@ -161,7 +163,7 @@ class MySqlBackendBTest {
                         new UsernamePasswordAuthenticationToken(
                                 "1",
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))));
+                                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         long maint = users.maintenanceIds().iterator().next();
         var parts = new PartApplicationService(new JdbcBParts(db), users, tx);
         var commands =
@@ -205,14 +207,14 @@ class MySqlBackendBTest {
                         new UsernamePasswordAuthenticationToken(
                                 "1",
                                 null,
-                                List.of(new SimpleGrantedAuthority("ROLE_SYSTEM_ADMIN"))));
+                                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         var duty =
                 new DutyApplicationService(
                         new JdbcBDuties(db, new JdbcBClaims(db)),
                         users,
                         tx,
                         new DutyScheduleDecisionService(),
-                        clock);
+                        clock, this::recordAudit);
         var today = LocalDate.now(clock);
         long maint = users.maintenanceIds().iterator().next();
         duty.createAlarmDutySchedule(new DutyScheduleWriteRequest(today, today.plusDays(2), maint));
@@ -228,8 +230,8 @@ class MySqlBackendBTest {
     @Order(5)
     void accountDutyCleanupRequiresReplacementsAndPreservesPastRowsOnRealMySql() {
         jdbc.update("INSERT INTO account(login_id,name,role,approval_status) VALUES"
-                + " ('cleanupmysql','삭제 검증','MAINTENANCE','APPROVED'),"
-                + " ('replacemysql','대체 검증','MAINTENANCE','APPROVED')");
+                + " ('cleanupmysql','삭제 검증','USER','APPROVED'),"
+                + " ('replacemysql','대체 검증','USER','APPROVED')");
         long target=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='cleanupmysql'",Long.class);
         long other=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='replacemysql'",Long.class);
         var adapter=new JdbcBDuties(db,new JdbcBClaims(db));
@@ -246,6 +248,50 @@ class MySqlBackendBTest {
         assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM duty_member WHERE account_id=? AND duty_id=?",Integer.class,target,past));
         assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM duty_member WHERE account_id=?",Integer.class,other));
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM duty WHERE duty_id IN (?,?,?)",Integer.class,past,current,future));
+    }
+
+    void recordAudit(long actor, com.sfaasproject.stf.system.entity.AuditTargetType type,
+            String target, String field, String before, String after) {
+        jdbc.update("INSERT INTO change_log(changed_by,target_type,target_name,field_name,old_value,new_value,changed_at)"
+                + " VALUES (?,?,?,?,?,?,?)",actor,type.name(),target,field,before,after,LocalDateTime.now(clock));
+    }
+
+    @Test
+    @Order(6)
+    void resetAttemptHistoryCommitsAfterAccountLockReleaseEvenOnRollbackOnRealMySql() {
+        var manager=new DataSourceTransactionManager(jdbc.getDataSource());
+        var handler=new java.util.concurrent.atomic.AtomicReference<com.sfaasproject.stf.operations.event.PasswordResetDeliveryHistory>();
+        org.springframework.context.ApplicationEventPublisher publisher=event ->
+                handler.get().record((com.sfaasproject.stf.operations.event.PasswordResetDeliveryRecorded)event);
+        var outbox=new com.sfaasproject.stf.operations.event.JdbcBEventOutbox(jdbc,manager,publisher,clock);
+        var history=new com.sfaasproject.stf.operations.event.PasswordResetDeliveryHistory(jdbc,
+                new BEventPublisher(publisher,outbox),new JdbcBClaims(db),manager);
+        handler.set(history);
+        jdbc.update("INSERT INTO account(login_id,name,role,approval_status,telegram_chat_id) VALUES"
+                + " ('resetmysql','발송 검증','USER','APPROVED','test-mysql-reset-chat')");
+        long id=jdbc.queryForObject("SELECT account_id FROM account WHERE login_id='resetmysql'",Long.class);
+        var failed=new com.sfaasproject.stf.telegram.service.TelegramDeliveryService(
+                (chat,message)->{throw new IllegalStateException(message);},duration->{});
+        var sender=new BAuditedTemporaryPasswordSender(jdbc,failed,history,clock);
+        assertThrows(IllegalStateException.class,()->tx.execute(()->{
+            jdbc.queryForList("SELECT account_id FROM account WHERE account_id=? FOR UPDATE",id);
+            assertFalse(sender.send("test-mysql-reset-chat","test-plaintext-never-persisted"));
+            throw new IllegalStateException("reset rolled back");
+        }));
+        assertEquals("FAILURE",jdbc.queryForObject("SELECT send_result FROM notification_log WHERE account_id=?",String.class,id));
+        assertEquals(1,jdbc.queryForObject("SELECT retry_count FROM notification_log WHERE account_id=?",Integer.class,id));
+        assertEquals(com.sfaasproject.stf.operations.event.PasswordResetDeliveryHistory.REDACTED_MESSAGE,
+                jdbc.queryForObject("SELECT message FROM notification_log WHERE account_id=?",String.class,id));
+        assertFalse(jdbc.queryForList("SELECT payload FROM backend_event_outbox WHERE event_type='PasswordResetDeliveryRecorded'").toString().contains("test-plaintext-never-persisted"));
+        var successful=new BAuditedTemporaryPasswordSender(jdbc,
+                new com.sfaasproject.stf.telegram.service.TelegramDeliveryService((chat,message)->{},duration->{}),history,clock);
+        tx.execute(()->{
+            jdbc.queryForList("SELECT account_id FROM account WHERE account_id=? FOR UPDATE",id);
+            assertTrue(successful.send("test-mysql-reset-chat","test-plaintext-never-persisted")); return null;
+        });
+        outbox.retryPending();
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM notification_log WHERE account_id=?",Integer.class,id));
+        assertEquals(1,jdbc.queryForObject("SELECT COUNT(*) FROM notification_log WHERE account_id=? AND send_result='SUCCESS'",Integer.class,id));
     }
 
 }
