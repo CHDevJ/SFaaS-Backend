@@ -1312,6 +1312,11 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 - AUTH-006에서 현재 비밀번호가 틀리면 코드·상태(401 AUTH_INVALID_CREDENTIALS)는 그대로 두고 문구만 "현재 비밀번호를 확인해 주세요."로 바꿨다.
 - OpenApiErrorCodeContractTest가 서버 코드와 enum의 일치, openapi 중복 키 없음을 확인한다.
 
+### 11.7 2026-11-18 INT-001 카운터 리셋 처리 (A)
+
+- 누적 카운터가 초기화 시각(reset_time) 밖에서 줄면(PLC·Node-RED 재시작) 메시지를 거절하지 않는다. 같은 묶음의 가동 신호·센서 값은 그대로 저장하고, 줄어든 값은 새 기준점으로 보아 생산으로 더하지 않으며 counter_status는 COUNTER_RESET_PENDING이다. 다음 값부터 새 기준점에서 늘어난 만큼만 더한다.
+- 이전 구현은 이 경우 400 VALIDATION_ERROR로 메시지 전체를 버려 카운터가 예전 값을 넘을 때까지 설비가 통신 끊김으로 보였다(2026-11-18 통합 점검에서 발견).
+
 ## 12. 필드 사전
 
 Y=필수, N=선택. nullable은 명시된 경우만 허용한다. allOf는 참조와 추가 필드 모두 적용한다. 단계·금액·무이력 상태를 구분하며 null을0으로 변환하지 않는다.
