@@ -1,6 +1,7 @@
 package com.sfaasproject.stf.equipment.service;
 
 import com.sfaasproject.stf.common.DomainException;
+import com.sfaasproject.stf.common.UniqueViolations;
 import com.sfaasproject.stf.common.time.KstTime;
 import com.sfaasproject.stf.equipment.entity.EquipmentEntity;
 import com.sfaasproject.stf.equipment.entity.LineEntity;
@@ -84,7 +85,7 @@ public class MasterLineService {
             line = lines.saveAndFlush(LineEntity.create(name, type, order, now()));
         } catch (DataIntegrityViolationException raced) {
             // 같은 이름을 동시에 등록하면 UNIQUE 제약이 막는다. 이름 길이 초과 같은 다른 DB 오류는 그대로 던진다.
-            if (lines.existsByName(name)) {
+            if (UniqueViolations.isUniqueViolation(raced)) {
                 throw duplicateName();
             }
             throw raced;
@@ -115,7 +116,7 @@ public class MasterLineService {
             try {
                 lines.flush();
             } catch (DataIntegrityViolationException raced) {
-                if (lines.existsByNameAndIdNot(name, lineId)) {
+                if (UniqueViolations.isUniqueViolation(raced)) {
                     throw duplicateName();
                 }
                 throw raced;
