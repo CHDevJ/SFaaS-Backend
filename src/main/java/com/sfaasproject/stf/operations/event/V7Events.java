@@ -20,6 +20,8 @@ public final class V7Events {
 
     public record CountsCommitted(String eventId, long sequence, int activeCount) {}
 
+    public record AlarmDeliveryRequested(String eventId, long alarmId, String type) {}
+
     public record EquipmentCommitted(
             String eventId,
             long sequence,
