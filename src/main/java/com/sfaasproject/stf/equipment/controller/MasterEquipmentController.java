@@ -42,10 +42,11 @@ public class MasterEquipmentController {
     @GetMapping
     public PagedApiResponse<MasterEquipmentResponse.PageData> list(
             @RequestParam(required = false) Long lineId,
+            @RequestParam(required = false) Long processId,
             @RequestParam(required = false) Long equipmentId,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        EquipmentPage result = equipment.list(lineId, equipmentId, PageQuery.of(page, size));
+        EquipmentPage result = equipment.list(lineId, processId, equipmentId, PageQuery.of(page, size));
         return PagedApiResponse.ok(MasterEquipmentResponse.PageData.from(result), PageMeta.from(result.items()));
     }
 

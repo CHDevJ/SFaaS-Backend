@@ -41,8 +41,11 @@ public class EquipmentQueryService {
 
     static final String COMMUNICATION_LOST = "COMMUNICATION_LOST";
     static final int MAIN_MEASUREMENTS = 3;
-    /** 대표 상태를 고를 때 나쁜 순서(API_SPEC 4.1 설비 상태 우선순위). */
-    static final List<String> STATUS_PRIORITY = List.of("COMMUNICATION_LOST", "FAULT", "CAUTION", "IDLE", "RUNNING");
+    /**
+     * 공정의 대표 상태를 고를 때 급한 순서. 2026-11-18 화면 결정 23 에 따라 고장을 통신 끊김보다 먼저 둔다.
+     * 설비 한 대의 상태 판정 순서(API_SPEC 4.1)와는 별개다.
+     */
+    static final List<String> STATUS_PRIORITY = List.of("FAULT", "COMMUNICATION_LOST", "CAUTION", "IDLE", "RUNNING");
 
     private final LineRepository lines;
     private final ProcessRepository processes;

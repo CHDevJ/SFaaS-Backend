@@ -295,6 +295,7 @@ paths:
       summary: 설비별 통신 현황 조회
       description: todayDisconnectionCount DESC, todayDisconnectionMinutes DESC,
         equipmentId ASC 고정 정렬. 연결 0대/전체 0대는 ALL_NORMAL과 0건으로 반환한다.
+        summary는 lineId·processId 조건만 따르고 status 조건·페이지와는 상관없다.
       x-api-id: COM-001
       x-requirement-ids:
         - FR0203
@@ -314,6 +315,7 @@ paths:
         - USER
       parameters:
         - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
         - $ref: "#/components/parameters/CommunicationStatus"
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Size"
@@ -1261,6 +1263,7 @@ paths:
         - MasterData
       operationId: getMasterEquipment
       summary: 기준정보 설비 조회
+      description: registeredCount·monitoredCount는 lineId·processId 조건만 따르고 equipmentId·페이지와는 상관없다.
       x-api-id: MST-001
       x-requirement-ids:
         - FR1301
@@ -1278,6 +1281,7 @@ paths:
         - USER
       parameters:
         - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
         - $ref: "#/components/parameters/EquipmentId"
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/Size"
@@ -3087,6 +3091,15 @@ components:
       in: query
       schema:
         $ref: "#/components/schemas/Identifier"
+    ProcessId:
+      name: processId
+      in: query
+      description: >-
+        공정으로 거른다. 한 공정의 설비 전체가 나온다. lineId와 함께 보내 서로 맞지 않거나 없는 공정이면 빈 결과다.
+        2026-11-19 A 추가(프론트 요청 31)
+      schema:
+        $ref: "#/components/schemas/Identifier"
+      x-proposed: true
     CommunicationStatus:
       name: status
       in: query
@@ -3758,8 +3771,9 @@ components:
             - $ref: "#/components/schemas/EquipmentStatus"
           nullable: true
           description: >-
-            공정 설비 중 가장 나쁜 상태(COMMUNICATION_LOST → FAULT → CAUTION → IDLE → RUNNING). 설비가 없으면 null.
-            2026-11-18 A 추가(프론트 요청)
+            공정 설비 중 가장 급한 상태(FAULT → COMMUNICATION_LOST → CAUTION → IDLE → RUNNING). 설비가 없으면 null.
+            2026-11-18 A 추가(프론트 요청), 2026-11-19 화면 결정 23에 따라 FAULT를 COMMUNICATION_LOST보다 앞에 둠.
+            설비 한 대의 상태 판정 우선순위와는 별개다
           x-proposed: true
     ProcessListResponse:
       type: object
