@@ -9,7 +9,7 @@ import com.sfaasproject.stf.telegram.port.NotificationPort;
 
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.transaction.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Only six v7 destinations are published, after successful commit via the durable outbox. */
 public class V7Realtime {
@@ -18,22 +18,25 @@ public class V7Realtime {
     private final Telegram connections;
     private final NotificationPort notifications;
     private final EventClaims claims;
+    private final BEventPublisher events;
 
     public V7Realtime(
             SimpMessagingTemplate socket,
             V7Context context,
             Telegram connections,
             NotificationPort notifications,
-            EventClaims claims) {
+            EventClaims claims,
+            BEventPublisher events) {
         this.socket = socket;
         this.context = context;
         this.connections = connections;
         this.notifications = notifications;
         this.claims = claims;
+        this.events = events;
     }
 
     @EventListener
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void alarm(V7Events.AlarmCommitted e) {
         socket.convertAndSend(
                 "/topic/alarms",
@@ -75,7 +78,15 @@ public class V7Realtime {
             for (long user : context.activeAccounts())
                 socket.convertAndSendToUser(Long.toString(user), "/queue/notifications", payload);
         }
-        if (!e.type().equals("CREATED") && !e.type().equals("GRADE_ESCALATED")) return;
+        if (e.type().equals("CREATED") || e.type().equals("GRADE_ESCALATED")) {
+            // Send only after all alarm listeners commit, so a failed sibling cannot cause a resend.
+            events.publish(new V7Events.AlarmDeliveryRequested(e.eventId(), e.alarmId(), e.type()));
+        }
+    }
+
+    @EventListener
+    @Transactional
+    public void deliver(V7Events.AlarmDeliveryRequested e) {
         for (long user : context.connectedAccounts()) {
             var c = connections.connection(user);
             if (c == null) continue;

@@ -19,6 +19,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 
@@ -113,8 +116,9 @@ public class V7BackendConfiguration {
             V7Context context,
             Telegram connections,
             NotificationPort notifications,
-            EventClaims claims) {
-        return new V7Realtime(socket, context, connections, notifications, claims);
+            EventClaims claims,
+            BEventPublisher events) {
+        return new V7Realtime(socket, context, connections, notifications, claims, events);
     }
 
     @Bean
@@ -157,7 +161,7 @@ public class V7BackendConfiguration {
             com.sfaasproject.stf.measurement.repository.JdbcV7IngestionStore store,
             JdbcBDatabase db,
             V7AlarmService alarms,
-            UnitOfWork tx,
+            PlatformTransactionManager manager,
             BEventPublisher events,
             Clock backendBClock,
             com.sfaasproject.stf.measurement.service.IngestionMessageGuard guard,
@@ -180,6 +184,11 @@ public class V7BackendConfiguration {
                         () ->
                                 java.time.Duration.ofSeconds(
                                         context.integer("COMM_TIMEOUT_SEC", 30)));
-        return new BIngestionApplicationService(processor, tx, backendBClock);
+        // The equipment row serializes batches for one device. Missing latest/history rows
+        // must not reserve index gaps shared with first readings from other devices.
+        var ingestionTx = new TransactionTemplate(manager);
+        ingestionTx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        return new BIngestionApplicationService(
+                processor, BackendBConfiguration.unitOfWork(ingestionTx), backendBClock);
     }
 }
