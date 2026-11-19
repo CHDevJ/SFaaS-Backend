@@ -32,7 +32,8 @@ class V7RealtimeTest {
             when(context.accountName(id)).thenReturn("계정" + id);
             when(telegram.connection(id)).thenReturn(new Connection("chat" + id, now));
         }
-        var realtime = new V7Realtime(socket, context, telegram, notifications, seen::add);
+        var events = mock(BEventPublisher.class);
+        var realtime = new V7Realtime(socket, context, telegram, notifications, seen::add, events);
         var event =
                 new V7Events.AlarmCommitted(
                         "v7-event",
@@ -44,6 +45,11 @@ class V7RealtimeTest {
                         now);
         realtime.alarm(event);
         realtime.alarm(event);
+        verifyNoInteractions(notifications);
+        var request = new V7Events.AlarmDeliveryRequested("v7-event", 7, "CREATED");
+        verify(events, times(2)).publish(request);
+        realtime.deliver(request);
+        realtime.deliver(request);
         verify(notifications, times(3)).deliver(any(), eq(7L), eq("CREATED"), anyString());
         verify(socket, times(2))
                 .convertAndSendToUser(
@@ -57,8 +63,9 @@ class V7RealtimeTest {
         var context = mock(V7Context.class);
         when(context.activeAccounts()).thenReturn(List.of(1L));
         var notifications = mock(NotificationPort.class);
-        var realtime =
-                new V7Realtime(socket, context, mock(Telegram.class), notifications, id -> true);
+        var events = mock(BEventPublisher.class);
+        var realtime = new V7Realtime(
+                socket, context, mock(Telegram.class), notifications, id -> true, events);
         realtime.alarm(
                 new V7Events.AlarmCommitted(
                         "recovered",
@@ -77,7 +84,7 @@ class V7RealtimeTest {
                         AlarmGrade.CRITICAL,
                         AlarmProcessStatus.CLOSED,
                         now));
-        verifyNoInteractions(notifications);
+        verifyNoInteractions(notifications, events);
         var event = ArgumentCaptor.forClass(PersonalEvent.class);
         verify(socket).convertAndSendToUser(eq("1"), eq("/queue/notifications"), event.capture());
         assertEquals(PersonalEventType.ALARM_CLOSED, event.getValue().type());

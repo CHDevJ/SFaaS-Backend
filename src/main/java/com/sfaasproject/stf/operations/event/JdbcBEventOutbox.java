@@ -75,6 +75,15 @@ public class JdbcBEventOutbox {
     }
 
     public void dispatch(long id) {
+        // A listener can append another event. Dispatch it after this row lock and connection
+        // have been released, including when the scheduler is retrying the parent event.
+        AfterTransactionDispatch.around(() -> {
+            dispatchRow(id);
+            return null;
+        });
+    }
+
+    private void dispatchRow(long id) {
         try {
             newTx.execute(
                     status -> {
