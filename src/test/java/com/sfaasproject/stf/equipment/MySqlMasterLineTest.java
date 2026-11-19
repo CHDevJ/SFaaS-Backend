@@ -179,7 +179,7 @@ class MySqlMasterLineTest {
 
         jdbc.update("INSERT INTO data_item(equipment_id, item_code, name) VALUES (?, 'vx_temp', '검증 온도')",
                 created.equipmentId());
-        MasterEquipmentService.EquipmentPage page = equipment.list(lineId, created.equipmentId(), PageQuery.of(0, 20));
+        MasterEquipmentService.EquipmentPage page = equipment.list(lineId, null, created.equipmentId(), PageQuery.of(0, 20));
         assertThat(page.items().getContent()).singleElement()
                 .extracting(MasterEquipmentView::equipmentName).isEqualTo("검증 설비 2");
 
@@ -188,7 +188,7 @@ class MySqlMasterLineTest {
                 Integer.class, created.equipmentId())).isZero();
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM equipment WHERE equipment_id = ?",
                 Boolean.class, created.equipmentId())).isTrue();
-        assertThat(equipment.list(lineId, created.equipmentId(), PageQuery.of(0, 20)).items().getContent()).isEmpty();
+        assertThat(equipment.list(lineId, null, created.equipmentId(), PageQuery.of(0, 20)).items().getContent()).isEmpty();
     }
 
     @Test

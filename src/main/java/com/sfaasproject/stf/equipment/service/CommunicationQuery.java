@@ -22,8 +22,8 @@ public interface CommunicationQuery {
 
     record Interval(LocalDateTime startedAt, LocalDateTime endedAt) { }
 
-    /** lineId 가 null 이면 전체. */
-    List<Row> equipment(Long lineId);
+    /** lineId·processId 는 각각 null 이면 조건을 걸지 않는다. 둘 다 null 이면 전체. */
+    List<Row> equipment(Long lineId, Long processId);
 
     /** 설비별로 from~to 와 겹치는 COMMUNICATION_LOST 상태 이력. endedAt 이 null 이면 아직 끊겨 있다. */
     Map<Long, List<Interval>> disconnections(Collection<Long> equipmentIds, LocalDateTime from, LocalDateTime to);

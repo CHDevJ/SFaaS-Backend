@@ -25,14 +25,22 @@ public class JdbcCommunicationQuery implements CommunicationQuery {
     }
 
     @Override
-    public List<Row> equipment(Long lineId) {
+    public List<Row> equipment(Long lineId, Long processId) {
         String sql = "SELECT e.equipment_id, e.equip_code, e.name, l.name AS line_name, e.comm_type, s.status,"
                 + " s.status_since, s.last_received_at, e.created_at FROM equipment e"
                 + " JOIN process p ON p.process_id = e.process_id JOIN line l ON l.line_id = p.line_id"
                 + " LEFT JOIN equipment_state s ON s.equipment_id = e.equipment_id"
                 + " WHERE e.deleted_at IS NULL AND l.deleted_at IS NULL"
-                + (lineId == null ? "" : " AND l.line_id = ?") + " ORDER BY e.equipment_id";
-        return lineId == null ? jdbc.query(sql, (rs, row) -> row(rs)) : jdbc.query(sql, (rs, row) -> row(rs), lineId);
+                + (lineId == null ? "" : " AND l.line_id = ?")
+                + (processId == null ? "" : " AND p.process_id = ?") + " ORDER BY e.equipment_id";
+        List<Object> args = new ArrayList<>();
+        if (lineId != null) {
+            args.add(lineId);
+        }
+        if (processId != null) {
+            args.add(processId);
+        }
+        return jdbc.query(sql, (rs, row) -> row(rs), args.toArray());
     }
 
     @Override
