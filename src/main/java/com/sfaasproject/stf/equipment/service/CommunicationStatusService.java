@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
  *       (EQP·OVW-001 과 같음). 끊긴 시각은 상태 시작 시각, 상태 줄이 없으면 설비 등록 시각이다.</li>
  *   <li>오늘 끊김 횟수·분은 오늘(Asia/Seoul 0시~지금)과 겹치는 COMMUNICATION_LOST 상태 이력이다.
  *       어제부터 이어진 끊김도 1회로 세고 오늘 안의 길이만 분으로 더한다(분 미만 버림).</li>
- *   <li>COM-001 summary 는 lineId 조건만 따르고 status 조건·페이지와는 상관없다. 정렬은 오늘 끊김 횟수 DESC,
+ *   <li>COM-001 summary 는 lineId·processId 조건만 따르고 status 조건·페이지와는 상관없다. 정렬은 오늘 끊김 횟수 DESC,
  *       오늘 끊김 분 DESC, 설비 번호 ASC. 설비가 0대면 ALL_NORMAL 과 0건이다.</li>
  * </ul>
  */
@@ -58,11 +58,11 @@ public class CommunicationStatusService {
 
     /** COM-001. status 는 CONNECTED 또는 DISCONNECTED. */
     @Transactional(readOnly = true)
-    public EquipmentPage list(Long lineId, String status, PageQuery page) {
+    public EquipmentPage list(Long lineId, Long processId, String status, PageQuery page) {
         if (status != null && !CONNECTED.equals(status) && !DISCONNECTED.equals(status)) {
             throw new DomainException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "입력값을 확인해 주세요.");
         }
-        List<Item> all = items(query.equipment(lineId));
+        List<Item> all = items(query.equipment(lineId, processId));
         Summary summary = summarize(all);
         List<Item> filtered = all.stream().filter(item -> status == null || status.equals(item.status()))
                 .sorted(Comparator.comparingInt(Item::todayDisconnectionCount).reversed()
@@ -78,7 +78,7 @@ public class CommunicationStatusService {
     /** COM-002. 사용 중인 라인의 사용 중인 설비 전체. */
     @Transactional(readOnly = true)
     public Summary summary() {
-        return summarize(items(query.equipment(null)));
+        return summarize(items(query.equipment(null, null)));
     }
 
     private Summary summarize(List<Item> items) {

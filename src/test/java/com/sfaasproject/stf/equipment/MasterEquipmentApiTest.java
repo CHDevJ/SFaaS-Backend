@@ -176,6 +176,40 @@ class MasterEquipmentApiTest {
     }
 
     @Test
+    void listFiltersByProcessAndCountsOnlyThatProcess() throws Exception {
+        long a = equipment("OR-01-1", "외륜 단조기 1호", forging);
+        long b = equipment("OR-01-2", "외륜 단조기 2호", forging);
+        long c = equipment("OR-02-1", "외륜 선삭기", turning);
+        equipment("IR-01-1", "내륜 단조기", innerForging);
+        dataItem(a);
+        dataItem(c);
+
+        // 한 공정에 설비가 여러 대면 그 공정의 설비 전체가 나온다. 설비 수도 그 공정만 센다.
+        mvc.perform(get(BASE).param("processId", String.valueOf(forging)).header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.registeredCount").value(2))
+                .andExpect(jsonPath("$.data.monitoredCount").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(2))
+                .andExpect(jsonPath("$.data.items[0].equipmentId").value(a))
+                .andExpect(jsonPath("$.data.items[1].equipmentId").value(b))
+                .andExpect(jsonPath("$.meta.totalElements").value(2));
+        mvc.perform(get(BASE).param("lineId", String.valueOf(outer)).param("processId", String.valueOf(turning))
+                        .header("Authorization", token))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].equipmentId").value(c));
+        // 다른 라인의 공정이나 없는 공정은 빈 목록이다.
+        mvc.perform(get(BASE).param("lineId", String.valueOf(inner)).param("processId", String.valueOf(forging))
+                        .header("Authorization", token))
+                .andExpect(jsonPath("$.data.items.length()").value(0))
+                .andExpect(jsonPath("$.data.registeredCount").value(0));
+        mvc.perform(get(BASE).param("processId", "999999").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+        mvc.perform(get(BASE).param("processId", "abc").header("Authorization", token))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     void listReturnsEmptyForUnknownLineAndValidatesPaging() throws Exception {
         // v7 MST-001 은 200/401 만 정의한다. 없는 라인은 빈 목록이다.
         mvc.perform(get(BASE).param("lineId", "999999").header("Authorization", token))

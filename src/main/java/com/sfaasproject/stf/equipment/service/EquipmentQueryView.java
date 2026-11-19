@@ -13,7 +13,7 @@ public final class EquipmentQueryView {
     /**
      * openapi ProcessSummary.
      *
-     * @param representativeStatus 공정 설비 중 가장 나쁜 상태(COMMUNICATION_LOST → FAULT → CAUTION → IDLE → RUNNING).
+     * @param representativeStatus 공정 설비 중 가장 나쁜 상태(FAULT → COMMUNICATION_LOST → CAUTION → IDLE → RUNNING).
      *        설비가 없으면 null. 2026-11-18 추가(프론트 요청)
      */
     public record Process(long processId, String processName, int processOrder, boolean hasAbnormalEquipment,

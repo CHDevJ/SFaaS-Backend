@@ -26,10 +26,12 @@ public class CommunicationController {
     @GetMapping
     public PagedApiResponse<CommunicationResponse.PageData> list(
             @RequestParam(required = false) Long lineId,
+            @RequestParam(required = false) Long processId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        CommunicationStatusService.EquipmentPage result = communications.list(lineId, status, PageQuery.of(page, size));
+        CommunicationStatusService.EquipmentPage result = communications.list(lineId, processId, status,
+                PageQuery.of(page, size));
         return PagedApiResponse.ok(CommunicationResponse.PageData.from(result), PageMeta.from(result.items()));
     }
 

@@ -112,6 +112,20 @@ class EquipmentQueryApiTest {
     }
 
     @Test
+    void representativeStatusPutsFaultBeforeCommunicationLost() throws Exception {
+        // 단조 공정에 상태 줄이 없는(통신 끊김) 설비를 더해도 고장이 대표 상태다(화면 결정 23).
+        equipment("OR-01-3", forging);
+        // 선삭 공정은 통신 끊김과 주의가 섞이면 통신 끊김이 대표 상태다.
+        long caution = equipment("OR-02-2", turning);
+        state(caution, "CAUTION", T.minusMinutes(3), T.plusSeconds(1));
+
+        mvc.perform(get("/api/v1/lines/" + line + "/processes").header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].representativeStatus").value("FAULT"))
+                .andExpect(jsonPath("$.data[1].representativeStatus").value("COMMUNICATION_LOST"));
+    }
+
+    @Test
     void processesNeedActiveLineAndLogin() throws Exception {
         long deleted = insert("INSERT INTO line(name, line_type, sort_order, deleted_at) VALUES ('폐기', 'PART', 2, ?)",
                 T);
