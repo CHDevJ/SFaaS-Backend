@@ -175,6 +175,40 @@ class CommunicationApiTest {
     }
 
     @Test
+    void listFiltersByProcessAndSummarizesThatProcess() throws Exception {
+        long forging = jdbc.queryForObject("SELECT process_id FROM process WHERE line_id = ? AND process_seq = 1",
+                Long.class, outer);
+        long turning = insert("INSERT INTO process(line_id, process_seq, name) VALUES (?, 2, '선삭')", outer);
+        long turner = equipment("OR-02-1", turning);
+        state(turner, "RUNNING", TODAY);
+
+        // 단조 공정의 설비 셋(연결 둘, 끊김 하나)만 나오고 집계도 그 공정만 센다.
+        mvc.perform(get("/api/v1/communications").param("processId", String.valueOf(forging))
+                        .header("Authorization", token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.summary.status").value("PARTIAL_DISCONNECTED"))
+                .andExpect(jsonPath("$.data.summary.totalEquipmentCount").value(3))
+                .andExpect(jsonPath("$.data.summary.disconnectedEquipmentCount").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(3))
+                .andExpect(jsonPath("$.data.items[0].equipmentId").value(flaky));
+        mvc.perform(get("/api/v1/communications").param("lineId", String.valueOf(outer))
+                        .param("processId", String.valueOf(turning)).param("status", "CONNECTED")
+                        .header("Authorization", token))
+                .andExpect(jsonPath("$.data.summary.status").value("ALL_NORMAL"))
+                .andExpect(jsonPath("$.data.summary.totalEquipmentCount").value(1))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].equipmentId").value(turner));
+        // 다른 라인의 공정은 0대다.
+        mvc.perform(get("/api/v1/communications").param("lineId", String.valueOf(inner))
+                        .param("processId", String.valueOf(forging)).header("Authorization", token))
+                .andExpect(jsonPath("$.data.summary.totalEquipmentCount").value(0))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+        mvc.perform(get("/api/v1/communications").param("processId", "x").header("Authorization", token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     void summaryCoversAllActiveEquipmentAndNeedsLogin() throws Exception {
         mvc.perform(get("/api/v1/communications/summary").header("Authorization", token))
                 .andExpect(status().isOk())

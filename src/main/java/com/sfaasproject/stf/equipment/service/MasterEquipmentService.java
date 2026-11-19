@@ -58,7 +58,7 @@ public class MasterEquipmentService {
             Long lineId, Integer processOrder, String communicationMethod, OffsetDateTime registeredAt,
             MultipartFile photo, boolean removePhoto) { }
 
-    /** MST-001 결과. 설비 수는 lineId 조건만 따르고 equipmentId·페이지와는 상관없다. */
+    /** MST-001 결과. 설비 수는 lineId·processId 조건만 따르고 equipmentId·페이지와는 상관없다. */
     public record EquipmentPage(long registeredCount, long monitoredCount, Page<MasterEquipmentView> items) { }
 
     private record Placement(LineEntity line, ProcessEntity process) { }
@@ -88,10 +88,14 @@ public class MasterEquipmentService {
         this.clock = clock;
     }
 
-    /** MST-001. 사용 중인 설비만 보인다. 없는 lineId·equipmentId 는 빈 목록이다(v7 은 200/401 만 정의). */
+    /**
+     * MST-001. 사용 중인 설비만 보인다. 없는 lineId·processId·equipmentId 와 서로 맞지 않는 조합(다른 라인의
+     * 공정 등)은 빈 목록이다(v7 은 200/401 만 정의).
+     */
     @Transactional(readOnly = true)
-    public EquipmentPage list(Long lineId, Long equipmentId, PageQuery page) {
-        Page<EquipmentEntity> found = equipment.search(lineId, equipmentId, page.toPageable(Sort.unsorted()));
+    public EquipmentPage list(Long lineId, Long processId, Long equipmentId, PageQuery page) {
+        Page<EquipmentEntity> found = equipment.search(lineId, processId, equipmentId,
+                page.toPageable(Sort.unsorted()));
         Map<Long, ProcessEntity> processById = processes.findAllById(
                         found.getContent().stream().map(EquipmentEntity::getProcessId).distinct().toList())
                 .stream().collect(Collectors.toMap(ProcessEntity::getId, Function.identity()));
@@ -104,7 +108,8 @@ public class MasterEquipmentService {
             ProcessEntity process = processById.get(item.getProcessId());
             return view(item, new Placement(lineById.get(process.getLineId()), process), states.get(item.getId()));
         });
-        return new EquipmentPage(equipment.countActive(lineId), equipment.countMonitored(lineId), items);
+        return new EquipmentPage(equipment.countActive(lineId, processId),
+                equipment.countMonitored(lineId, processId), items);
     }
 
     /** MST-002. */

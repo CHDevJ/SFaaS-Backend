@@ -242,6 +242,7 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 | 위치 | 이름 | 필수 | 타입 | 제약 |
 |---|---|---|---|---|
 | query | lineId | N | Identifier | - |
+| query | processId | N | Identifier | 2026-11-19 추가 |
 | query | status | N | CommunicationStatus | - |
 | query | page | N | integer | 값≥0; 기본 0 |
 | query | size | N | integer | 값≥1; 값≤100; 기본 20 |
@@ -596,11 +597,12 @@ BR/TC는 작성할 업무규칙·정상/오류 테스트 식별자이며 구현 
 
 - 주소: GET /api/v1/master/equipment
 - 소유자: A; 권한: ADMIN, USER; 요구사항: FR1301
-- 처리: 공통 인증·검증·업무규칙을 적용하고 스키마를 반환한다.
+- 처리: 공통 인증·검증·업무규칙을 적용하고 스키마를 반환한다. registeredCount·monitoredCount는 lineId·processId 조건만 따르고 equipmentId·페이지와는 상관없다.
 
 | 위치 | 이름 | 필수 | 타입 | 제약 |
 |---|---|---|---|---|
 | query | lineId | N | Identifier | - |
+| query | processId | N | Identifier | 2026-11-19 추가 |
 | query | equipmentId | N | Identifier | - |
 | query | page | N | integer | 값≥0; 기본 0 |
 | query | size | N | integer | 값≥1; 값≤100; 기본 20 |
@@ -1293,7 +1295,7 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 
 - 통신 끊김은 수집 쪽 스케줄러가 equipment_state에 남긴 COMMUNICATION_LOST(마지막 수신 후 COMM_TIMEOUT_SEC 초과)를 쓴다. 상태 줄이 없는 설비(값을 받은 적 없음)도 끊김으로 보고(EQP·OVW-001과 같음) lastReceivedAt은 null이다. disconnectedSince는 상태 시작 시각, 상태 줄이 없으면 설비 등록 시각이다.
 - 오늘 끊김 횟수·분은 오늘(Asia/Seoul 0시~지금)과 겹치는 COMMUNICATION_LOST 상태 이력이다. 어제부터 이어진 끊김도 1회로 세고 오늘 안의 길이만 더한다(분 미만 버림).
-- COM-001 summary는 lineId 조건만 따르고 status 조건·페이지와는 상관없다. 없는 lineId는 0대(ALL_NORMAL)다. COM-002는 사용 중인 라인의 사용 중인 설비 전체다.
+- COM-001 summary는 lineId·processId 조건만 따르고 status 조건·페이지와는 상관없다(processId는 11.8에서 추가). 없는 lineId는 0대(ALL_NORMAL)다. COM-002는 사용 중인 라인의 사용 중인 설비 전체다.
 - 계약 보완: CommunicationEquipment.lastReceivedAt nullable.
 
 ### 11.5 2026-11-18 설정 변경 이력 (A, AUD-001)
@@ -1316,6 +1318,15 @@ OpenAPI의 components.schemas에 EquipmentStatusEvent, MeasurementEvent, AlarmEv
 
 - 누적 카운터가 초기화 시각(reset_time) 밖에서 줄면(PLC·Node-RED 재시작) 메시지를 거절하지 않는다. 같은 묶음의 가동 신호·센서 값은 그대로 저장하고, 줄어든 값은 새 기준점으로 보아 생산으로 더하지 않으며 counter_status는 COUNTER_RESET_PENDING이다. 다음 값부터 새 기준점에서 늘어난 만큼만 더한다.
 - 이전 구현은 이 경우 400 VALIDATION_ERROR로 메시지 전체를 버려 카운터가 예전 값을 넘을 때까지 설비가 통신 끊김으로 보였다(2026-11-18 통합 점검에서 발견).
+
+### 11.8 2026-11-19 공정 대표 상태 순서와 공정 조회 조건 (A, 프론트 요청 29·31)
+
+- 이유: 화면 결정 23(2026-11-18)은 공정의 급한 순서를 고장 → 통신 끊김 → 주의 → 대기 → 가동으로 정했다. 11.2의 ProcessSummary.representativeStatus는 통신 끊김을 먼저 골라 화면이 서버 값을 쓰지 못하고 공정마다 EQP-003을 따로 불렀다. 조회 조건을 라인 → 공정 → 설비로 통일하면서(강사 피드백) 공정으로 거르는 조건도 필요해졌다.
+- representativeStatus는 FAULT → COMMUNICATION_LOST → CAUTION → IDLE → RUNNING 순서로 고른다. 4.1의 설비 한 대 상태 판정 우선순위(COMMUNICATION_LOST 먼저)는 바꾸지 않는다.
+- MST-001과 COM-001에 선택 query processId를 추가했다. 한 공정의 설비 전체가 나온다. lineId와 함께 보내 맞지 않거나 없는 공정이면 빈 결과(200)다. MST-001 registeredCount·monitoredCount와 COM-001 summary는 lineId·processId를 따르고 equipmentId·status·페이지와는 상관없다.
+- ALM-001(B)의 processId 조건은 B 담당 범위라 이번 변경에 포함하지 않는다.
+- 영향 API: EQP-002(응답 값 순서), MST-001, COM-001(선택 query 추가). DB migration 변경은 없다.
+- 테스트: EquipmentQueryApiTest, MasterEquipmentApiTest, CommunicationApiTest.
 
 ## 12. 필드 사전
 
@@ -1572,7 +1583,7 @@ Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure, SameSite=Strict, 
 | processName | string | Y | N | 길이≤100 | - |
 | processOrder | integer | Y | N | 값≥1 | - |
 | hasAbnormalEquipment | boolean | Y | N | - | FAULT·CAUTION·COMMUNICATION_LOST 설비가 있으면 true |
-| representativeStatus | EquipmentStatus | N | Y | - | 공정 설비 중 가장 나쁜 상태. 설비가 없으면 null. 2026-11-18 추가 |
+| representativeStatus | EquipmentStatus | N | Y | - | 공정 설비 중 가장 급한 상태(FAULT → COMMUNICATION_LOST → CAUTION → IDLE → RUNNING). 설비가 없으면 null. 2026-11-18 추가, 2026-11-19 순서 변경 |
 
 ### ProcessListResponse
 

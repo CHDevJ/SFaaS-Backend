@@ -40,11 +40,13 @@ public interface EquipmentRepository extends JpaRepository<EquipmentEntity, Long
 
     /**
      * MST-001 목록. 사용 중인 설비를 라인 표시순서, 공정 순서, 설비 번호순으로 정렬한다.
+     * lineId·processId·equipmentId 는 각각 null 이면 조건을 걸지 않는다.
      */
     @Query(value = """
             select e from EquipmentEntity e, ProcessEntity p, LineEntity l
             where e.processId = p.id and p.lineId = l.id
               and (:lineId is null or l.id = :lineId)
+              and (:processId is null or p.id = :processId)
               and (:equipmentId is null or e.id = :equipmentId)
               and e.deletedAt is null
             order by l.sortOrder, l.id, p.processSeq, e.id
@@ -53,28 +55,31 @@ public interface EquipmentRepository extends JpaRepository<EquipmentEntity, Long
             select count(e) from EquipmentEntity e, ProcessEntity p
             where e.processId = p.id
               and (:lineId is null or p.lineId = :lineId)
+              and (:processId is null or p.id = :processId)
               and (:equipmentId is null or e.id = :equipmentId)
               and e.deletedAt is null
             """)
-    Page<EquipmentEntity> search(@Param("lineId") Long lineId, @Param("equipmentId") Long equipmentId,
-            Pageable pageable);
+    Page<EquipmentEntity> search(@Param("lineId") Long lineId, @Param("processId") Long processId,
+            @Param("equipmentId") Long equipmentId, Pageable pageable);
 
-    /** 사용 중인(삭제되지 않은) 설비 수. lineId 가 없으면 전체. */
+    /** 사용 중인(삭제되지 않은) 설비 수. lineId·processId 가 없으면 그 조건을 걸지 않는다. */
     @Query("""
             select count(e) from EquipmentEntity e, ProcessEntity p
             where e.processId = p.id and e.deletedAt is null
               and (:lineId is null or p.lineId = :lineId)
+              and (:processId is null or p.id = :processId)
             """)
-    long countActive(@Param("lineId") Long lineId);
+    long countActive(@Param("lineId") Long lineId, @Param("processId") Long processId);
 
     /** 사용 중인 설비 중 사용 중인 데이터 항목이 하나 이상 있어 값을 받는 설비 수(MST-001 monitoredCount). */
     @Query(nativeQuery = true, value = """
             SELECT COUNT(*) FROM equipment e JOIN process p ON p.process_id = e.process_id
             WHERE e.deleted_at IS NULL
               AND (:lineId IS NULL OR p.line_id = :lineId)
+              AND (:processId IS NULL OR p.process_id = :processId)
               AND EXISTS (SELECT 1 FROM data_item d WHERE d.equipment_id = e.equipment_id AND d.deleted_at IS NULL)
             """)
-    long countMonitored(@Param("lineId") Long lineId);
+    long countMonitored(@Param("lineId") Long lineId, @Param("processId") Long processId);
 
     /** 설비를 삭제할 때 그 설비의 데이터 항목을 함께 논리 삭제한다(화면설계서 P07). */
     @Modifying(flushAutomatically = true)
