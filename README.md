@@ -9,7 +9,6 @@
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-6DB33F?logo=springboot&logoColor=white)
 ![Spring Security](https://img.shields.io/badge/Spring%20Security-JWT-6DB33F?logo=springsecurity&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?logo=mysql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
 ![Node-RED](https://img.shields.io/badge/Node--RED-8F0000?logo=nodered&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI-2088FF?logo=githubactions&logoColor=white)
 
@@ -29,18 +28,18 @@
 
 | 항목 | 내용 |
 |---|---|
-| 기간 | 2026-11-12 ~ 2026-11-24 |
+| 기간 | 2026-11-11 ~ 2026-11-24 |
 | 팀 | 5명 (백엔드 2, 프론트 1, DB 2) |
 | 내 역할 | 백엔드 A |
 | 담당 범위 | 전체 API 68개 중 **42개 소유**, 이 중 **36개 직접 구현**<br/>(EQP-001·SYS-001~004·INT-001은 백엔드 B가 먼저 만들고 내가 보완) |
-| 기여 | 커밋 87개 중 43개, PR [ 개수 ]건 |
+| 기여 | 머지된 PR **20건** (팀 전체 175건), 커밋 **27건** (머지 커밋 제외, 팀 전체 233건) |
 
 **기술 스택**
 
 | 분류 | 사용 기술 |
 |---|---|
 | Backend | Java 21, Spring Boot 4.1, Spring Security (OAuth2 Resource Server, JWT), Spring Data JPA, JDBC |
-| Data | MySQL 8.4, Flyway, Redis |
+| Data | MySQL 8.4, Flyway (V1~V14) |
 | 실시간·수집 | WebSocket (STOMP), Node-RED (MQTT → HTTP) |
 | 문서·테스트 | springdoc-openapi, JUnit 5 |
 | Infra | Docker Compose, GitHub Actions (MySQL 8.4 서비스 컨테이너) |
@@ -77,7 +76,6 @@ flowchart LR
     QRY --> DB
     SYS --> DB
     ALM --> DB
-    AUTH --> RD[("Redis<br/>폐기된 Access Token")]
 
     FE["프론트엔드"] -- "REST /api/v1/**<br/>Bearer JWT" --> SEC
     SEC --> AUTH & MST & QRY & SYS & ALM
@@ -296,7 +294,7 @@ public static boolean isUniqueViolation(DataIntegrityViolationException ex) {
 | Refresh Token | HttpOnly 쿠키로만 내려 준다. 갱신할 때마다 새 토큰으로 바꾸고(회전), DB에는 **해시만** 저장한다 |
 | 재사용 감지 | 이미 쓴 토큰이 다시 오면 탈취로 보고 그 토큰 계열(`family_id`) 전체를 폐기한다 |
 | 동시 갱신 | 토큰 행을 `PESSIMISTIC_WRITE`로 잠가 한 요청만 성공하게 한다 |
-| 로그아웃·비밀번호 변경 | 폐기한 Access Token은 Redis에 **남은 유효시간만큼만** 보관한다. 비밀번호를 바꾸면 모든 세션을 폐기한다 |
+| 로그아웃·비밀번호 변경 | 폐기한 Access Token은 **남은 유효시간만큼만** 보관한다(처음엔 Redis, 2026-11-21에 MySQL 만료 상태 테이블로 이전). 비밀번호를 바꾸면 모든 세션을 폐기한다 |
 | fail-closed | 서명이 맞아도 요청마다 DB에서 계정 상태와 권한을 다시 확인한다 |
 | 가입 승인 | 행을 잠그고 처리한다. 변경 이력을 같은 트랜잭션에 기록해서, 기록에 실패하면 승인도 롤백된다 |
 
@@ -347,7 +345,7 @@ if (rotation.status() == SessionStore.RotationStatus.REUSED) {
 
 </details>
 
-**검증**: 인증 PR 2건에서 테스트 136개를 추가했다. 임시 MySQL 8.4와 Redis로 회전, 재사용 감지, 동시 갱신, 로그아웃, 비밀번호 변경 흐름을 확인했다.
+**검증**: 인증 PR 2건에서 테스트 136개를 추가했다. 임시 MySQL 8.4와 Redis(당시 구성)로 회전, 재사용 감지, 동시 갱신, 로그아웃, 비밀번호 변경 흐름을 확인했다.
 
 > 💡 JWT 발급 시각은 초 단위다. 그래서 비밀번호를 바꾼 그 초에 발급된 토큰도 폐기되게 했다. 애매할 때는 안전한 쪽으로 판정한다.
 
@@ -442,8 +440,8 @@ void everyServerErrorCodeIsInTheContract() throws IOException {
 
 ## 6. 테스트와 협업 방식
 
-- **테스트**: 전체 546개 (테스트 클래스 98개). 동시성·롤백·실제 MySQL 테스트를 포함한다.
-- **CI**: GitHub Actions에서 MySQL 8.4 서비스 컨테이너를 띄워 PR마다 전체 테스트를 실행한다. [ 최신 실행 결과 ]
+- **테스트**: 최종본 기준 팀 전체 567개 (테스트 클래스 101개). 동시성·롤백·실제 MySQL 테스트를 포함한다.
+- **CI**: GitHub Actions에서 MySQL 8.4 서비스 컨테이너를 띄워 PR마다 전체 테스트를 실행한다.
 - **작업 단위**: Jira 이슈(API ID 단위) → feature 브랜치 → PR → 리뷰 후 머지
 - **기록**: API별 커밋·PR·테스트를 작업 기록 문서로 정리했다. 계약을 바꾸는 결정은 명세의 결정 기록 장에 남겼다.
 
@@ -451,7 +449,8 @@ void everyServerErrorCodeIsInTheContract() throws IOException {
 
 ## 7. 회고
 
-- **잘한 점**: 통합 점검에서 나온 장애 두 건(4.1, 4.2)을 재현 테스트부터 만들고 고쳤다. 이 테스트들은 지금도 회귀 테스트로 남아 있다.
+- **잘한 점**: 통합 점검에서 나온 장애 두 건(4.1, 4.2)을 재현 테스트부터 만들고 고쳤다. 이 테스트들은 최종본에도 회귀 테스트로 남아 있다.
+- **잘한 점**: 명세를 계약 원본으로 두고 오류 코드까지 테스트로 묶어, 프론트와 백엔드 B가 같은 기준으로 개발할 수 있었다.
 - **아쉬운 점**: [ ]
 - **다음에 해 볼 것**: [ ]
 
@@ -459,6 +458,6 @@ void everyServerErrorCodeIsInTheContract() throws IOException {
 
 ## 링크
 
-- 원본 저장소: [ ]
+- 원본 저장소: [balkary/SFAAS_Project](https://github.com/balkary/SFAAS_Project) (비공개)
 - API 문서 (Swagger UI): [ ]
 - 시연 영상: [ ]
