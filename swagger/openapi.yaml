@@ -1,0 +1,5766 @@
+openapi: 3.0.3
+info:
+  title: STF Save The Factory API
+  version: 7.0.0
+  license:
+    name: Internal Project Use Only
+    url: https://sfaas5-team.atlassian.net/wiki/spaces/SF5
+  description: 2026-11-17 최종 재수정 자료 5개(요구사항75·NFR13·IFR4, 화면설계76쪽, HTML/PNG 각72개)와
+    조립 정지 예측 결정 2판을 바탕으로 2026-11-22 시연 서버에서 제공하는 기능과 응답에 맞춘 API 계약.
+  x-specification-status: approved-project-proposal
+x-recovery-estimation:
+  requirementId: FR0905
+  ruleId: BR-RECOVERY-001
+  source: 조립 정지 예측 결정 2판
+  duration: closedAt - occurredAt
+  groupBy:
+    - equipmentId
+    - dataItemId
+  eligibleHistory: 현재 고장 발생 전 종료된 CRITICAL 알람 중 유효한 비음수 조치시간
+  minimumRecords: 1
+  returnFields:
+    - repairHistoryCount
+    - averageRepairMinutes
+  zeroHistory:
+    repairHistoryCount: 0
+    averageRepairMinutes: null
+    marginMinutes: null
+    marginStatus: null
+    shortageMinutes: null
+  fallbackAllowed: false
+  recoveryExpectedAt: 고장 발생 시각 + 같은 설비·항목 종료 경보 조치시간 평균
+servers:
+  - url: /api/v1
+    description: 사용자 REST API
+tags:
+  - name: Auth
+    description: 로그인과 권한
+  - name: Communication
+    description: 설비 통신 상태
+  - name: Overview
+    description: 종합현황
+  - name: Equipment
+    description: 설비 조회와 모니터링
+  - name: Inventory
+    description: 재고와 조립 정지 예측
+  - name: Alarm
+    description: 알람 조회와 처리
+  - name: Statistics
+    description: 이력과 통계
+  - name: MasterData
+    description: 설비관리 기준정보
+  - name: SystemSetting
+    description: 시스템 판정과 계산 설정
+  - name: SystemUser
+    description: 계정 관리
+  - name: Telegram
+    description: 텔레그램 본인 연결과 전송
+  - name: Audit
+    description: 변경 이력
+  - name: Internal
+    description: Node-RED 내부 수집
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      operationId: login
+      summary: 로그인
+      security: []
+      x-api-id: AUTH-001
+      x-requirement-ids:
+        - FR0101
+      x-nfr-ids:
+        - NFR01
+        - NFR02
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUTH-001
+      x-test-ids:
+        - TC-AUTH-001-01
+        - TC-AUTH-001-02
+      x-permissions:
+        - ANONYMOUS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: 아이디 또는 비밀번호 오류, 또는 삭제된 계정
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: AUTH_INVALID_CREDENTIALS
+                  message: 아이디 또는 비밀번호를 확인해 주세요.
+        "403":
+          description: 가입 승인 대기 중인 계정
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: AUTH_APPROVAL_PENDING
+                  message: 가입 승인 대기 중입니다.
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      operationId: refreshToken
+      summary: Access/Refresh Token 갱신
+      description: >-
+        HttpOnly Secure SameSite=Strict 쿠키의 Refresh Token을 회전하고 이전 토큰을 폐기한다.
+        회전된 지 10초 안의 같은 토큰은 다른 탭의 동시 갱신으로 보아 409 AUTH_REFRESH_CONFLICT를 주며
+        쿠키를 지우지 않고 family도 폐기하지 않는다. 클라이언트는 잠시 뒤 다시 요청한다.
+        10초가 지난 재사용은 401이며 family 전체를 폐기한다(API_SPEC 11.9).
+      security: []
+      x-api-id: AUTH-002
+      x-requirement-ids:
+        - FR0102
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUTH-002
+      x-test-ids:
+        - TC-AUTH-002-01
+        - TC-AUTH-002-02
+      x-permissions:
+        - ANONYMOUS
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: 토큰 갱신 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: 다른 탭이 방금 같은 Refresh Token으로 갱신함(AUTH_REFRESH_CONFLICT). 쿠키·family 유지, 다시 시도
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                success: false
+                error:
+                  code: AUTH_REFRESH_CONFLICT
+                  message: 다른 화면에서 로그인을 갱신했습니다. 다시 시도해 주세요.
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      operationId: logout
+      summary: 로그아웃과 현재 Access Token 폐기
+      x-api-id: AUTH-003
+      x-requirement-ids:
+        - FR0104
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUTH-003
+      x-test-ids:
+        - TC-AUTH-003-01
+        - TC-AUTH-003-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "204":
+          description: 로그아웃 성공
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/me:
+    get:
+      tags:
+        - Auth
+      operationId: getCurrentUser
+      summary: 로그인 사용자 정보 조회
+      description: 로그인한 사용자의 아이디, 이름, 권한, 계정 상태를 반환한다.
+      x-api-id: AUTH-004
+      x-requirement-ids:
+        - FR0105
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUTH-004
+      x-test-ids:
+        - TC-AUTH-004-01
+        - TC-AUTH-004-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 현재 사용자
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /auth/signups:
+    post:
+      tags:
+        - Auth
+      operationId: signup
+      summary: 회원가입 신청
+      security: []
+      x-api-id: AUTH-005
+      x-requirement-ids:
+        - FR0106
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUTH-005
+      x-test-ids:
+        - TC-AUTH-005-01
+        - TC-AUTH-005-02
+      x-permissions:
+        - ANONYMOUS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRequest"
+      responses:
+        "201":
+          description: 승인 대기 회원가입 신청 생성
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignupResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /auth/me/password:
+    put:
+      tags:
+        - Auth
+      operationId: changeMyPassword
+      summary: 본인 비밀번호 변경
+      description: 변경 성공 시 현재 세션을 포함한 기존 토큰을 모두 폐기한다.
+      x-api-id: AUTH-006
+      x-requirement-ids:
+        - FR0108
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUTH-006
+      x-test-ids:
+        - TC-AUTH-006-01
+        - TC-AUTH-006-02
+      x-permissions:
+        - ADMIN
+        - USER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "204":
+          description: 비밀번호 변경 및 기존 토큰 폐기 성공
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /communications:
+    get:
+      tags:
+        - Communication
+      operationId: getCommunications
+      summary: 설비별 통신 현황 조회
+      description: todayDisconnectionCount DESC, todayDisconnectionMinutes DESC,
+        equipmentId ASC 고정 정렬. 연결 0대/전체 0대는 ALL_NORMAL과 0건으로 반환한다.
+        summary는 lineId·processId 조건만 따르고 status 조건·페이지와는 상관없다.
+      x-api-id: COM-001
+      x-requirement-ids:
+        - FR0203
+        - FR0204
+      x-nfr-ids:
+        - NFR03
+        - NFR04
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-COM-001
+      x-test-ids:
+        - TC-COM-001-01
+        - TC-COM-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/CommunicationStatus"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: 통신 집계와 설비별 통신 현황
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunicationPageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /communications/summary:
+    get:
+      tags:
+        - Communication
+      operationId: getCommunicationSummary
+      summary: 헤더 통신 상태 조회
+      x-api-id: COM-002
+      x-requirement-ids:
+        - FR0205
+      x-nfr-ids:
+        - NFR03
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-COM-002
+      x-test-ids:
+        - TC-COM-002-01
+        - TC-COM-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 전체 정상, 일부 끊김 또는 전체 끊김 상태
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunicationSummaryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /overview/equipment-layout:
+    get:
+      tags:
+        - Overview
+      operationId: getEquipmentLayout
+      summary: 공장 설비 배치도 조회
+      x-api-id: OVW-001
+      x-requirement-ids:
+        - FR0701
+      x-nfr-ids:
+        - NFR03
+        - NFR07
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-OVW-001
+      x-test-ids:
+        - TC-OVW-001-01
+        - TC-OVW-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineId"
+      responses:
+        "200":
+          description: 라인·공정 순서의 설비 배치와 상태 집계
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentLayoutResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /overview/assembly-stop-forecast:
+    get:
+      tags:
+        - Overview
+      operationId: getAssemblyStopForecast
+      summary: 조립 정지·복구 예측 조회
+      x-api-id: OVW-002
+      x-requirement-ids:
+        - FR0903
+        - FR0904
+        - FR0905
+        - FR0906
+      x-nfr-ids:
+        - NFR03
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-OVW-002
+        - BR-RECOVERY-001
+      x-test-ids:
+        - TC-OVW-002-01
+        - TC-OVW-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 라인별 소진 예측과 대표 조립 정지 예측
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssemblyStopForecastResponse"
+              examples:
+                noRecoveryHistory:
+                  summary: 과거 이력0건, 정지예상은 유지
+                  value:
+                    success: true
+                    data:
+                      lines:
+                        - lineId: 1
+                          lineName: 외륜 라인
+                          currentInventory: 300
+                          netConsumptionPerMinute: 6
+                          remainingMinutes: 50
+                          stage: MAINTAIN
+                          assemblyStopExpectedAt: 2026-11-17T10:50:00+09:00
+                          sourceEquipmentId: 4
+                          activeAlarmId: 1
+                          marginMinutes: null
+                          marginStatus: null
+                          repairHistoryCount: 0
+                          averageRepairMinutes: null
+                          shortageMinutes: null
+                          forecastStatus: NO_RECOVERY_HISTORY
+                fiveRecoveryRecords:
+                  summary: 5건 평균70분, 부족20분(예시)
+                  value:
+                    success: true
+                    data:
+                      lines:
+                        - lineId: 1
+                          lineName: 외륜 라인
+                          currentInventory: 300
+                          netConsumptionPerMinute: 6
+                          remainingMinutes: 50
+                          stage: MAINTAIN
+                          assemblyStopExpectedAt: 2026-11-17T10:50:00+09:00
+                          sourceEquipmentId: 4
+                          activeAlarmId: 1
+                          marginMinutes: -20
+                          marginStatus: SHORTAGE
+                          repairHistoryCount: 5
+                          averageRepairMinutes: 70
+                          shortageMinutes: 20
+                          forecastStatus: READY
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: FR0903~0906 조립 정지 예측. 같은 설비·항목 종료 CRITICAL 평균과 표본 수 제공. 0건이면
+        복구·여유·부족 null, 소진·정지 예상 유지. 60초 및
+        설비 상태변경 재계산.
+  /inventory:
+    get:
+      tags:
+        - Inventory
+      operationId: getInventory
+      summary: 라인별 현재 재고 조회
+      x-api-id: INV-001
+      x-requirement-ids:
+        - FR0902
+      x-nfr-ids:
+        - NFR03
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-INV-001
+      x-test-ids:
+        - TC-INV-001-01
+        - TC-INV-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 현재 재고와 생산·소비 속도
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: PART 라인의 최신 stock_history 수량과 속도·소진·정지 예상·단계·현재 설정 기준. AS-04-1 완성
+        수를 소비량으로 사용. 데이터 부족은 calculationStatus와 null로 구분.
+  /lines:
+    get:
+      tags:
+        - Equipment
+      operationId: getLines
+      summary: 조회용 라인 목록
+      x-api-id: EQP-001
+      x-requirement-ids:
+        - FR0701
+        - FR0703
+        - FR0801
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-EQP-001
+      x-test-ids:
+        - TC-EQP-001-01
+        - TC-EQP-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 표시 순서의 라인 목록
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LineListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  "/lines/{lineId}/processes":
+    get:
+      tags:
+        - Equipment
+      operationId: getLineProcesses
+      summary: 라인의 공정 목록 조회
+      x-api-id: EQP-002
+      x-requirement-ids:
+        - FR0703
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-EQP-002
+      x-test-ids:
+        - TC-EQP-002-01
+        - TC-EQP-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineIdPath"
+      responses:
+        "200":
+          description: 공정 순서와 이상 설비 유무
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  "/processes/{processId}/equipment":
+    get:
+      tags:
+        - Equipment
+      operationId: getProcessEquipment
+      summary: 공정별 설비 목록 조회
+      x-api-id: EQP-003
+      x-requirement-ids:
+        - FR0703
+      x-nfr-ids:
+        - NFR03
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-EQP-003
+      x-test-ids:
+        - TC-EQP-003-01
+        - TC-EQP-003-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/ProcessIdPath"
+      responses:
+        "200":
+          description: 공정 순서의 설비 상태와 이상 측정값
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessEquipmentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  "/equipment/{equipmentId}":
+    get:
+      tags:
+        - Equipment
+      operationId: getEquipmentDetail
+      summary: 설비 상세 조회
+      x-api-id: EQP-004
+      x-requirement-ids:
+        - FR0203
+        - FR0704
+      x-nfr-ids:
+        - NFR03
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-EQP-004
+      x-test-ids:
+        - TC-EQP-004-01
+        - TC-EQP-004-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/EquipmentIdPath"
+      responses:
+        "200":
+          description: 기본정보, 현재 상태, 측정·상태·누적값, 사진
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  "/equipment/{equipmentId}/measurements":
+    get:
+      tags:
+        - Equipment
+      operationId: getEquipmentMeasurements
+      summary: 데이터 항목 추세 조회
+      x-api-id: MEAS-001
+      x-requirement-ids:
+        - FR0802
+        - FR0803
+        - FR0804
+        - FR0805
+      x-nfr-ids:
+        - NFR03
+        - NFR04
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-MEAS-001
+      x-test-ids:
+        - TC-MEAS-001-01
+        - TC-MEAS-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/EquipmentIdPath"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: dataItemIds
+          in: query
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 10
+            uniqueItems: true
+            items:
+              $ref: "#/components/schemas/Identifier"
+          description: 같은 설비의 항목을 쉼표로 구분. 최대 10개는 프로젝트 제안값
+      responses:
+        "200":
+          description: 시각별 값, 기준, 알람 시점, 통신 끊김 구간
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiMeasurementResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      description: 기간 내 다중 항목. MEASUREMENT는 평균, STATE는 마지막 값, CUMULATIVE는 마지막 누적값으로
+        다운샘플링. 각 항목 최대 2000점, 통신 끊김은 null 구간. 원본 간격과 적용 집계 간격을 반환.
+  /alarms:
+    get:
+      tags:
+        - Alarm
+      operationId: getActiveAlarms
+      summary: 발생 중·종료 알람 통합 목록
+      x-api-id: ALM-001
+      x-requirement-ids:
+        - FR0502
+        - FR0601
+        - FR0602
+      x-nfr-ids:
+        - NFR03
+        - NFR06
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-ALM-001
+      x-test-ids:
+        - TC-ALM-001-01
+        - TC-ALM-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/EquipmentId"
+        - name: grade
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlarmGrade"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: processStatus
+          in: query
+          schema:
+            $ref: "#/components/schemas/AlarmProcessStatus"
+        - $ref: "#/components/parameters/FromOptional"
+        - $ref: "#/components/parameters/ToOptional"
+        - $ref: "#/components/parameters/ProcessId"
+      responses:
+        "200":
+          description: 통합 알람 목록과 발생 중·오늘 발생·오늘 종료·평균 조치시간
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlarmPageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: 발생 중 우선, 각 상태 안에서 occurredAt DESC, alarmId DESC로 고정 정렬.
+        기간·등급·설비·상태로 조회. 요약은 동일 조회 조건 기준이며 today 집계는 Asia/Seoul 오늘과 조회 범위의
+        교집합이다. 주의·경보 기준, 기준 방향, 소수 자릿수는 서버 항목 설정값을 제공한다. thresholdValue는 발생 당시
+        기준이다.
+  "/alarms/{alarmId}":
+    get:
+      tags:
+        - Alarm
+      operationId: getAlarmDetail
+      summary: 알람 상세 조회
+      x-api-id: ALM-003
+      x-requirement-ids:
+        - FR0603
+        - FR0611
+      x-nfr-ids:
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-ALM-003
+      x-test-ids:
+        - TC-ALM-003-01
+        - TC-ALM-003-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/AlarmIdPath"
+      responses:
+        "200":
+          description: 요약·전후 30분 추세·같은 설비 지난 알람·조치 기록
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlarmDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      description: 발생 전후 각 30분의 측정값, 같은 설비의 최근 종료 알람 최대 20건, 조치 기록, 조립 정지 예상 시각. 아직
+        도래하지 않은 구간은 빈 값으로 유지하며 데이터가 없는 구간을 보간하지 않는다.
+  "/alarms/{alarmId}/actions":
+    post:
+      tags:
+        - Alarm
+      operationId: createAlarmAction
+      summary: 조치 기록 및 알람 즉시 종료
+      x-api-id: ALM-006
+      x-requirement-ids:
+        - FR0606
+        - FR0610
+        - FR0611
+      x-nfr-ids:
+        - NFR06
+        - NFR09
+      x-interface-ids:
+        - IFR04
+      x-business-rule-ids:
+        - BR-ALM-006
+      x-test-ids:
+        - TC-ALM-006-01
+        - TC-ALM-006-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/AlarmIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlarmActionRequest"
+      responses:
+        "201":
+          description: 조치 기록과 변경 상태
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlarmActionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      description: 설비 글과 조치 상세를 검증하고 원인 기본값을 적용한 후 한 트랜잭션으로 조치·처리자·종료 시각·CLOSED를 저장한다.
+        이미 종료된 알람은 409. 값 정상 여부와 관계없이 종료한다. 종료 이후 별도의 판정 주기를 충족하면 새 알람을 생성할 수
+        있다.
+  "/equipment/{equipmentId}/fault-histories":
+    get:
+      tags:
+        - Statistics
+      operationId: getEquipmentFaultHistories
+      summary: 설비 고장 이력 조회
+      x-api-id: HST-002
+      x-requirement-ids:
+        - FR1205
+      x-nfr-ids:
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-HST-002
+      x-test-ids:
+        - TC-HST-002-01
+        - TC-HST-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/EquipmentIdPath"
+        - $ref: "#/components/parameters/FromOptional"
+        - $ref: "#/components/parameters/ToOptional"
+      responses:
+        "200":
+          description: 종료 고장 이력과 집계
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaultHistoryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      description: 종료된 CRITICAL 고장만 제공. 평균 조치시간=closedAt-occurredAt 평균. 평균 고장 간격=연속된 두
+        고장 발생 시각 차의 평균. 표본 2건 미만이면 평균 고장 간격은 null.
+  /statistics/alarm-response:
+    get:
+      tags:
+        - Statistics
+      operationId: getAlarmResponseStatistics
+      summary: 알람 대응 속도 집계
+      x-api-id: STA-001
+      x-requirement-ids:
+        - FR1202
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-001
+      x-test-ids:
+        - TC-STA-001-01
+        - TC-STA-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - &a2
+          $ref: "#/components/parameters/From"
+        - &a3
+          $ref: "#/components/parameters/To"
+        - &a4
+          $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 전체·등급별·발생 중 건수와 평균·최장 조치시간
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlarmResponseStatisticsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /statistics/daily-alarms:
+    get:
+      tags:
+        - Statistics
+      operationId: getDailyAlarmStatistics
+      summary: 일별 알람 건수
+      x-api-id: STA-003
+      x-requirement-ids:
+        - FR1204
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-003
+      x-test-ids:
+        - TC-STA-003-01
+        - TC-STA-003-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - *a2
+        - *a3
+        - *a4
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 날짜별 경보·주의 건수
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyAlarmStatisticsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /statistics/availability:
+    get:
+      tags:
+        - Statistics
+      operationId: getAvailabilityStatistics
+      summary: 설비·라인 가동률 집계
+      x-api-id: STA-004
+      x-requirement-ids:
+        - FR1206
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-004
+      x-test-ids:
+        - TC-STA-004-01
+        - TC-STA-004-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - *a2
+        - *a3
+        - *a4
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 가동률, 가동시간, 계획시간
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityStatisticsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /statistics/downtime:
+    get:
+      tags:
+        - Statistics
+      operationId: getDowntimeStatistics
+      summary: 설비 정지 시간 집계
+      x-api-id: STA-005
+      x-requirement-ids:
+        - FR1207
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-005
+      x-test-ids:
+        - TC-STA-005-01
+        - TC-STA-005-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - *a2
+        - *a3
+        - *a4
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 고장·대기·통신 끊김 시간
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DowntimeStatisticsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /statistics/equipment-rankings:
+    get:
+      tags:
+        - Statistics
+      operationId: getEquipmentRankings
+      summary: 문제 설비 순위 조회
+      x-api-id: STA-006
+      x-requirement-ids:
+        - FR1208
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-006
+      x-test-ids:
+        - TC-STA-006-01
+        - TC-STA-006-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/LineId"
+        - name: sortBy
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - faultCount
+              - downtimeMinutes
+              - averageRepairMinutes
+              - lossAmount
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 선택 기준 내림차순 설비 순위
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquipmentRankingResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /statistics/losses:
+    get:
+      tags:
+        - Statistics
+      operationId: getLossStatistics
+      summary: 실제 손실액 집계
+      description: >-
+        ERD E2의 실제 재고0 또는 A가 제공한 조립 설비 FAULT를 B가 관찰해 assembly_stop에 기록한다.
+        예측만으로 실제 정지를 만들지 않는다. 연속 정지는 한 건이며 가장 이른 원인과 ID로 안정 선택한다.
+        재고 부족과 조립 고장이 모두 해소된 것을 확인하면 종료하며 불명확한 통신 상태로 복구를 추정하지 않는다.
+        관찰 시각부터 시작하고 미기록 과거 구간을 소급하지 않는다. 시작 때 HOURLY_OUTPUT과 UNIT_PRICE를 복사한다.
+        [from,to) 및 현재 시각으로 자르고 중복 구간을 제거한 후 각 집계 합계를 원 단위에서 최종 반올림한다.
+        원인 설비가 없는 재고 부족은 null을 유지하고 shortage_line_id로 라인 집계에 포함한다.
+      x-api-id: STA-007
+      x-requirement-ids:
+        - FR1209
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-007
+      x-test-ids:
+        - TC-STA-007-01
+        - TC-STA-007-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - *a2
+        - *a3
+        - *a4
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 조회 기간의 일별 실제 손실액과 조립 정지 시간
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LossStatisticsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /master/equipment:
+    get:
+      tags:
+        - MasterData
+      operationId: getMasterEquipment
+      summary: 기준정보 설비 조회
+      description: registeredCount·monitoredCount는 lineId·processId 조건만 따르고 equipmentId·페이지와는 상관없다.
+      x-api-id: MST-001
+      x-requirement-ids:
+        - FR1301
+      x-nfr-ids:
+        - NFR07
+        - NFR08
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-001
+      x-test-ids:
+        - TC-MST-001-01
+        - TC-MST-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: 설비 목록과 페이지 정보
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterEquipmentPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - MasterData
+      operationId: createMasterEquipment
+      summary: 설비 등록
+      x-api-id: MST-002
+      x-requirement-ids:
+        - FR1302
+      x-nfr-ids:
+        - NFR07
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-002
+      x-test-ids:
+        - TC-MST-002-01
+        - TC-MST-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/EquipmentWriteRequest"
+      responses:
+        "201":
+          description: 설비 등록 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterEquipmentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  "/master/equipment/{equipmentId}":
+    put:
+      tags:
+        - MasterData
+      operationId: updateMasterEquipment
+      summary: 설비 수정
+      description: equipmentCode는 등록 후 수정할 수 없다.
+      x-api-id: MST-003
+      x-requirement-ids:
+        - FR1302
+      x-nfr-ids:
+        - NFR07
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-003
+      x-test-ids:
+        - TC-MST-003-01
+        - TC-MST-003-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/EquipmentIdPath"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/EquipmentUpdateRequest"
+      responses:
+        "200":
+          description: 설비 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterEquipmentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - MasterData
+      operationId: deleteMasterEquipment
+      summary: 설비 논리 삭제
+      description: deletedAt과 deletedBy를 기록하고 일반 조회·판정·알림 대상에서 제외한다.
+      x-api-id: MST-004
+      x-requirement-ids:
+        - FR1303
+      x-nfr-ids:
+        - NFR08
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-004
+      x-test-ids:
+        - TC-MST-004-01
+        - TC-MST-004-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/EquipmentIdPath"
+      responses:
+        "204":
+          description: 논리 삭제 성공
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  /equipment-photos/{fileName}:
+    get:
+      tags: [MasterData]
+      operationId: getEquipmentPhoto
+      summary: 설비 사진 조회(서명 주소)
+      description: |
+        설비 응답의 photoUrl 그대로 연다. 화면의 img 태그가 쓰도록 로그인 없이 열리지만 10분 동안만 유효한 HMAC 서명이 있어야 한다(2026-11-18 A 추가, 제안값).
+        서명이 틀렸거나 만료됐거나 파일이 없으면 모두 404 EQUIPMENT_PHOTO_NOT_FOUND 다. 만료되면 설비를 다시 조회해 새 주소를 받는다.
+      security: []
+      x-api-id: MST-018
+      x-requirement-ids: [FR1302]
+      x-nfr-ids: [NFR07]
+      x-interface-ids: []
+      x-business-rule-ids: []
+      x-test-ids: []
+      x-permissions: [ANONYMOUS]
+      parameters:
+        - name: fileName
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[0-9a-f]{32}\.(jpg|png|webp)$'}
+        - name: expires
+          in: query
+          required: true
+          description: 만료 시각(epoch 초)
+          schema: {type: integer, format: int64}
+        - name: signature
+          in: query
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: 사진 파일
+          content:
+            image/jpeg:
+              schema: {type: string, format: binary}
+            image/png:
+              schema: {type: string, format: binary}
+            image/webp:
+              schema: {type: string, format: binary}
+        '404':
+          description: EQUIPMENT_PHOTO_NOT_FOUND
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ErrorResponse'}
+  /master/lines:
+    get:
+      tags:
+        - MasterData
+      operationId: getMasterLines
+      summary: 라인과 배치 기준정보 조회
+      x-api-id: MST-005
+      x-requirement-ids:
+        - FR1304
+      x-nfr-ids:
+        - NFR07
+        - NFR08
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-005
+      x-test-ids:
+        - TC-MST-005-01
+        - TC-MST-005-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 표시순서의 라인과 설비 배치
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterLineListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - MasterData
+      operationId: createMasterLine
+      summary: 라인 등록
+      x-api-id: MST-006
+      x-requirement-ids:
+        - FR1304
+      x-nfr-ids:
+        - NFR07
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-006
+      x-test-ids:
+        - TC-MST-006-01
+        - TC-MST-006-02
+      x-permissions:
+        - ADMIN
+        - USER
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LineWriteRequest"
+      responses:
+        "201":
+          description: 라인 등록 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterLineResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  "/master/lines/{lineId}":
+    put:
+      tags:
+        - MasterData
+      operationId: updateMasterLine
+      summary: 라인 이름과 표시순서 수정
+      x-api-id: MST-007
+      x-requirement-ids:
+        - FR1304
+      x-nfr-ids:
+        - NFR07
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-007
+      x-test-ids:
+        - TC-MST-007-01
+        - TC-MST-007-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LineWriteRequest"
+      responses:
+        "200":
+          description: 라인 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterLineResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags:
+        - MasterData
+      operationId: deleteMasterLine
+      summary: 빈 라인 삭제
+      x-api-id: MST-008
+      x-requirement-ids:
+        - FR1304
+      x-nfr-ids:
+        - NFR08
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-008
+      x-test-ids:
+        - TC-MST-008-01
+        - TC-MST-008-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineIdPath"
+      responses:
+        "204":
+          description: 라인 삭제 성공
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  "/master/lines/{lineId}/layout":
+    patch:
+      tags:
+        - MasterData
+      operationId: updateLineLayout
+      summary: 라인 설비 배치 일괄 변경
+      x-api-id: MST-009
+      x-requirement-ids:
+        - FR1304
+      x-nfr-ids:
+        - NFR07
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-009
+      x-test-ids:
+        - TC-MST-009-01
+        - TC-MST-009-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/LineIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LineLayoutUpdateRequest"
+      responses:
+        "200":
+          description: 변경된 설비 배치
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterLineResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  "/master/equipment/{equipmentId}/data-items":
+    get:
+      tags:
+        - MasterData
+      operationId: getMasterDataItems
+      summary: 설비 데이터 항목 관리 목록
+      x-api-id: MST-010
+      x-requirement-ids:
+        - FR1305
+        - FR1306
+      x-nfr-ids:
+        - NFR07
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-010
+      x-test-ids:
+        - TC-MST-010-01
+        - TC-MST-010-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/EquipmentIdPath"
+      responses:
+        "200":
+          description: 최근값·마지막 수신·기준을 포함한 데이터 항목
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterDataItemListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  "/master/data-items/{dataItemId}":
+    put:
+      tags:
+        - MasterData
+      operationId: updateMasterDataItem
+      summary: 데이터 항목 수정
+      x-api-id: MST-012
+      x-requirement-ids:
+        - FR1305
+      x-nfr-ids:
+        - NFR07
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-012
+      x-test-ids:
+        - TC-MST-012-01
+        - TC-MST-012-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/DataItemIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DataItemWriteRequest"
+      responses:
+        "200":
+          description: 데이터 항목 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MasterDataItemResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  "/master/data-items/{dataItemId}/threshold":
+    put:
+      tags:
+        - MasterData
+      operationId: updateDataItemThreshold
+      summary: 측정값 또는 상태값 알람 기준 수정
+      x-api-id: MST-013
+      x-requirement-ids:
+        - FR1306
+      x-nfr-ids:
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-MST-013
+      x-test-ids:
+        - TC-MST-013-01
+        - TC-MST-013-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/DataItemIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThresholdWriteRequest"
+      responses:
+        "200":
+          description: 다음 판정부터 적용되는 기준
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThresholdResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  /system/settings/judgement:
+    get:
+      tags:
+        - SystemSetting
+      operationId: getJudgementSettings
+      summary: 판정 설정 조회
+      x-api-id: SYS-001
+      x-requirement-ids:
+        - FR1401
+      x-nfr-ids:
+        - NFR02
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-SYS-001
+      x-test-ids:
+        - TC-SYS-001-01
+        - TC-SYS-001-02
+      x-permissions:
+        - ADMIN
+      responses:
+        "200":
+          description: 현재 판정 설정과 허용범위
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgementSettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags:
+        - SystemSetting
+      operationId: updateJudgementSettings
+      summary: 판정 설정 수정
+      x-api-id: SYS-002
+      x-requirement-ids:
+        - FR1401
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-SYS-002
+      x-test-ids:
+        - TC-SYS-002-01
+        - TC-SYS-002-02
+      x-permissions:
+        - ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JudgementSettings"
+      responses:
+        "200":
+          description: 저장 즉시 적용된 설정
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgementSettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+      description: 판정 설정의 주의5~120분·위험1~60분, 위험<주의 관계를 서버 검증. 위반422
+        SETTING_OUT_OF_RANGE. 정상 복귀에는 alarmConsecutiveCount 사용.
+  /system/settings/calculation:
+    get:
+      tags:
+        - SystemSetting
+      operationId: getCalculationSettings
+      summary: 계산 기준값 조회
+      x-api-id: SYS-003
+      x-requirement-ids:
+        - FR1402
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-SYS-003
+      x-test-ids:
+        - TC-SYS-003-01
+        - TC-SYS-003-02
+      x-permissions:
+        - ADMIN
+      responses:
+        "200":
+          description: 개당 금액·속도 계산 구간·복구 예상 기본값·시간당 생산량
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculationSettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      tags:
+        - SystemSetting
+      operationId: updateCalculationSettings
+      summary: 계산 기준값 수정
+      x-api-id: SYS-004
+      x-requirement-ids:
+        - FR1402
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-SYS-004
+      x-test-ids:
+        - TC-SYS-004-01
+        - TC-SYS-004-02
+      x-permissions:
+        - ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalculationSettingsUpdateRequest"
+      responses:
+        "200":
+          description: 다음 계산부터 적용되는 기준값
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculationSettingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+      description: UNIT_PRICE, RATE_WINDOW_MIN, HOURLY_OUTPUT 저장. 복구 기본값 필드 없음. 모든 필드는
+        PUT 시 필수. 현재 값 조회 후 한 카드만 바뀌어도 나머지를 함께 송신.
+  /system/users:
+    get:
+      tags:
+        - SystemUser
+      operationId: getSystemUsers
+      summary: 등록 사용자 목록 조회
+      x-api-id: USR-001
+      x-requirement-ids:
+        - FR1403
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-USR-001
+      x-test-ids:
+        - TC-USR-001-01
+        - TC-USR-001-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - name: keyword
+          in: query
+          description: 이름 또는 아이디
+          schema:
+            type: string
+            maxLength: 100
+        - name: permission
+          in: query
+          schema:
+            $ref: "#/components/schemas/Permission"
+        - name: accountStatus
+          in: query
+          schema:
+            $ref: "#/components/schemas/AccountStatus"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: 계정 목록과 텔레그램 연결 여부
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  "/system/users/{userId}":
+    put:
+      tags:
+        - SystemUser
+      operationId: updateSystemUser
+      summary: 사용자 이름·권한 수정
+      description: 이름·권한만 수정. 마지막 ADMIN 계정의 USER 강등은 LAST_ADMIN_REQUIRED 422. 권한 변경 시
+        기존 토큰을 폐기하고 감사 기록을 남긴다.
+      x-api-id: USR-003
+      x-requirement-ids:
+        - FR1403
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-USR-003
+      x-test-ids:
+        - TC-USR-003-01
+        - TC-USR-003-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/UserIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdateRequest"
+      responses:
+        "200":
+          description: 사용자 수정 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+    delete:
+      tags:
+        - SystemUser
+      operationId: deleteSystemUser
+      summary: 사용자 계정 논리 삭제
+      description: 자기 삭제 및 마지막 ADMIN 삭제는 422. 논리 삭제와 토큰 폐기·텔레그램 연결 해제·감사 기록을 한 트랜잭션으로
+        처리하고 지난 조치 기록은 보존한다.
+      x-api-id: USR-004
+      x-requirement-ids:
+        - FR1403
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-USR-004
+      x-test-ids:
+        - TC-USR-004-01
+        - TC-USR-004-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/UserIdPath"
+      responses:
+        "204":
+          description: 논리 삭제 성공
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  "/system/users/{userId}/password-reset":
+    post:
+      tags:
+        - SystemUser
+      operationId: resetUserPassword
+      summary: 관리자 비밀번호 초기화
+      description: 12자리 임시 비밀번호를 생성해 연결된 텔레그램으로 전달(30분 유효, 프로젝트 제안값). 미연결 또는 재시도까지 발송
+        실패면 422로 응답하고 기존 비밀번호·세션을 유지한다. 전달 성공 시 새 해시·강제변경 상태 저장 및 기존 세션 폐기. 동시
+        초기화는 계정 잠금으로 직렬화한다. 첫 로그인은 비밀번호 변경 화면만 허용한다.
+      x-api-id: USR-005
+      x-requirement-ids:
+        - FR1403
+      x-nfr-ids:
+        - NFR01
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-USR-005
+      x-test-ids:
+        - TC-USR-005-01
+        - TC-USR-005-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/UserIdPath"
+      responses:
+        "204":
+          description: 비밀번호 초기화 처리 성공
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: 텔레그램 미연결(TELEGRAM_NOT_CONNECTED) 또는 발송
+            실패(TELEGRAM_DELIVERY_FAILED). 이 경우 비밀번호는 바뀌지 않는다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /system/signup-requests:
+    get:
+      tags:
+        - SystemUser
+      operationId: getSignupRequests
+      summary: 회원가입 승인 대기 목록 조회
+      x-api-id: APR-001
+      x-requirement-ids:
+        - FR0107
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-APR-001
+      x-test-ids:
+        - TC-APR-001-01
+        - TC-APR-001-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: 승인 대기 신청 페이지
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignupPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  "/system/signup-requests/{requestId}/approval":
+    post:
+      tags:
+        - SystemUser
+      operationId: approveSignupRequest
+      summary: 회원가입 승인
+      x-api-id: APR-002
+      x-requirement-ids:
+        - FR0107
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-APR-002
+      x-test-ids:
+        - TC-APR-002-01
+        - TC-APR-002-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/SignupRequestIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupApprovalRequest"
+      responses:
+        "200":
+          description: 승인되어 활성화된 계정
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+      description: 권한을 지정해 ACTIVE로 승인하고 연결된 신청자에게 결과를 발송한다. 발송 장애는 승인 트랜잭션을 되돌리지 않는다.
+  "/system/signup-requests/{requestId}/rejection":
+    post:
+      tags:
+        - SystemUser
+      operationId: rejectSignupRequest
+      summary: 회원가입 거절
+      x-api-id: APR-003
+      x-requirement-ids:
+        - FR0107
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-APR-003
+      x-test-ids:
+        - TC-APR-003-01
+        - TC-APR-003-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/SignupRequestIdPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignupRejectionRequest"
+      responses:
+        "204":
+          description: 거절 처리 성공
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+      description: 신청을 제거하고 연결 토큰을 폐기한다. 신청자에게 보낼 결과는 제거 전 수신 정보를 이벤트로 보존해 발송한다. 반복
+        승인·거절 충돌은409.
+  /telegram/link-tokens:
+    post:
+      tags:
+        - Telegram
+      operationId: createMyTelegramLinkToken
+      summary: 내 텔레그램 연결 URL 발급
+      x-api-id: TLG-001
+      x-requirement-ids:
+        - FR1410
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids:
+        - IFR02
+      x-business-rule-ids:
+        - BR-TLG-001
+      x-test-ids:
+        - TC-TLG-001-01
+        - TC-TLG-001-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 10분간 유효한 연결 URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramLinkResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: 로그인한 본인 계정에 10분 동안 유효한 링크를 발급한다. 새 토큰 발급 시 이전 미사용
+        토큰을 폐기.
+  /telegram/me/connection:
+    get:
+      tags:
+        - Telegram
+      operationId: getMyTelegramConnection
+      summary: 내 텔레그램 연결 상태
+      x-api-id: TLG-002
+      x-requirement-ids:
+        - FR1410
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids:
+        - IFR02
+      x-business-rule-ids:
+        - BR-TLG-002
+      x-test-ids:
+        - TC-TLG-002-01
+        - TC-TLG-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 연결 여부와 시각
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramConnectionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags:
+        - Telegram
+      operationId: unlinkMyTelegram
+      summary: 내 텔레그램 연결 해제
+      x-api-id: TLG-003
+      x-requirement-ids:
+        - FR1410
+      x-nfr-ids:
+        - NFR02
+      x-interface-ids:
+        - IFR02
+      x-business-rule-ids:
+        - BR-TLG-003
+      x-test-ids:
+        - TC-TLG-003-01
+        - TC-TLG-003-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "204":
+          description: 연결 해제
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /telegram/me/test-messages:
+    post:
+      tags:
+        - Telegram
+      operationId: sendMyTelegramTestMessage
+      summary: 내 텔레그램 시험 발송
+      x-api-id: TLG-004
+      x-requirement-ids:
+        - FR1410
+      x-nfr-ids:
+        - NFR02
+        - NFR05
+      x-interface-ids:
+        - IFR02
+      x-business-rule-ids:
+        - BR-TLG-004
+      x-test-ids:
+        - TC-TLG-004-01
+        - TC-TLG-004-02
+      x-permissions:
+        - ADMIN
+        - USER
+      responses:
+        "200":
+          description: 발송 결과
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramTestMessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  /system/telegram/test-messages:
+    post:
+      tags:
+        - Telegram
+      operationId: sendTelegramTestMessage
+      summary: 테스트 메시지 발송
+      x-api-id: TLG-005
+      x-requirement-ids:
+        - FR1406
+      x-nfr-ids:
+        - NFR02
+        - NFR05
+      x-interface-ids:
+        - IFR03
+      x-business-rule-ids:
+        - BR-TLG-005
+      x-test-ids:
+        - TC-TLG-005-01
+        - TC-TLG-005-02
+      x-permissions:
+        - ADMIN
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramTestMessageRequest"
+      responses:
+        "200":
+          description: 발송 성공 또는 실패 사유
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramTestMessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  /system/telegram/deliveries:
+    get:
+      tags:
+        - Telegram
+      operationId: getTelegramDeliveries
+      summary: 텔레그램 전송 결과 조회
+      description: 비밀번호 초기화 발송 성공·실패도 포함한다. 해당 메시지는 임시 비밀번호 발송 결과(비밀정보 제외)라는 고정 문구로
+        제공하며 비밀번호 원문은 포함하지 않는다.
+      x-api-id: TLG-006
+      x-requirement-ids:
+        - FR0507
+      x-nfr-ids:
+        - NFR05
+      x-interface-ids:
+        - IFR03
+      x-business-rule-ids:
+        - BR-TLG-006
+      x-test-ids:
+        - TC-TLG-006-01
+        - TC-TLG-006-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - name: alarmId
+          in: query
+          description: 알람별 발송 이력. date는 KST 날짜이며 생략 시 오늘이다. 요약·수신자별 집계에도 같은 알람 필터를 적용한다.
+          schema:
+            $ref: "#/components/schemas/Identifier"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: result
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeliveryResult"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: 당일 집계와 전송 기록
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramDeliveryPageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /system/change-histories:
+    get:
+      tags:
+        - Audit
+      operationId: getChangeHistories
+      summary: 설정 변경 이력 조회
+      x-api-id: AUD-001
+      x-requirement-ids:
+        - FR1407
+      x-nfr-ids:
+        - NFR02
+        - NFR06
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-AUD-001
+      x-test-ids:
+        - TC-AUD-001-01
+        - TC-AUD-001-02
+      x-permissions:
+        - ADMIN
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - name: itemType
+          in: query
+          description: change_log.target_type 코드. 2026-11-18 A 확정(한글 표시는 화면이 바꾼다)
+          schema:
+            type: string
+            enum:
+              - EQUIPMENT
+              - LINE
+              - DATA_ITEM
+              - THRESHOLD
+              - PART
+              - SETTING
+              - ACCOUNT
+              - DUTY
+        - name: keyword
+          in: query
+          description: 대상·바꾼 항목·이전 값·변경 값에서 대소문자 없이 찾는다. %와 _는 글자 그대로 찾는다
+          schema:
+            type: string
+            maxLength: 100
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      description: 기간은 from 이상 to 미만이다. 최근 변경부터(changedAt DESC, historyId DESC).
+      responses:
+        "200":
+          description: 비밀정보를 제외한 변경 이력
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangeHistoryPageResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /measurements:
+    post:
+      tags:
+        - Internal
+      operationId: ingestMeasurements
+      summary: Node-RED 설비 데이터 수집
+      description: 등록 설비/항목 CUMULATIVE(prod_count)와 MEASUREMENT/STATE 묶음 수집. 누적 차분을
+        equipment별 production_log 1분 수량으로 집계. 재고에는
+        OR-06-1/IR-06-1/CG-06-1/SH-05-1와 AS-04-1만 사용. 메시지 중복·카운터 리셋은 중복 생산으로
+        합산하지 않음.
+      servers:
+        - url: /internal/v1
+          description: Node-RED 내부 API
+      security:
+        - internalApiKey: []
+      x-api-id: INT-001
+      x-requirement-ids:
+        - FR0201
+      x-nfr-ids:
+        - NFR07
+        - NFR09
+      x-interface-ids:
+        - IFR01
+      x-business-rule-ids:
+        - BR-INT-001
+      x-test-ids:
+        - TC-INT-001-01
+        - TC-INT-001-02
+      x-permissions:
+        - NODE_RED
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeasurementIngestionRequest"
+      responses:
+        "202":
+          description: 수집 요청 검증·접수 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestionAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/BusinessRuleViolation"
+  /alarms/recent-24-hours:
+    get:
+      tags:
+        - Alarm
+      operationId: getRecentClosedAlarms
+      summary: 최근 24시간 알람 이력
+      x-api-id: ALM-002
+      x-requirement-ids:
+        - FR0612
+      x-nfr-ids: []
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-ALM-002
+      x-test-ids:
+        - TC-ALM-002-01
+        - TC-ALM-002-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: 최신 순 종료 알람
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecentAlarmListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: 서버 현재 시각 직전 24시간 안에 발생한 알람. ACTIVE/CLOSED를 모두 포함하고 occurredAt DESC,
+        alarmId DESC로 정렬.
+  /statistics/critical-equipment:
+    get:
+      tags:
+        - Statistics
+      operationId: sta009Operation
+      summary: 경보 상위 설비 집계
+      x-api-id: STA-009
+      x-requirement-ids:
+        - FR1213
+      x-nfr-ids:
+        - NFR02
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-009
+      x-test-ids:
+        - TC-STA-009-01
+        - TC-STA-009-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 처리 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriticalEquipmentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: 경보 건수 DESC, equipmentId ASC. 선택 기간과 겹치는 경보 발생 건수(등급 상향 포함).
+  /statistics/stop-causes:
+    get:
+      tags:
+        - Statistics
+      operationId: sta010Operation
+      summary: 정지 요인 집계
+      x-api-id: STA-010
+      x-requirement-ids:
+        - FR1213
+      x-nfr-ids:
+        - NFR02
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-STA-010
+      x-test-ids:
+        - TC-STA-010-01
+        - TC-STA-010-02
+      x-permissions:
+        - ADMIN
+        - USER
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/LineId"
+        - $ref: "#/components/parameters/ProcessId"
+        - $ref: "#/components/parameters/EquipmentId"
+      responses:
+        "200":
+          description: 처리 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StopCauseResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      description: 조회 구간과 겹치는 정지시간을 분으로 집계. 통신 끊김을 별도 요인으로 포함. 겹친 정지 구간은 설비별 통신 끊김 우선
+        후 가장 이른 고장 원인 한 건에만 배분해 중복 합산하지 않는다.
+  /telegram/updates:
+    post:
+      tags:
+        - Telegram
+      operationId: tlg007Operation
+      summary: Telegram 봇 시작 연결 수신
+      x-api-id: TLG-007
+      x-requirement-ids:
+        - FR1410
+      x-nfr-ids:
+        - NFR02
+        - NFR09
+      x-interface-ids: []
+      x-business-rule-ids:
+        - BR-TLG-007
+      x-test-ids:
+        - TC-TLG-007-01
+        - TC-TLG-007-02
+      x-permissions:
+        - TELEGRAM_BOT
+      parameters: []
+      responses:
+        "200":
+          description: 처리 성공
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelegramUpdateResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelegramUpdate"
+      servers:
+        - url: /internal/v1
+      security:
+        - telegramWebhookSecret: []
+      description: 등록한 봇 Webhook만 접근. /start <일회용 토큰>을 검증해 계정 연결. update_id 24시간 중복
+        제거. 토큰 10분·일회성·해시 보관. 사용자에게 chat_id 입력을 받지 않는다. 지원하지 않는 update는 200
+        processed=false. 만료·사용된 토큰은 연결하지 않고 processed=false로 응답한다.
+x-websocket:
+  endpoint: /ws
+  protocol: STOMP
+  proposed: true
+  authentication: Bearer JWT in STOMP CONNECT header
+  session-authorization:
+    checks:
+      - CONNECT
+      - SUBSCRIBE
+      - outbound-message
+      - periodic-idle-check
+    idle-check-interval-ms: 10000
+    invalid-session-close-code: 1008
+    description: 만료·폐기·비활성 계정은 전송을 거절하고 연결을 종료한다. 재발급된 JWT로 다시 CONNECT한다.
+  heartbeatSeconds: 10
+  heartbeatTimeout: >-
+    클라이언트 프레임이 max(클라이언트 송신 간격, 10초) x 3 동안 없으면 연결을 닫는다. 보통 ERROR(message:Session closed.)를
+    먼저 보내지만 없이 닫힐 수도 있어 클라이언트는 연결 종료로 판단한다.
+    검사 주기가 10초라 클라이언트가 10초 간격이면 30~40초 뒤다. 송신 간격 0이면 하트비트로 끊지 않는다(API_SPEC 11.10).
+  reconnect: exponential backoff, then refetch current screen REST APIs
+  reconnectMaximumSeconds: 30
+  sequencePolicy:
+    scope: producer-instance-and-aggregate
+    comparisonKeys:
+      equipment-status: destination + equipmentId
+      measurements: destination + equipmentId + dataItemId
+      alarms: destination + alarmId
+      alarm-counts: destination
+      inventory: destination + lineId
+      notifications: destination + alarmId
+    resetOnReconnect: true
+    description: 발행 서비스 인스턴스의 AtomicLong을 공유하며 집계별로 비교한다. 프로세스 재시작 시 초기화되므로 재연결마다 비교값을 버리고 REST를 재조회한다. 토픽 간 순번은 비교하지 않으며 늦은 과거 재시도는 eventId로 중복 제거한다.
+  topics:
+    - destination: /topic/equipment-status
+      requirementIds:
+        - FR0302
+        - FR1501
+      schema: &wsEquipmentStatusEvent
+        type: object
+        required:
+          - eventId
+          - sequence
+          - equipmentId
+          - status
+          - statusStartedAt
+        properties:
+          eventId:
+            type: string
+          sequence:
+            type: integer
+            format: int64
+          equipmentId:
+            $ref: "#/components/schemas/Identifier"
+          status:
+            $ref: "#/components/schemas/EquipmentStatus"
+          statusStartedAt:
+            type: string
+            format: date-time
+    - destination: /topic/measurements/{equipmentId}
+      requirementIds:
+        - FR0201
+        - FR1501
+      schema: &wsMeasurementEvent
+        type: object
+        required:
+          - eventId
+          - sequence
+          - equipmentId
+          - dataItemId
+          - valueType
+          - value
+          - measuredAt
+        properties:
+          eventId:
+            type: string
+          sequence:
+            type: integer
+            format: int64
+          equipmentId:
+            $ref: "#/components/schemas/Identifier"
+          dataItemId:
+            $ref: "#/components/schemas/Identifier"
+          valueType:
+            $ref: "#/components/schemas/DataValueType"
+          value:
+            type: number
+          measuredAt:
+            type: string
+            format: date-time
+    - destination: /topic/alarms
+      requirementIds:
+        - FR0501
+        - FR0601
+        - FR1501
+      schema: &wsAlarmEvent
+        type: object
+        required:
+          - eventId
+          - sequence
+          - alarmId
+        properties:
+          eventId:
+            type: string
+            maxLength: 200
+          sequence:
+            type: integer
+            minimum: 0
+          alarmId:
+            $ref: "#/components/schemas/Identifier"
+    - destination: /topic/alarm-counts
+      requirementIds:
+        - FR0502
+        - FR1501
+      schema: &wsAlarmCountEvent
+        type: object
+        required:
+          - eventId
+          - sequence
+          - activeCount
+        properties:
+          eventId:
+            type: string
+            maxLength: 200
+          sequence:
+            type: integer
+            minimum: 0
+          activeCount:
+            type: integer
+            minimum: 0
+    - destination: /topic/inventory
+      requirementIds:
+        - FR0902
+        - FR1501
+      schema: &wsInventoryEvent
+        type: object
+        required:
+          - eventId
+          - sequence
+          - lineId
+          - quantity
+          - productionPerMinute
+          - consumptionPerMinute
+          - stage
+          - remainingMinutes
+          - occurredAt
+          - stageThresholds
+        properties:
+          eventId:
+            type: string
+          sequence:
+            type: integer
+            format: int64
+          lineId:
+            $ref: "#/components/schemas/Identifier"
+          quantity:
+            type: integer
+            format: int64
+            minimum: 0
+            nullable: true
+          productionPerMinute:
+            type: number
+            format: double
+            minimum: 0
+            nullable: true
+            description: INV-001과 같은 라인별 분당 입고량(개/분). 계산할 수 없으면 null.
+          consumptionPerMinute:
+            type: number
+            format: double
+            minimum: 0
+            nullable: true
+            description: INV-001과 같은 라인별 분당 출고량(개/분). 계산할 수 없으면 null.
+          stage:
+            type: string
+            enum:
+              - MAINTAIN
+              - CAUTION
+              - DANGER
+              - null
+            nullable: true
+          remainingMinutes:
+            type: number
+            nullable: true
+          occurredAt:
+            type: string
+            format: date-time
+          stageThresholds:
+            $ref: "#/components/schemas/InventoryStageThresholds"
+    - destination: /user/queue/notifications
+      requirementIds:
+        - FR0501
+        - FR0502
+      schema: &wsUserNotificationEvent
+        type: object
+        required:
+          - eventId
+          - sequence
+          - alarmId
+        properties:
+          eventId:
+            type: string
+          sequence:
+            type: integer
+            minimum: 0
+          alarmId:
+            $ref: "#/components/schemas/Identifier"
+      description: 개인 수신 이벤트만 전달. 읽음·unreadCount는 브라우저 메모리에서 관리하고 새로고침하면 0. 종료 시 화면 알림에서 제거.
+  inventoryIntervalSeconds: 60
+x-mqtt:
+  springBootDirectSubscription: false
+  proposed: true
+  flow: equipment/PLC -> MQTT/Modbus/OPC UA -> Node-RED -> HTTP REST -> Spring Boot
+  topics:
+    - topic: stf/equipment/{equipmentCode}/values
+      qos: 1
+      retained: false
+      interfaceId: IFR01
+  collectionIntervalSeconds: 3
+  messageShape: equipmentCode, measuredAt, messageId, values[]
+  communicationTimeoutSeconds: 30
+  productionCounter:
+    dataItemCode: prod_count
+    valueType: CUMULATIVE
+    aggregation: 설비별 누적 차분을 production_log에1분 수량으로 기록
+    partLineTerminals:
+      - OR-06-1
+      - IR-06-1
+      - CG-06-1
+      - SH-05-1
+    assemblyTerminal: AS-04-1
+    assemblyConsumption: AS-04-1 완성1개마다 네 PART 재고에서 각각1개 차감
+  nodeRedDelivery: MQTT 입력을 변환해 POST /internal/v1/measurements로 전달
+x-non-rest-requirements:
+  - requirementIds:
+      - FR0102
+      - FR0103
+    implementation: JWT 인증과 ADMIN/USER 권한 검사
+  - requirementIds:
+      - FR0202
+      - FR0301
+      - FR0302
+    implementation: 30초 통신 끊김, 상태 우선순위 COMMUNICATION_LOST > MAINTENANCE > FAULT > CAUTION > IDLE > RUNNING
+  - requirementIds:
+      - FR0401
+      - FR0402
+      - FR0403
+      - FR0404
+      - FR0405
+    implementation: 연속 이탈·등급 상향·동일 항목 미종료 한 건·정상 복귀 별도 판정
+  - requirementIds:
+      - FR0501
+      - FR0503
+      - FR0506
+    implementation: 전체 연결 계정 텔레그램 전송, 신규/등급상승만 발송, 1회 재시도·장애 격리
+  - requirementIds:
+      - FR0901
+      - FR0903
+      - FR0904
+      - FR0905
+      - FR0906
+    implementation: 누적 카운터 재고, 1분 및 상태변경 재계산, 복구 예측
+  - requirementIds:
+      - FR0804
+      - FR1501
+      - FR1502
+      - FR1503
+      - FR1504
+      - FR1505
+    implementation: 차트 툴팁·실시간 재연결·고정 정렬·페이지·오류·화면 이동·도움말
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Authorization 헤더의 30분 만료 Access Token. Refresh Token은 HttpOnly
+        Secure SameSite=Strict 쿠키로 별도 관리한다.
+    internalApiKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Api-Key
+      description: Node-RED 내부 수집 전용 키. 90일마다 회전하며 현재 키와 직전 키를 24시간 중첩 허용한다.
+      x-proposed: true
+    telegramWebhookSecret:
+      type: apiKey
+      in: header
+      name: X-Telegram-Bot-Api-Secret-Token
+      description: 봇 Webhook 등록 시 서버 환경변수로 지정한 비밀값
+  parameters:
+    Page:
+      name: page
+      in: query
+      description: 0부터 시작
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      description: 페이지 크기
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    From:
+      name: from
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+        example: 2026-11-16T00:00:00+09:00
+    To:
+      name: to
+      in: query
+      required: true
+      schema:
+        type: string
+        format: date-time
+        example: 2026-11-16T23:59:59+09:00
+    FromOptional:
+      name: from
+      in: query
+      schema:
+        type: string
+        format: date-time
+    ToOptional:
+      name: to
+      in: query
+      schema:
+        type: string
+        format: date-time
+    LineId:
+      name: lineId
+      in: query
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    EquipmentId:
+      name: equipmentId
+      in: query
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    ProcessId:
+      name: processId
+      in: query
+      description: >-
+        공정으로 거른다. 한 공정의 설비 전체가 나온다. lineId와 함께 보내 서로 맞지 않거나 없는 공정이면 빈 결과다.
+        2026-11-19 A 추가(프론트 요청 31)
+      schema:
+        $ref: "#/components/schemas/Identifier"
+      x-proposed: true
+    CommunicationStatus:
+      name: status
+      in: query
+      schema:
+        $ref: "#/components/schemas/CommunicationStatus"
+    LineIdPath:
+      name: lineId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    ProcessIdPath:
+      name: processId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    EquipmentIdPath:
+      name: equipmentId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    AlarmIdPath:
+      name: alarmId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    DataItemIdPath:
+      name: dataItemId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    UserIdPath:
+      name: userId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+    SignupRequestIdPath:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Identifier"
+  responses:
+    ValidationError:
+      description: 요청값 형식 또는 필수값 오류
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: VALIDATION_ERROR
+              message: 입력값을 확인해 주세요.
+    Unauthorized:
+      description: 로그인 또는 토큰 오류
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: AUTH_TOKEN_INVALID
+              message: 다시 로그인해 주세요.
+    Forbidden:
+      description: 접근 권한 부족
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            success: false
+            error:
+              code: AUTH_PERMISSION_DENIED
+              message: 접근 권한이 없습니다.
+    NotFound:
+      description: 요청한 데이터 없음
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: 중복 또는 현재 상태 충돌
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BusinessRuleViolation:
+      description: 업무규칙 위반
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    EquipmentStatusEvent: *wsEquipmentStatusEvent
+    MeasurementEvent: *wsMeasurementEvent
+    AlarmEvent: *wsAlarmEvent
+    AlarmCountEvent: *wsAlarmCountEvent
+    InventoryEvent: *wsInventoryEvent
+    UserNotificationEvent: *wsUserNotificationEvent
+    Identifier:
+      type: integer
+      format: int64
+      minimum: 1
+      description: 최종 ERD의 BIGINT 자동 증가 식별자
+      example: 1
+    Permission:
+      type: string
+      enum:
+        - ADMIN
+        - USER
+      description: ADMIN=관리자, USER=사용자. 직접 저장·권한 검사하며 직책에서 파생하지 않는다.
+      readOnly: false
+    AccountStatus:
+      type: string
+      enum:
+        - PENDING_APPROVAL
+        - ACTIVE
+        - PASSWORD_CHANGE_REQUIRED
+      x-enum-varnames:
+        - 승인대기
+        - 사용
+        - 비밀번호변경필요
+    EquipmentStatus:
+      type: string
+      enum:
+        - RUNNING
+        - IDLE
+        - CAUTION
+        - FAULT
+        - COMMUNICATION_LOST
+        - MAINTENANCE
+      x-enum-varnames:
+        - 가동
+        - 대기
+        - 주의
+        - 고장
+        - 통신끊김
+        - 정비중
+    DataValueType:
+      type: string
+      enum:
+        - MEASUREMENT
+        - STATE
+        - CUMULATIVE
+      x-enum-varnames:
+        - 측정값
+        - 상태값
+        - 누적값
+    AlarmGrade:
+      type: string
+      enum:
+        - CAUTION
+        - CRITICAL
+      x-enum-varnames:
+        - 주의
+        - 경보
+    AlarmProcessStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - CLOSED
+      description: 발생 중 / 조치 완료 종료. 값 정상 복귀는 processStatus를 바꾸지 않는다.
+    CommunicationStatus:
+      type: string
+      enum:
+        - CONNECTED
+        - DISCONNECTED
+      x-enum-varnames:
+        - 연결
+        - 끊김
+    HeaderCommunicationStatus:
+      type: string
+      enum:
+        - ALL_NORMAL
+        - PARTIAL_DISCONNECTED
+        - ALL_DISCONNECTED
+      x-enum-varnames:
+        - 전체정상
+        - 일부끊김
+        - 전체끊김
+    ThresholdDirection:
+      type: string
+      enum:
+        - ABOVE
+        - BELOW
+      description: 기준 이상 또는 기준 이하에서 알람을 발생시키는 제안 코드
+      x-proposed: true
+    DeliveryResult:
+      type: string
+      enum:
+        - SUCCESS
+        - FAILURE
+    PageMeta:
+      type: object
+      required:
+        - totalElements
+        - totalPages
+      properties:
+        totalElements:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: >-
+            API_SPEC 7장 오류코드. 서버가 실제로 내는 코드와 이 목록이 같은지 OpenApiErrorCodeContractTest 가 확인한다.
+            2026-11-18 A 추가(enum)
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_PERIOD
+            - PASSWORD_POLICY_VIOLATION
+            - AUTH_INVALID_CREDENTIALS
+            - AUTH_TOKEN_INVALID
+            - AUTH_REFRESH_TOKEN_INVALID
+            - AUTH_REFRESH_CONFLICT
+            - INTERNAL_API_KEY_INVALID
+            - AUTH_PERMISSION_DENIED
+            - AUTH_APPROVAL_PENDING
+            - USER_NOT_FOUND
+            - LINE_NOT_FOUND
+            - PROCESS_NOT_FOUND
+            - EQUIPMENT_NOT_FOUND
+            - EQUIPMENT_PHOTO_NOT_FOUND
+            - DATA_ITEM_NOT_FOUND
+            - ALARM_NOT_FOUND
+            - USER_LOGIN_ID_DUPLICATE
+            - SIGNUP_REQUEST_STATE_CONFLICT
+            - LINE_NAME_DUPLICATE
+            - EQUIPMENT_CODE_DUPLICATE
+            - ALARM_STATE_CONFLICT
+            - USER_SELF_DELETE_FORBIDDEN
+            - LAST_ADMIN_REQUIRED
+            - LINE_HAS_EQUIPMENT
+            - EQUIPMENT_HAS_ACTIVE_ALARM
+            - INVALID_THRESHOLD_ORDER
+            - DATA_ITEM_VALUE_TYPE_IMMUTABLE
+            - THRESHOLD_NOT_SUPPORTED
+            - ACTION_CONTENT_REQUIRED
+            - SETTING_OUT_OF_RANGE
+            - TELEGRAM_NOT_CONNECTED
+            - TELEGRAM_DELIVERY_FAILED
+            - INTERNAL_SERVER_ERROR
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: 입력값을 확인해 주세요.
+        details:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              reason:
+                type: string
+        traceId:
+          type: string
+          nullable: true
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          enum:
+            - false
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+    LoginRequest:
+      type: object
+      required:
+        - loginId
+        - password
+      properties:
+        loginId:
+          type: string
+          minLength: 4
+          maxLength: 20
+          pattern: ^[a-z0-9]{4,20}$
+          example: parkjh
+          description: 영문 소문자와 숫자만 허용하는 로그인 아이디
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 64
+          pattern: ^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$
+          writeOnly: true
+          description: 영문·숫자·특수문자를 각각 1개 이상 포함
+    CurrentUser:
+      type: object
+      required:
+        - loginId
+        - name
+        - permission
+        - accountStatus
+      properties:
+        loginId:
+          type: string
+          minLength: 4
+          maxLength: 20
+        name:
+          type: string
+          maxLength: 100
+        permission:
+          $ref: "#/components/schemas/Permission"
+        accountStatus:
+          $ref: "#/components/schemas/AccountStatus"
+    LoginData:
+      allOf:
+        - $ref: "#/components/schemas/CurrentUser"
+        - type: object
+          required:
+            - accessToken
+          properties:
+            accessToken:
+              type: string
+              readOnly: true
+      description: Refresh Token은 Set-Cookie(stfRefreshToken, HttpOnly, Secure,
+        SameSite=Strict, Path=/api/v1/auth, Max-Age=604800)로만 전달.
+        accountStatus=PASSWORD_CHANGE_REQUIRED면 auth/me,password,logout 외 업무
+        API는 403.
+    RefreshTokenRequest:
+      type: object
+      description: 브라우저가 아닌 클라이언트용 대체 입력. 브라우저는 HttpOnly 쿠키를 사용한다.
+      properties:
+        refreshToken:
+          type: string
+          writeOnly: true
+    TokenData:
+      type: object
+      required:
+        - accessToken
+      properties:
+        accessToken:
+          type: string
+          readOnly: true
+    TokenResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/TokenData"
+    SignupRequest:
+      type: object
+      required:
+        - loginId
+        - password
+        - name
+      properties:
+        loginId:
+          type: string
+          minLength: 4
+          maxLength: 20
+          pattern: ^[a-z0-9]{4,20}$
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 64
+          pattern: ^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$
+          writeOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    SignupResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+    PasswordChangeRequest:
+      type: object
+      required:
+        - currentPassword
+        - newPassword
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 64
+          writeOnly: true
+        newPassword:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 64
+          pattern: ^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,64}$
+          writeOnly: true
+    LoginResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/LoginData"
+    CurrentUserResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/CurrentUser"
+    CommunicationSummary:
+      type: object
+      required:
+        - status
+        - disconnectedEquipmentCount
+      properties:
+        status:
+          $ref: "#/components/schemas/HeaderCommunicationStatus"
+        disconnectedEquipmentCount:
+          type: integer
+          minimum: 0
+        allDisconnectedSince:
+          type: string
+          format: date-time
+          nullable: true
+    CommunicationSummaryResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/CommunicationSummary"
+    CommunicationEquipment:
+      type: object
+      required:
+        - equipmentId
+        - equipmentName
+        - lineName
+        - communicationMethod
+        - status
+        - lastReceivedAt
+        - todayDisconnectionCount
+      properties:
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentName:
+          type: string
+          maxLength: 200
+        lineName:
+          type: string
+          maxLength: 100
+        communicationMethod:
+          type: string
+          maxLength: 100
+        status:
+          $ref: "#/components/schemas/CommunicationStatus"
+        lastReceivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 마지막 수신 시각. 값을 받은 적 없는 설비는 null(2026-11-18 A 보완)
+        todayDisconnectionCount:
+          type: integer
+          minimum: 0
+          description: 오늘(Asia/Seoul 0시~지금)과 겹치는 통신 끊김 횟수. 어제부터 이어진 끊김도 1회
+    CommunicationPageData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommunicationEquipment"
+    CommunicationPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/CommunicationPageData"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    LineSummary:
+      type: object
+      required:
+        - lineId
+        - lineName
+        - displayOrder
+        - lineType
+      properties:
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        lineName:
+          type: string
+          maxLength: 50
+        displayOrder:
+          type: integer
+          minimum: 1
+        lineType:
+          $ref: "#/components/schemas/LineType"
+    LineListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineSummary"
+    ProcessSummary:
+      type: object
+      required:
+        - processId
+        - processName
+        - processOrder
+        - hasAbnormalEquipment
+      properties:
+        processId:
+          $ref: "#/components/schemas/Identifier"
+        processName:
+          type: string
+          maxLength: 100
+        processOrder:
+          type: integer
+          minimum: 1
+        hasAbnormalEquipment:
+          type: boolean
+          description: 공정 설비 중 FAULT·MAINTENANCE·CAUTION·COMMUNICATION_LOST가 하나라도 있으면 true(OVW-001과 같은 기준)
+        representativeStatus:
+          allOf:
+            - $ref: "#/components/schemas/EquipmentStatus"
+          nullable: true
+          description: >-
+            공정 설비 중 가장 급한 상태(FAULT → MAINTENANCE → COMMUNICATION_LOST → CAUTION → IDLE → RUNNING). 설비가 없으면 null.
+            2026-11-18 A 추가(프론트 요청), 2026-11-19 화면 결정 23에 따라 FAULT를 COMMUNICATION_LOST보다 앞에 둠.
+            설비 한 대의 상태 판정 우선순위와는 별개다
+          x-proposed: true
+    ProcessListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProcessSummary"
+    EquipmentStatusCount:
+      type: object
+      required:
+        - status
+        - count
+      properties:
+        status:
+          $ref: "#/components/schemas/EquipmentStatus"
+        count:
+          type: integer
+          minimum: 0
+    CurrentDataItem:
+      type: object
+      required:
+        - dataItemId
+        - dataItemName
+        - valueType
+        - value
+        - measuredAt
+      properties:
+        displayMin:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최솟값. 미설정 또는 측정값 이외의 종류에서는 null.
+        displayMax:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최댓값. 미설정 또는 측정값 이외의 종류에서는 null.
+        dataItemId:
+          $ref: "#/components/schemas/Identifier"
+        dataItemName:
+          type: string
+          maxLength: 100
+        valueType:
+          $ref: "#/components/schemas/DataValueType"
+        value:
+          oneOf:
+            - type: number
+            - type: string
+        displayValue:
+          type: string
+          nullable: true
+        unit:
+          type: string
+          nullable: true
+          maxLength: 30
+        valueStatus:
+          type: string
+          enum:
+            - NORMAL
+            - CAUTION
+            - CRITICAL
+            - null
+          nullable: true
+        cautionThreshold:
+          type: number
+          nullable: true
+        criticalThreshold:
+          type: number
+          nullable: true
+        measuredAt:
+          type: string
+          format: date-time
+    AbnormalMeasurement:
+      type: object
+      required:
+        - dataItemName
+        - currentValue
+        - valueStatus
+      properties:
+        dataItemName:
+          type: string
+        currentValue:
+          type: number
+        unit:
+          type: string
+          nullable: true
+        valueStatus:
+          type: string
+          enum:
+            - CAUTION
+            - CRITICAL
+    EquipmentSummary:
+      type: object
+      required:
+        - equipmentId
+        - equipmentCode
+        - equipmentName
+        - lineId
+        - lineName
+        - processId
+        - processName
+        - processOrder
+        - status
+        - statusStartedAt
+        - lineType
+      properties:
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentCode:
+          type: string
+          maxLength: 20
+        equipmentName:
+          type: string
+          maxLength: 100
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        lineName:
+          type: string
+        processId:
+          $ref: "#/components/schemas/Identifier"
+        processName:
+          type: string
+        processOrder:
+          type: integer
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/EquipmentStatus"
+        statusStartedAt:
+          type: string
+          format: date-time
+        mainMeasurements:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrentDataItem"
+        abnormalMeasurements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AbnormalMeasurement"
+        lineType:
+          $ref: "#/components/schemas/LineType"
+    ProcessEquipmentResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquipmentSummary"
+    EquipmentLayoutData:
+      type: object
+      required:
+        - statusCounts
+        - equipment
+      properties:
+        statusCounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquipmentStatusCount"
+        equipment:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquipmentSummary"
+    EquipmentLayoutResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/EquipmentLayoutData"
+    EquipmentBasicInfo:
+      type: object
+      required:
+        - equipmentId
+        - equipmentCode
+        - equipmentName
+        - equipmentType
+        - lineId
+        - lineName
+        - processOrder
+        - communicationMethod
+      properties:
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentCode:
+          type: string
+        equipmentName:
+          type: string
+        equipmentType:
+          type: string
+        serialNumber:
+          type: string
+          nullable: true
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        lineName:
+          type: string
+        processOrder:
+          type: integer
+        communicationMethod:
+          type: string
+        photoUrl:
+          type: string
+          format: uri-reference
+          nullable: true
+          description: 10분 동안 열리는 서명 상대 주소(MST-018). 사진이 없으면 null
+        registeredAt: {type: string, format: date-time}
+    EquipmentDetailData:
+      type: object
+      required:
+        - basicInfo
+        - status
+        - lastReceivedAt
+        - measurements
+        - stateValues
+        - cumulativeValues
+      properties:
+        basicInfo:
+          $ref: "#/components/schemas/EquipmentBasicInfo"
+        status:
+          $ref: "#/components/schemas/EquipmentStatus"
+        lastReceivedAt:
+          type: string
+          format: date-time
+        measurements:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrentDataItem"
+        stateValues:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrentDataItem"
+        cumulativeValues:
+          type: array
+          items:
+            $ref: "#/components/schemas/CurrentDataItem"
+    EquipmentDetailResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/EquipmentDetailData"
+    MeasurementPoint:
+      type: object
+      required:
+        - measuredAt
+        - value
+      properties:
+        measuredAt:
+          type: string
+          format: date-time
+        value:
+          type: number
+          nullable: true
+          description: 미수신 구간은 null. STATE 0/1, CUMULATIVE 0 이상 정수
+    AlarmMarker:
+      type: object
+      required:
+        - occurredAt
+        - value
+      properties:
+        occurredAt:
+          type: string
+          format: date-time
+        value:
+          type: number
+    DisconnectionInterval:
+      type: object
+      required:
+        - startedAt
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+    MeasurementSeriesData:
+      type: object
+      required:
+        - dataItemId
+        - valueType
+        - points
+        - alarmMarkers
+        - bucketSeconds
+      properties:
+        dataItemId:
+          $ref: "#/components/schemas/Identifier"
+        dataItemName:
+          type: string
+        valueType:
+          $ref: "#/components/schemas/DataValueType"
+        unit:
+          type: string
+          nullable: true
+        cautionThreshold:
+          type: number
+          nullable: true
+        criticalThreshold:
+          type: number
+          nullable: true
+        points:
+          type: array
+          description: >-
+            시각순. 원본이면 측정 시각, 집계면 칸 시작 시각(Asia/Seoul 자정 기준). 통신 끊김 구간 시작 시각마다 value=null 점이
+            있어 차트 선을 끊는다.
+          items:
+            $ref: "#/components/schemas/MeasurementPoint"
+        alarmMarkers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlarmMarker"
+        bucketSeconds:
+          type: integer
+          minimum: 1
+    InventoryLine:
+      type: object
+      required:
+        - lineId
+        - lineName
+        - quantity
+        - consumptionPerMinute
+        - productionPerMinute
+        - lineType
+        - stage
+        - remainingMinutes
+        - assemblyStopExpectedAt
+        - stageThresholds
+        - warehouseQuantity
+        - bufferDepletionExpectedAt
+      properties:
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        lineName:
+          type: string
+        quantity:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 개
+          nullable: true
+        consumptionPerMinute:
+          type: number
+          format: double
+          minimum: 0
+          description: 개/분
+          nullable: true
+        productionPerMinute:
+          type: number
+          format: double
+          minimum: 0
+          description: 개/분
+          nullable: true
+        lineType:
+          $ref: "#/components/schemas/LineType"
+        stage:
+          type: string
+          enum:
+            - MAINTAIN
+            - CAUTION
+            - DANGER
+            - null
+          nullable: true
+        remainingMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+        assemblyStopExpectedAt:
+          type: string
+          format: date-time
+          nullable: true
+        stageThresholds:
+          $ref: "#/components/schemas/InventoryStageThresholds"
+        warehouseQuantity:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: 창고 수량(개). 물류·재고 시스템에서 받은 warehouse_stock_history 최신 줄(가정). 받은 적이 없으면 null이며
+            0으로 치지 않고 버퍼(quantity)만으로 계산한다. quantity는 라인 끝 버퍼다
+        bufferDepletionExpectedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 버퍼 소진 예상 시각 = 계산 시각 + quantity ÷ 순소비. 창고에서 꺼내 와야 하는 시점. 소진되지 않거나 계산할 수
+            없으면 null. 창고 수량이 null이면 assemblyStopExpectedAt과 같다
+      description: 현재 재고는 stock_history의 최신 줄. 대상 PART 라인만 반환. 시연은 기초300 + 라인 끝 생산 증가
+        - AS-04-1 완성 증가로 stock_history를 갱신. 재고 시스템과 시연 계산을 동시에 더하지 않는다.
+        재고는 버퍼(quantity)와 창고(warehouseQuantity) 두 단계다. remainingMinutes·assemblyStopExpectedAt·stage는
+        버퍼와 창고를 합친 수량 기준이고 bufferDepletionExpectedAt만 버퍼 기준이다. 시연(DEMO_PRODUCTION)은 버퍼를
+        line.max_stock에서 막고, 버퍼가 모자란 만큼을 창고에서 빼며, 넘친 만큼을 받은 최대 수량까지 창고에 다시 채운다.
+    InventoryResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryLine"
+    LineStopForecast:
+      type: object
+      required:
+        - lineId
+        - lineName
+        - currentInventory
+        - netConsumptionPerMinute
+        - remainingMinutes
+        - stage
+        - assemblyStopExpectedAt
+        - sourceEquipmentId
+        - activeAlarmId
+        - marginMinutes
+        - marginStatus
+        - repairHistoryCount
+        - averageRepairMinutes
+        - shortageMinutes
+        - forecastStatus
+        - warehouseInventory
+        - bufferDepletionExpectedAt
+      properties:
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        lineName:
+          type: string
+        currentInventory:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        netConsumptionPerMinute:
+          type: number
+          format: double
+          nullable: true
+        remainingMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+        stage:
+          type: string
+          enum:
+            - MAINTAIN
+            - CAUTION
+            - DANGER
+            - null
+          nullable: true
+        assemblyStopExpectedAt:
+          type: string
+          format: date-time
+          nullable: true
+        sourceEquipmentId:
+          type: integer
+          format: int64
+          nullable: true
+        activeAlarmId:
+          type: integer
+          format: int64
+          nullable: true
+        marginMinutes:
+          type: number
+          nullable: true
+          description: 정지 예상-복구 예상, 분. 둘 중 하나가 없으면 null
+        marginStatus:
+          type: string
+          enum:
+            - AVAILABLE
+            - SHORTAGE
+            - null
+          nullable: true
+        repairHistoryCount:
+          type: integer
+          minimum: 0
+          description: 동일 설비·동일 항목의 유효한 종료 경보 표본 수. 0일 때 다른 설비/항목으로 대체하지 않음
+        averageRepairMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+          description: closedAt-occurredAt의 분 평균. 표본0건이면 null, 1~2건도 그대로 평균
+        shortageMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+          description: max(복구 예상-정지 예상,0), 분. 복구/정지 예상 없으면 null
+        forecastStatus:
+          $ref: "#/components/schemas/ForecastStatus"
+        warehouseInventory:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: 창고 수량(개). 받은 적이 없으면 null이며 0으로 치지 않고 버퍼(currentInventory)만으로 계산한다
+        bufferDepletionExpectedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: 버퍼 소진 예상 시각 = 계산 시각 + currentInventory ÷ 순소비. 창고 출고가 필요한 시점. 화면은
+            warehouseInventory가 null이면 이 시각을 따로 보이지 않는다
+      description: 복구 이력0건이어도 남은 시간·정지 예상·단계는 계산 가능한 한 유지한다. 복구 예상·평균·여유·부족만 null.
+        평균0분은 유효한 표본이며 표본0건과 구분한다.
+        assemblyStopExpectedAt = 계산 시각 + (currentInventory + warehouseInventory) ÷ 순소비. 남은 시간·단계·여유·부족은 모두 이 시각 기준이다. currentInventory는 라인 끝 버퍼다.
+    AssemblyStopForecastData:
+      type: object
+      required:
+        - lines
+      properties:
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineStopForecast"
+    AssemblyStopForecastResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/AssemblyStopForecastData"
+    AlarmSummary:
+      type: object
+      required:
+        - alarmId
+        - equipmentId
+        - equipmentName
+        - alarmMessage
+        - grade
+        - processStatus
+        - occurredAt
+        - dataItemId
+        - cautionThreshold
+        - criticalThreshold
+        - decimalPlaces
+      properties:
+        displayMin:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최솟값. 미설정 또는 측정값 이외의 종류에서는 null.
+        displayMax:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최댓값. 미설정 또는 측정값 이외의 종류에서는 null.
+        alarmId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentCode:
+          type: string
+          maxLength: 100
+        equipmentName:
+          type: string
+          maxLength: 200
+        dataItemId:
+          $ref: "#/components/schemas/Identifier"
+        dataItemName:
+          type: string
+          maxLength: 100
+        alarmMessage:
+          type: string
+          maxLength: 1000
+        cause:
+          type: string
+          maxLength: 1000
+        currentValue:
+          type: number
+          nullable: true
+        occurredValue:
+          type: number
+        thresholdValue:
+          type: number
+          nullable: true
+          description: 발생 당시 적용 기준의 스냅샷. 현재 항목 기준2개와 구분
+        unit:
+          type: string
+          nullable: true
+        grade:
+          $ref: "#/components/schemas/AlarmGrade"
+        processStatus:
+          $ref: "#/components/schemas/AlarmProcessStatus"
+        occurredAt: {type: string, format: date-time}
+        closedAt: {type: string, format: date-time, nullable: true}
+        durationSeconds:
+          type: integer
+          minimum: 0
+          nullable: true
+        actionContent:
+          type: string
+          nullable: true
+        cautionThreshold:
+          type: number
+          nullable: true
+          description: 항목 현재 설정의 주의 기준. STATE/CUMULATIVE는 null
+        criticalThreshold:
+          type: number
+          nullable: true
+          description: 항목 현재 설정의 경보 기준. STATE/CUMULATIVE는 null
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          nullable: true
+          description: 항목에 등록된 소수 자릿수. STATE/CUMULATIVE는0
+    AlarmPageData:
+      type: object
+      required:
+        - yesterdayOccurredCount
+        - activeCautionCount
+        - activeCriticalCount
+        - activeCount
+        - todayOccurredCount
+        - todayClosedCount
+        - averageActionMinutes
+        - items
+      properties:
+        yesterdayOccurredCount:
+          type: integer
+          minimum: 0
+        activeCautionCount:
+          type: integer
+          minimum: 0
+        activeCriticalCount:
+          type: integer
+          minimum: 0
+        activeCount:
+          type: integer
+          minimum: 0
+        todayOccurredCount:
+          type: integer
+          minimum: 0
+        todayClosedCount:
+          type: integer
+          minimum: 0
+        averageActionMinutes:
+          type: number
+          minimum: 0
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlarmSummary"
+    AlarmPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/AlarmPageData"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    UserBrief:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 100
+    AlarmDetailData:
+      allOf:
+        - $ref: "#/components/schemas/AlarmSummary"
+        - type: object
+          required:
+            - assemblyStopExpectedAt
+            - trendBeforeAndAfter
+            - cautionThreshold
+            - criticalThreshold
+            - equipmentHistories
+            - action
+          properties:
+            assemblyStopExpectedAt: {type: string, format: date-time, nullable: true}
+            trendBeforeAndAfter:
+              type: array
+              items:
+                $ref: "#/components/schemas/MeasurementPoint"
+            cautionThreshold:
+              type: number
+              nullable: true
+            criticalThreshold:
+              type: number
+              nullable: true
+            equipmentHistories:
+              type: array
+              items:
+                $ref: "#/components/schemas/AlarmSummary"
+            action:
+              type: object
+              allOf:
+                - $ref: "#/components/schemas/AlarmActionData"
+              nullable: true
+    AlarmDetailResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/AlarmDetailData"
+    AlarmActionRequest:
+      type: object
+      required:
+        - equipmentText
+        - actionContent
+      properties:
+        equipmentText:
+          type: string
+          minLength: 1
+          maxLength: 200
+        cause:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: 누락·공백이면 알람 내용을 그대로 저장
+        actionContent:
+          type: string
+          minLength: 1
+          maxLength: 4000
+      description: equipmentText는 조치 화면의 설비 자유 입력값이다. alarmId의 설비 연관관계는 변경하지 않는다. 공백만
+        있는 필수값은 거부한다.
+    AlarmActionData:
+      type: object
+      required:
+        - equipmentText
+        - cause
+        - actionContent
+        - handledBy
+      properties:
+        equipmentText:
+          type: string
+          maxLength: 200
+        cause:
+          type: string
+          maxLength: 1000
+        actionContent:
+          type: string
+          maxLength: 4000
+        handledBy:
+          $ref: "#/components/schemas/UserBrief"
+    AlarmActionResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/AlarmActionData"
+    FaultHistoryItem:
+      type: object
+      required:
+        - alarmId
+        - occurredAt
+        - cause
+        - actionContent
+        - durationSeconds
+      properties:
+        alarmId:
+          $ref: "#/components/schemas/Identifier"
+        occurredAt: {type: string, format: date-time}
+        cause:
+          type: string
+          maxLength: 1000
+        actionContent:
+          type: string
+          maxLength: 4000
+        durationSeconds:
+          type: integer
+          minimum: 0
+    FaultHistoryData:
+      type: object
+      required:
+        - monthlyFaultCount
+        - averageRepairMinutes
+        - averageFailureIntervalMinutes
+        - items
+      properties:
+        monthlyFaultCount:
+          type: integer
+          minimum: 0
+        averageRepairMinutes:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+        averageFailureIntervalMinutes:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaultHistoryItem"
+    FaultHistoryResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/FaultHistoryData"
+    AlarmResponseStatistics:
+      type: object
+      required:
+        - activeCautionCount
+        - activeCriticalCount
+        - longestActionEquipmentName
+        - totalCount
+        - cautionCount
+        - criticalCount
+        - activeCount
+        - averageActionMinutes
+        - longestActionMinutes
+      properties:
+        activeCautionCount:
+          type: integer
+          minimum: 0
+        activeCriticalCount:
+          type: integer
+          minimum: 0
+        longestActionEquipmentName:
+          type: string
+          nullable: true
+        totalCount:
+          type: integer
+          minimum: 0
+        cautionCount:
+          type: integer
+          minimum: 0
+        criticalCount:
+          type: integer
+          minimum: 0
+        activeCount:
+          type: integer
+          minimum: 0
+        averageActionMinutes:
+          type: number
+          nullable: true
+          minimum: 0
+        longestActionMinutes:
+          type: number
+          nullable: true
+          minimum: 0
+    AlarmResponseStatisticsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/AlarmResponseStatistics"
+    DailyAlarmCount:
+      type: object
+      required:
+        - date
+        - criticalCount
+        - cautionCount
+      properties:
+        date:
+          type: string
+          format: date
+        criticalCount:
+          type: integer
+          minimum: 0
+        cautionCount:
+          type: integer
+          minimum: 0
+    DailyAlarmStatisticsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyAlarmCount"
+    AvailabilityMetric:
+      type: object
+      required:
+        - targetType
+        - targetName
+        - availabilityRate
+      properties:
+        targetType:
+          type: string
+          enum:
+            - LINE
+            - EQUIPMENT
+        targetName:
+          type: string
+        availabilityRate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+    AvailabilityStatisticsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilityMetric"
+    DowntimeMetric:
+      type: object
+      required:
+        - equipmentName
+        - faultMinutes
+        - idleMinutes
+        - communicationLostMinutes
+      properties:
+        equipmentName:
+          type: string
+        faultMinutes:
+          type: number
+          format: double
+          minimum: 0
+        idleMinutes:
+          type: number
+          format: double
+          minimum: 0
+        communicationLostMinutes:
+          type: number
+          format: double
+          minimum: 0
+    LineDowntimeMetric:
+      type: object
+      required:
+        - lineName
+        - faultMinutes
+        - idleMinutes
+        - communicationLostMinutes
+      properties:
+        lineName:
+          type: string
+        faultMinutes:
+          type: number
+          format: double
+          minimum: 0
+        idleMinutes:
+          type: number
+          format: double
+          minimum: 0
+        communicationLostMinutes:
+          type: number
+          format: double
+          minimum: 0
+    DowntimeStatisticsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DowntimeMetric"
+        byLine:
+          type: array
+          description: 선택 범위 내 설비별 시간을 라인별로 합한 값이다. 라인의 경과 시간과는 다를 수 있다.
+          items:
+            $ref: "#/components/schemas/LineDowntimeMetric"
+    EquipmentRankingItem:
+      type: object
+      required:
+        - rank
+        - equipmentId
+        - equipmentName
+        - faultCount
+        - downtimeMinutes
+        - averageRepairMinutes
+        - lossAmount
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentName:
+          type: string
+        faultCount:
+          type: integer
+          minimum: 0
+        downtimeMinutes:
+          type: number
+          format: double
+          minimum: 0
+        averageRepairMinutes:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+        lossAmount:
+          type: number
+          minimum: 0
+          description: 원
+    EquipmentRankingResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/EquipmentRankingItem"
+    DailyLoss:
+      type: object
+      required:
+        - date
+        - lossAmount
+        - assemblyStopMinutes
+      properties:
+        date:
+          type: string
+          format: date
+        lossAmount:
+          type: number
+          minimum: 0
+        assemblyStopMinutes:
+          type: number
+          format: double
+          minimum: 0
+    LossStatistics:
+      type: object
+      required:
+        - daily
+      properties:
+        daily:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyLoss"
+    LossStatisticsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/LossStatistics"
+    EquipmentWriteRequest:
+      type: object
+      required:
+        - equipmentCode
+        - equipmentName
+        - equipmentType
+        - lineId
+        - processOrder
+        - communicationMethod
+      properties:
+        equipmentCode:
+          type: string
+          minLength: 1
+          maxLength: 20
+          description: 등록 후 수정 불가
+        equipmentName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        equipmentType:
+          type: string
+          minLength: 1
+          maxLength: 50
+        serialNumber:
+          type: string
+          maxLength: 50
+          nullable: true
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        processOrder:
+          type: integer
+          minimum: 1
+        communicationMethod:
+          type: string
+          minLength: 1
+          maxLength: 20
+        photo:
+          type: string
+          format: binary
+          nullable: true
+        registeredAt:
+          type: string
+          format: date-time
+          description: 등록 화면 입력값. 등록 시 생략하면 서버 현재 시각. 수정 시 생략하면 기존 값 유지.
+    EquipmentUpdateRequest:
+      type: object
+      required:
+        - equipmentName
+        - equipmentType
+        - lineId
+        - processOrder
+        - communicationMethod
+      properties:
+        equipmentName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        equipmentType:
+          type: string
+          minLength: 1
+          maxLength: 50
+        serialNumber:
+          type: string
+          maxLength: 50
+          nullable: true
+        lineId:
+          $ref: "#/components/schemas/Identifier"
+        processOrder:
+          type: integer
+          minimum: 1
+        communicationMethod:
+          type: string
+          minLength: 1
+          maxLength: 20
+        photo:
+          type: string
+          format: binary
+          nullable: true
+        removePhoto:
+          type: boolean
+          default: false
+        registeredAt:
+          type: string
+          format: date-time
+          description: 등록 화면 입력값. 등록 시 생략하면 서버 현재 시각. 수정 시 생략하면 기존 값 유지.
+    MasterEquipment:
+      allOf:
+        - $ref: "#/components/schemas/EquipmentBasicInfo"
+        - type: object
+          required:
+            - lastReceivedAt
+          properties:
+            lastReceivedAt:
+              type: string
+              format: date-time
+              nullable: true
+    MasterEquipmentPageData:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterEquipment"
+    MasterEquipmentPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/MasterEquipmentPageData"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    MasterEquipmentResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/MasterEquipment"
+    LineWriteRequest:
+      type: object
+      required:
+        - lineName
+        - displayOrder
+      properties:
+        lineName:
+          type: string
+          minLength: 1
+          maxLength: 50
+        displayOrder:
+          type: integer
+          minimum: 1
+        lineType:
+          $ref: "#/components/schemas/LineType"
+          default: PART
+          description: 추가 계약 필드. 생략하면 PART(제안값); 기존 ASSEMBLY는 유지
+    LineLayoutEquipment:
+      type: object
+      required:
+        - equipmentId
+        - processOrder
+      properties:
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        processOrder:
+          type: integer
+          minimum: 1
+    LineLayoutUpdateRequest:
+      type: object
+      required:
+        - equipment
+      properties:
+        equipment:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/LineLayoutEquipment"
+    MasterLine:
+      allOf:
+        - $ref: "#/components/schemas/LineSummary"
+        - type: object
+          required:
+            - equipment
+          properties:
+            equipment:
+              type: array
+              items:
+                $ref: "#/components/schemas/EquipmentSummary"
+    MasterLineListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterLine"
+    MasterLineResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/MasterLine"
+    MeasurementThreshold:
+      type: object
+      required:
+        - cautionValue
+        - criticalValue
+        - direction
+      properties:
+        cautionValue:
+          type: number
+        criticalValue:
+          type: number
+        direction:
+          $ref: "#/components/schemas/ThresholdDirection"
+    StateAlarmCondition:
+      type: object
+      required:
+        - alarmValue
+        - grade
+      properties:
+        alarmValue:
+          type: integer
+          enum:
+            - 0
+            - 1
+          description: 수집 STATE와 같은 숫자 0 또는 1
+        grade:
+          $ref: "#/components/schemas/AlarmGrade"
+    DataItemWriteRequest:
+      type: object
+      required:
+        - dataItemName
+        - valueType
+        - collectionIntervalSeconds
+      properties:
+        displayMin:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최솟값. 두 값은 함께 제공한다. 최솟값은 최댓값보다 작아야 한다. 수정 시 둘 다 생략하면 유지하고 둘 다 null이면 지운다.
+        displayMax:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최댓값. 두 값은 함께 제공한다. 최솟값은 최댓값보다 작아야 한다. 수정 시 둘 다 생략하면 유지하고 둘 다 null이면 지운다.
+        dataItemCode:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[a-z][a-z0-9_]*$
+          description: >-
+            INT-001 dataItemCode와 맞추는 항목 코드(data_item.item_code). MST-012에서는 바꿀 수 없으며 보내도 무시한다.
+            2026-11-18 추가(A 제안값).
+          x-proposed: true
+        dataItemName:
+          type: string
+          minLength: 1
+          maxLength: 50
+        valueType:
+          $ref: "#/components/schemas/DataValueType"
+        unit:
+          type: string
+          maxLength: 20
+          nullable: true
+        collectionIntervalSeconds:
+          type: integer
+          minimum: 1
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          maximum: 10
+          nullable: true
+        zeroDisplayName:
+          type: string
+          maxLength: 20
+          nullable: true
+        oneDisplayName:
+          type: string
+          maxLength: 20
+          nullable: true
+        measurementThreshold:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/MeasurementThreshold"
+          nullable: true
+        stateAlarmCondition:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/StateAlarmCondition"
+          nullable: true
+      description: >-
+        valueType에 따라 측정값/상태값/누적값 전용 필드를 검증한다. MEASUREMENT는 zeroDisplayName·oneDisplayName·
+        stateAlarmCondition을 받지 않고 decimalPlaces를 비우면 1이다. STATE는 unit·measurementThreshold를 받지 않고
+        decimalPlaces는 0이다. CUMULATIVE는 두 기준과 0/1 표시를 받지 않고 decimalPlaces는 0이다. 맞지 않으면 400.
+        MST-012에서 measurementThreshold·stateAlarmCondition 칸을 보내지 않으면 기존 기준을 유지하고, null을 보내면
+        지운다. valueType은 바꿀 수 없다(422 DATA_ITEM_VALUE_TYPE_IMMUTABLE). 길이는 ERD data_item 컬럼(이름 50,
+        단위 20, 0/1 표시 20)을 따른다.
+    ThresholdWriteRequest:
+      oneOf:
+        - $ref: "#/components/schemas/MeasurementThreshold"
+        - $ref: "#/components/schemas/StateAlarmCondition"
+    ThresholdStatistics:
+      type: object
+      description: >-
+        recentMinimum/Average/Maximum은 최근 7일(오늘 포함, Asia/Seoul) 측정값으로 계산하며 MEASUREMENT 항목만 값이 있다.
+        alarmCountLast30Days는 지금부터 30일 전 이후 발생한 알람 수다. 2026-11-18 A 제안값.
+      x-proposed: true
+      properties:
+        recentMinimum:
+          type: number
+          nullable: true
+        recentAverage:
+          type: number
+          nullable: true
+        recentMaximum:
+          type: number
+          nullable: true
+        alarmCountLast30Days:
+          type: integer
+          minimum: 0
+    MasterDataItem:
+      type: object
+      required:
+        - dataItemId
+        - dataItemCode
+        - dataItemName
+        - valueType
+        - collectionIntervalSeconds
+      properties:
+        displayMin:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최솟값. 미설정 또는 측정값 이외의 종류에서는 null.
+        displayMax:
+          type: number
+          format: double
+          nullable: true
+          description: 측정값 표시 최댓값. 미설정 또는 측정값 이외의 종류에서는 null.
+        dataItemId:
+          $ref: "#/components/schemas/Identifier"
+        dataItemCode:
+          type: string
+          description: INT-001 dataItemCode와 같은 항목 코드. 2026-11-18 추가(A 제안값).
+          x-proposed: true
+        dataItemName:
+          type: string
+        valueType:
+          $ref: "#/components/schemas/DataValueType"
+        unit:
+          type: string
+          nullable: true
+        collectionIntervalSeconds:
+          type: integer
+          minimum: 1
+        decimalPlaces:
+          type: integer
+          minimum: 0
+          nullable: true
+        zeroDisplayName:
+          type: string
+          nullable: true
+        oneDisplayName:
+          type: string
+          nullable: true
+        latestValue:
+          oneOf:
+            - type: number
+            - type: string
+        lastReceivedAt:
+          type: string
+          format: date-time
+          nullable: true
+        measurementThreshold:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/MeasurementThreshold"
+          nullable: true
+        stateAlarmCondition:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/StateAlarmCondition"
+          nullable: true
+        statistics:
+          $ref: "#/components/schemas/ThresholdStatistics"
+    MasterDataItemListResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MasterDataItem"
+    MasterDataItemResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/MasterDataItem"
+    ThresholdResponse:
+      type: object
+      required:
+        - success
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+    JudgementSettings:
+      type: object
+      required:
+        - communicationLossSeconds
+        - alarmConsecutiveCount
+        - inventoryWarningMinutes
+        - inventoryDangerMinutes
+      properties:
+        communicationLossSeconds:
+          type: integer
+          minimum: 10
+          maximum: 300
+          default: 30
+        alarmConsecutiveCount:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 3
+        inventoryWarningMinutes:
+          type: integer
+          minimum: 5
+          maximum: 120
+          default: 30
+          description: STOCK_LEVEL_MIN
+        inventoryDangerMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 10
+          description: STOCK_DANGER_MIN. inventoryWarningMinutes보다 작아야 함
+      description: communicationLossSeconds=COMM_TIMEOUT_SEC,
+        alarmConsecutiveCount=ALARM_STREAK_COUNT, 주의=STOCK_LEVEL_MIN,
+        위험=STOCK_DANGER_MIN. 정상 복귀 횟수는 연속 횟수와 동일. 0 < 위험 < 주의를 서버에서 검증하고 실패
+        시422.
+    JudgementSettingRange:
+      type: object
+      required:
+        - field
+        - minimum
+        - maximum
+      properties:
+        field:
+          type: string
+        minimum:
+          type: number
+        maximum:
+          type: number
+    JudgementSettingsData:
+      allOf:
+        - $ref: "#/components/schemas/JudgementSettings"
+        - type: object
+          required:
+            - ranges
+          properties:
+            ranges:
+              type: array
+              items:
+                $ref: "#/components/schemas/JudgementSettingRange"
+    JudgementSettingsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/JudgementSettingsData"
+    CalculationSettingsUpdateRequest:
+      type: object
+      required:
+        - unitPrice
+        - speedWindowMinutes
+        - hourlyProduction
+      properties:
+        unitPrice:
+          type: number
+          minimum: 0
+          maximum: 100000000
+          description: UNIT_PRICE, 원/개. 초기0, 0이면 화면에 개당 금액 설정 안내. 상한은 프로젝트 제안값
+          default: 0
+        speedWindowMinutes:
+          type: integer
+          minimum: 5
+          maximum: 60
+          default: 10
+          description: RATE_WINDOW_MIN. production_log 속도 계산 구간(분)
+        hourlyProduction:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간)
+          default: 360
+    CalculationSettings:
+      type: object
+      required:
+        - unitPrice
+        - speedWindowMinutes
+        - hourlyProduction
+      properties:
+        unitPrice:
+          type: number
+          minimum: 0
+          maximum: 100000000
+          description: UNIT_PRICE, 원/개. 초기0, 0이면 화면에 개당 금액 설정 안내. 상한은 프로젝트 제안값
+          default: 0
+        speedWindowMinutes:
+          type: integer
+          minimum: 5
+          maximum: 60
+          default: 10
+          description: RATE_WINDOW_MIN. production_log 속도 계산 구간(분)
+        hourlyProduction:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: HOURLY_OUTPUT. 실측 생산량이 아닌 MES 계획값으로 가정한 조립 기준 생산량(개/시간)
+          default: 360
+        ranges:
+          type: array
+          description: 각 칸의 입력 범위(판정 설정 ranges와 같은 형식). 응답에만 있다. 2026-11-18 A 추가
+          x-proposed: true
+          items:
+            $ref: "#/components/schemas/JudgementSettingRange"
+    CalculationSettingsResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/CalculationSettings"
+    User:
+      type: object
+      required:
+        - userId
+        - loginId
+        - name
+        - permission
+        - telegramConnected
+      properties:
+        userId:
+          $ref: "#/components/schemas/Identifier"
+        loginId:
+          type: string
+          minLength: 4
+          maxLength: 20
+        name:
+          type: string
+          maxLength: 100
+        telegramConnected:
+          type: boolean
+        permission:
+          $ref: "#/components/schemas/Permission"
+    UserUpdateRequest:
+      type: object
+      required:
+        - name
+        - permission
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        permission:
+          $ref: "#/components/schemas/Permission"
+    SignupApprovalRequest:
+      type: object
+      required:
+        - permission
+      properties:
+        permission:
+          $ref: "#/components/schemas/Permission"
+    SignupRejectionRequest:
+      type: object
+      required: []
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    SignupRequestSummary:
+      type: object
+      description: |
+        승인 대기 중인 가입 신청을 표시한다.
+      required:
+        - requestId
+        - loginId
+        - name
+        - requestedAt
+        - telegramConnected
+      properties:
+        requestId:
+          $ref: "#/components/schemas/Identifier"
+        loginId:
+          type: string
+        name:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        telegramConnected:
+          type: boolean
+    SignupPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignupRequestSummary"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    UserResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/User"
+    UserPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    TelegramLink:
+      type: object
+      required:
+        - linkUrl
+        - qrPayload
+      properties:
+        linkUrl:
+          type: string
+          format: uri
+          description: 봇 deep link
+        qrPayload:
+          type: string
+          format: uri
+          description: QR 코드에 넣을 동일 URL
+    TelegramLinkResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/TelegramLink"
+    TelegramConnection:
+      type: object
+      required:
+        - connected
+      properties:
+        connected:
+          type: boolean
+        linkedAt:
+          type: string
+          format: date-time
+          nullable: true
+    TelegramConnectionResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/TelegramConnection"
+    TelegramTestMessageRequest:
+      type: object
+      required:
+        - userId
+      properties:
+        userId:
+          $ref: "#/components/schemas/Identifier"
+    TelegramTestMessageResult:
+      type: object
+      required:
+        - message
+        - result
+        - sentAt
+      properties:
+        message:
+          type: string
+          description: 실제 발송한 고정 테스트 문구. 화면은 이 값을 표시한다.
+        result:
+          $ref: "#/components/schemas/DeliveryResult"
+        failureReason:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+    TelegramTestMessageResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/TelegramTestMessageResult"
+    TelegramDelivery:
+      type: object
+      required:
+        - deliveryId
+        - sentAt
+        - recipient
+        - messageSummary
+        - result
+      properties:
+        deliveryId:
+          $ref: "#/components/schemas/Identifier"
+        sentAt:
+          type: string
+          format: date-time
+        recipient:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/UserBrief"
+          nullable: true
+        recipientName:
+          type: string
+          description: 발송 시점 이름 스냅샷. 삭제·거절 계정도 보존
+        messageSummary:
+          type: string
+        result:
+          $ref: "#/components/schemas/DeliveryResult"
+        failureReason:
+          type: string
+          nullable: true
+    TelegramDeliverySummary:
+      type: object
+      required:
+        - totalCount
+        - successCount
+        - failureCount
+      properties:
+        totalCount:
+          type: integer
+          minimum: 0
+        successCount:
+          type: integer
+          minimum: 0
+        failureCount:
+          type: integer
+          minimum: 0
+    TelegramDeliveryPageData:
+      type: object
+      required:
+        - summary
+        - items
+      properties:
+        summary:
+          $ref: "#/components/schemas/TelegramDeliverySummary"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelegramDelivery"
+    TelegramDeliveryPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/TelegramDeliveryPageData"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    ChangeHistory:
+      type: object
+      required:
+        - historyId
+        - changedAt
+        - changer
+        - itemType
+        - itemName
+        - previousValue
+        - changedValue
+      properties:
+        historyId:
+          $ref: "#/components/schemas/Identifier"
+        changedAt:
+          type: string
+          format: date-time
+        changer:
+          $ref: "#/components/schemas/UserBrief"
+        itemType:
+          type: string
+          enum:
+            - EQUIPMENT
+            - LINE
+            - DATA_ITEM
+            - THRESHOLD
+            - PART
+            - SETTING
+            - ACCOUNT
+            - DUTY
+          description: change_log.target_type 코드. 2026-11-18 A 확정
+        itemName:
+          type: string
+          description: 바꾼 대상(change_log.target_name). 예 OR-04-1/coolant_flow
+        fieldName:
+          type: string
+          description: 바꾼 항목(change_log.field_name). 예 경보 기준. 2026-11-18 A 추가
+          x-proposed: true
+        previousValue:
+          type: string
+          nullable: true
+          description: 비밀번호와 토큰 제외
+        changedValue:
+          type: string
+          nullable: true
+          description: 비밀번호와 토큰 제외
+    ChangeHistoryPageResponse:
+      type: object
+      required:
+        - success
+        - data
+        - meta
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangeHistory"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    MeasurementValueIngestion:
+      type: object
+      required:
+        - dataItemCode
+        - valueType
+        - value
+      properties:
+        dataItemCode:
+          type: string
+          minLength: 1
+          maxLength: 50
+          pattern: ^[a-z][a-z0-9_]*$
+          description: V2 data_item.item_code와 동일
+        valueType:
+          $ref: "#/components/schemas/DataValueType"
+        value:
+          type: number
+          description: STATE는 0 또는 1, CUMULATIVE는 0 이상의 정수
+    MeasurementIngestionRequest:
+      type: object
+      required:
+        - messageId
+        - equipmentCode
+        - measuredAt
+        - values
+      properties:
+        messageId:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: OR-04-1-20261117T090000.000
+          description: 설비 코드와 측정 시각을 합친 중복 제거 키
+        equipmentCode:
+          type: string
+          minLength: 1
+          maxLength: 20
+          pattern: ^[A-Z]{2}-[0-9]{2}-[1-9][0-9]*$
+          example: OR-04-1
+        measuredAt:
+          type: string
+          format: date-time
+          example: 2026-11-17T09:00:00+09:00
+          description: Node-RED가 기록한 시각
+        values:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/MeasurementValueIngestion"
+    IngestionAccepted:
+      type: object
+      required:
+        - messageId
+        - acceptedAt
+        - duplicate
+      properties:
+        messageId:
+          type: string
+        acceptedAt:
+          type: string
+          format: date-time
+        duplicate:
+          type: boolean
+    IngestionAcceptedResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/IngestionAccepted"
+    AlarmHourlyCount:
+      type: object
+      required: [from, cautionCount, criticalCount]
+      properties:
+        from:
+          type: string
+          format: date-time
+        cautionCount:
+          type: integer
+          minimum: 0
+        criticalCount:
+          type: integer
+          minimum: 0
+    RecentAlarmListResponse:
+      type: object
+      required:
+        - hourlyCounts
+        - success
+        - data
+        - meta
+      properties:
+        hourlyCounts:
+          type: array
+          minItems: 24
+          maxItems: 24
+          items:
+            $ref: "#/components/schemas/AlarmHourlyCount"
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AlarmSummary"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+    MultiMeasurementData:
+      type: object
+      required:
+        - series
+        - disconnections
+      properties:
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeasurementSeriesData"
+        disconnections:
+          type: array
+          items:
+            $ref: "#/components/schemas/DisconnectionInterval"
+    MultiMeasurementResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          $ref: "#/components/schemas/MultiMeasurementData"
+    CriticalEquipmentCount:
+      type: object
+      required:
+        - equipmentId
+        - equipmentName
+        - criticalCount
+      properties:
+        equipmentId:
+          $ref: "#/components/schemas/Identifier"
+        equipmentName:
+          type: string
+          maxLength: 200
+        criticalCount:
+          type: integer
+          minimum: 0
+    CriticalEquipmentResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CriticalEquipmentCount"
+    StopCause:
+      type: object
+      required:
+        - cause
+        - downtimeMinutes
+      properties:
+        cause:
+          type: string
+          maxLength: 1000
+        downtimeMinutes:
+          type: number
+          minimum: 0
+    StopCauseResponse:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StopCause"
+    TelegramUpdate:
+      type: object
+      required:
+        - update_id
+        - message
+      properties:
+        update_id:
+          type: integer
+          format: int64
+        message:
+          type: object
+          required:
+            - text
+            - chat
+          properties:
+            text:
+              type: string
+              maxLength: 500
+            chat:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: integer
+                  format: int64
+    TelegramUpdateResult:
+      type: object
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          enum:
+            - true
+        data:
+          type: object
+          required:
+            - processed
+          properties:
+            processed:
+              type: boolean
+    LineType:
+      type: string
+      enum:
+        - PART
+        - ASSEMBLY
+      description: DB line.line_type. PART=부품 라인, ASSEMBLY=조립 라인
+    InventoryStageThresholds:
+      type: object
+      required:
+        - inventoryWarningMinutes
+        - inventoryDangerMinutes
+      properties:
+        inventoryWarningMinutes:
+          type: integer
+          minimum: 5
+          maximum: 120
+          description: 현재 STOCK_LEVEL_MIN
+        inventoryDangerMinutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          description: 현재 STOCK_DANGER_MIN. 주의보다 작음
+    ForecastStatus:
+      type: string
+      enum:
+        - READY
+        - NO_DEPLETION
+        - NO_RECOVERY_HISTORY
+        - INSUFFICIENT_DATA
+      description: NO_DEPLETION=소비<=공급으로 소진 없음. NO_RECOVERY_HISTORY=소진 예측은 있으나 동일
+        설비·항목 종료 경보0건. INSUFFICIENT_DATA=재고/카운터/설정 등 필수 입력 부족. 복수 사유가 겹치면
+        입력부족→소진없음→이력없음 순서.
+x-source-documents:
+  - "요구사항정의서 (2).pdf: 19쪽"
+  - "기능목록_수정본 (2).pdf: 26쪽"
+  - "기능_변경내역 (2).pdf: 10쪽"
+  - "화면설계서 (1).pdf: 76쪽"
+  - "화면_HTML과_PNG.zip: 72 HTML + 72 PNG"
+  - "Confluence 4259864: 2026-11-17 조립 정지 예측 결정 2판"
+  - "공통동작_정의서_1.pdf: 변경 없는 공통 UI 동작 보조자료"
+x-implementation-status: contract-updated-implementation-migration-required
+x-decision-source: https://sfaas5-team.atlassian.net/wiki/spaces/SF5/pages/4259864
+x-migration-policy:
+  reservedVersion: V5
+  reservedOwner: DB 담당
+  reservedFile: V5__forecast_settings_and_initial_stock.sql
+  newMigrationMinimumVersion: 6
+  policy: DB 담당 V5를 검토·통합하고 새 변경은 V6부터. 적용된 과거 migration과 삭제 기능의 테이블/칼럼은 유지.
+x-client-notifications:
+  serverReadPersistence: false
+  resetUnreadOnRefresh: true
+  activeAlarmSource: ALM-001 activeCount
+  unreadSource: 브라우저 메모리, CREATED/GRADE_ESCALATED 수신 시 증가
+x-inventory-calculation:
+  currentQuantity: stock_history 최신줄
+  inventorySystemAssumption: true
+  demoInitialQuantity: 300
+  demoFormula: 300 + 기준점 이후 라인 끝 생산 증가량 - AS-04-1 완성 증가량
+  rateWindowSetting: RATE_WINDOW_MIN
+  faultedPartSupplyRate: 0
+  recomputeSeconds: 60
+  unitPriceSetting: UNIT_PRICE
+  hourlyProductionSetting: HOURLY_OUTPUT
+  warningSetting: STOCK_LEVEL_MIN
+  dangerSetting: STOCK_DANGER_MIN
