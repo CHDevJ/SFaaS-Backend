@@ -460,4 +460,4 @@ void everyServerErrorCodeIsInTheContract() throws IOException {
 
 - 원본 저장소: [balkary/SFAAS_Project](https://github.com/balkary/SFAAS_Project) (비공개)
 - API 문서 (Swagger UI): https://chdevj.github.io/SFaaS-Backend/swagger/ (팀 레포 최종본 명세 v7.0.0, 읽기 전용)
-- 시연 영상: [ ]
+- 시연 영상: [YouTube](https://www.youtube.com/watch?v=QaAxkNaUPLw)
